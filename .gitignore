@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local sqlite (fallback db during development without Turso credentials)
+*.db
+*.db-shm
+*.db-wal

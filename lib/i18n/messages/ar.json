@@ -1,0 +1,199 @@
+{
+  "nav": {
+    "dashboard": "لوحة التحكم",
+    "requests": "الطلبات",
+    "customers": "العملاء",
+    "partners": "الشركاء",
+    "signatures": "التوقيعات",
+    "payments": "المدفوعات",
+    "reports": "التقارير",
+    "settings": "الإعدادات",
+    "tasks": "مهامي",
+    "logout": "تسجيل الخروج"
+  },
+  "common": {
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "create": "إنشاء",
+    "search": "بحث",
+    "filter": "تصفية",
+    "loading": "جارٍ التحميل…",
+    "noResults": "لا توجد نتائج",
+    "optional": "اختياري",
+    "required": "مطلوب",
+    "actions": "إجراءات",
+    "status": "الحالة",
+    "date": "التاريخ",
+    "notes": "ملاحظات",
+    "back": "رجوع",
+    "next": "التالي",
+    "submit": "إرسال",
+    "confirm": "تأكيد",
+    "close": "إغلاق",
+    "copy": "نسخ",
+    "copied": "تم النسخ!",
+    "regenerate": "إعادة توليد",
+    "export": "تصدير",
+    "approve": "موافقة",
+    "reject": "رفض"
+  },
+  "auth": {
+    "login": "تسجيل الدخول",
+    "loginTitle": "مرحباً بعودتك",
+    "loginSubtitle": "سجّل دخولك إلى حساب KOPH",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+  },
+  "requests": {
+    "title": "الطلبات",
+    "new": "طلب جديد",
+    "requestNumber": "رقم الطلب",
+    "trackingCode": "رمز التتبع",
+    "type": "النوع",
+    "customer": "العميل",
+    "deliveryDate": "تاريخ التسليم",
+    "collectionDate": "تاريخ الاستلام",
+    "timeWindow": "النافذة الزمنية",
+    "salesRef": "مرجع المبيعات",
+    "poNumber": "رقم أمر الشراء",
+    "status": {
+      "draft": "مسودة",
+      "assigned": "مُسند",
+      "in_progress": "جارٍ التنفيذ",
+      "completed": "مكتمل",
+      "failed": "فشل",
+      "on_hold": "معلّق",
+      "cancelled": "ملغي",
+      "rescheduled": "مُعاد الجدولة"
+    },
+    "items": "العناصر",
+    "addItem": "إضافة عنصر",
+    "timeline": "سجل النشاط",
+    "attentionNeeded": "يتطلب المراجعة — انتهت جميع المهام ولا توجد مهام نشطة."
+  },
+  "tasks": {
+    "title": "المهام",
+    "assignTo": "إسناد إلى شريك",
+    "status": {
+      "pending": "في الانتظار",
+      "accepted": "مقبولة",
+      "in_progress": "جارٍ التنفيذ",
+      "pending_signoff": "بانتظار الموافقة",
+      "closed": "مغلقة",
+      "rejected": "مرفوضة",
+      "failed": "فشلت",
+      "cancelled": "ملغاة"
+    },
+    "accept": "قبول المهمة",
+    "reject": "رفض المهمة",
+    "start": "بدء المهمة",
+    "markDone": "تحديد كمكتملة",
+    "markFailed": "تحديد كفاشلة",
+    "failureReason": "سبب الفشل",
+    "failureNotes": "ملاحظات الفشل",
+    "failureReasons": {
+      "customer_unavailable": "العميل غير متاح",
+      "wrong_address": "عنوان خاطئ",
+      "item_damaged": "الجهاز تالف",
+      "access_denied": "تم رفض الوصول",
+      "customer_rescheduled": "أعاد العميل الجدولة",
+      "other": "أخرى"
+    },
+    "signoff": "الموافقة على المهمة",
+    "quantity": "الكمية",
+    "regenerateLink": "إعادة توليد رابط المهمة",
+    "linkExpired": "انتهت صلاحية رابط المهمة.",
+    "linkCopied": "تم نسخ رابط المهمة",
+    "photos": "الصور",
+    "addPhotos": "إضافة صور",
+    "maxPhotos": "الحد الأقصى 10 صور، 5 ميغابايت لكل صورة"
+  },
+  "customers": {
+    "title": "العملاء",
+    "new": "عميل جديد",
+    "name": "الاسم",
+    "contactPerson": "جهة الاتصال",
+    "mobile": "الجوال",
+    "email": "البريد الإلكتروني",
+    "city": "المدينة",
+    "address": "العنوان",
+    "mapsLink": "رابط خرائط Google"
+  },
+  "partners": {
+    "title": "الشركاء",
+    "new": "شريك جديد",
+    "name": "اسم الشريك",
+    "contracts": "العقود",
+    "addContract": "إضافة عقد",
+    "pricingModels": {
+      "per_order": "لكل طلب",
+      "per_item": "لكل جهاز",
+      "per_day": "لكل يوم",
+      "per_hour": "لكل ساعة",
+      "fixed": "مبلغ ثابت"
+    }
+  },
+  "signatures": {
+    "title": "التوقيعات",
+    "new": "طلب توقيع جديد",
+    "document": "المستند",
+    "sendLink": "إرسال الرابط",
+    "requireNationalId": "إلزامية الهوية الوطنية / الإقامة",
+    "status": {
+      "draft": "مسودة",
+      "sent": "تم الإرسال",
+      "opened": "تم الفتح",
+      "otp_verified": "تم التحقق",
+      "signed": "تم التوقيع",
+      "rejected": "مرفوض",
+      "expired": "منتهي الصلاحية",
+      "cancelled": "ملغي"
+    },
+    "signing": {
+      "title": "توقيع المستند",
+      "fullName": "الاسم الكامل",
+      "mobile": "رقم الجوال",
+      "nationalId": "الهوية الوطنية / الإقامة",
+      "nationalIdOptional": "الهوية الوطنية / الإقامة (اختياري)",
+      "draw": "ارسم توقيعك",
+      "clear": "مسح",
+      "consent": "أؤكد أن المعلومات المقدمة صحيحة وأوافق على توقيع هذه الوثيقة إلكترونياً.",
+      "submit": "إرسال التوقيع",
+      "signed": "تم توقيع الوثيقة بنجاح",
+      "expired": "انتهت صلاحية رابط التوقيع.",
+      "alreadySigned": "تم توقيع هذه الوثيقة مسبقاً."
+    }
+  },
+  "payments": {
+    "title": "المدفوعات",
+    "batches": "دُفعات المدفوعات",
+    "period": "الفترة",
+    "totalAmount": "المبلغ الإجمالي",
+    "status": {
+      "draft": "مسودة",
+      "approved": "معتمد",
+      "sent_to_finance": "أُرسل للمالية",
+      "paid": "مدفوع"
+    },
+    "approveSelected": "اعتماد المحدد",
+    "approveAll": "اعتماد الكل",
+    "exportCsv": "تصدير CSV"
+  },
+  "tracking": {
+    "title": "تتبع طلبك",
+    "subtitle": "أدخل رمز التتبع لمعرفة الحالة الحالية",
+    "placeholder": "مثال: X7K9P2",
+    "track": "تتبع",
+    "notFound": "لم يُعثر على طلب بهذا الرمز.",
+    "lastUpdated": "آخر تحديث"
+  },
+  "settings": {
+    "title": "الإعدادات",
+    "requestTypes": "أنواع الطلبات",
+    "services": "كتالوج الخدمات",
+    "consent": "إصدارات الموافقة"
+  }
+}

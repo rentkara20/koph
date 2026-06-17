@@ -1,0 +1,31 @@
+import { db } from "@/lib/db"
+import { activityLogs } from "@/lib/db/schema"
+import { createId } from "./ids"
+
+type EntityType = "request" | "partner_task" | "signature_request" | "payment_batch"
+type PerformedAs = "user" | "partner_link" | "system"
+
+interface LogActivityOptions {
+  entityType: EntityType
+  entityId: string
+  action: string
+  i18nKey: string
+  i18nData?: Record<string, string | number>
+  performedBy?: string
+  performedAs?: PerformedAs
+  ipAddress?: string
+}
+
+export async function logActivity(opts: LogActivityOptions) {
+  await db.insert(activityLogs).values({
+    id: createId(),
+    entityType: opts.entityType,
+    entityId: opts.entityId,
+    action: opts.action,
+    i18nKey: opts.i18nKey,
+    i18nData: opts.i18nData ? JSON.stringify(opts.i18nData) : null,
+    performedBy: opts.performedBy ?? null,
+    performedAs: opts.performedAs ?? "user",
+    ipAddress: opts.ipAddress ?? null,
+  })
+}

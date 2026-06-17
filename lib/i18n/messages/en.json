@@ -1,0 +1,199 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "requests": "Requests",
+    "customers": "Customers",
+    "partners": "Partners",
+    "signatures": "Signatures",
+    "payments": "Payments",
+    "reports": "Reports",
+    "settings": "Settings",
+    "tasks": "My Tasks",
+    "logout": "Log out"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "loading": "Loading…",
+    "noResults": "No results found",
+    "optional": "optional",
+    "required": "required",
+    "actions": "Actions",
+    "status": "Status",
+    "date": "Date",
+    "notes": "Notes",
+    "back": "Back",
+    "next": "Next",
+    "submit": "Submit",
+    "confirm": "Confirm",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied!",
+    "regenerate": "Regenerate",
+    "export": "Export",
+    "approve": "Approve",
+    "reject": "Reject"
+  },
+  "auth": {
+    "login": "Log in",
+    "loginTitle": "Welcome back",
+    "loginSubtitle": "Sign in to your KOPH account",
+    "email": "Email",
+    "password": "Password",
+    "invalidCredentials": "Invalid email or password"
+  },
+  "requests": {
+    "title": "Requests",
+    "new": "New request",
+    "requestNumber": "Request number",
+    "trackingCode": "Tracking code",
+    "type": "Type",
+    "customer": "Customer",
+    "deliveryDate": "Delivery date",
+    "collectionDate": "Collection date",
+    "timeWindow": "Time window",
+    "salesRef": "Sales reference",
+    "poNumber": "PO number",
+    "status": {
+      "draft": "Draft",
+      "assigned": "Assigned",
+      "in_progress": "In Progress",
+      "completed": "Completed",
+      "failed": "Failed",
+      "on_hold": "On Hold",
+      "cancelled": "Cancelled",
+      "rescheduled": "Rescheduled"
+    },
+    "items": "Items",
+    "addItem": "Add item",
+    "timeline": "Activity timeline",
+    "attentionNeeded": "Attention needed — all tasks have ended with no active tasks remaining."
+  },
+  "tasks": {
+    "title": "Tasks",
+    "assignTo": "Assign to partner",
+    "status": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "in_progress": "In Progress",
+      "pending_signoff": "Pending Sign-off",
+      "closed": "Closed",
+      "rejected": "Rejected",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "accept": "Accept task",
+    "reject": "Reject task",
+    "start": "Start task",
+    "markDone": "Mark as done",
+    "markFailed": "Mark as failed",
+    "failureReason": "Failure reason",
+    "failureNotes": "Failure notes",
+    "failureReasons": {
+      "customer_unavailable": "Customer unavailable",
+      "wrong_address": "Wrong address",
+      "item_damaged": "Item damaged",
+      "access_denied": "Access denied",
+      "customer_rescheduled": "Customer rescheduled",
+      "other": "Other"
+    },
+    "signoff": "Sign off task",
+    "quantity": "Quantity",
+    "regenerateLink": "Regenerate task link",
+    "linkExpired": "This task link has expired.",
+    "linkCopied": "Task link copied",
+    "photos": "Photos",
+    "addPhotos": "Add photos",
+    "maxPhotos": "Maximum 10 photos, 5MB each"
+  },
+  "customers": {
+    "title": "Customers",
+    "new": "New customer",
+    "name": "Name",
+    "contactPerson": "Contact person",
+    "mobile": "Mobile",
+    "email": "Email",
+    "city": "City",
+    "address": "Address",
+    "mapsLink": "Google Maps link"
+  },
+  "partners": {
+    "title": "Partners",
+    "new": "New partner",
+    "name": "Partner name",
+    "contracts": "Contracts",
+    "addContract": "Add contract",
+    "pricingModels": {
+      "per_order": "Per order",
+      "per_item": "Per item / device",
+      "per_day": "Per day",
+      "per_hour": "Per hour",
+      "fixed": "Fixed amount"
+    }
+  },
+  "signatures": {
+    "title": "Signatures",
+    "new": "New signature request",
+    "document": "Document",
+    "sendLink": "Send link",
+    "requireNationalId": "Require National ID / Iqama",
+    "status": {
+      "draft": "Draft",
+      "sent": "Sent",
+      "opened": "Opened",
+      "otp_verified": "OTP Verified",
+      "signed": "Signed",
+      "rejected": "Rejected",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    },
+    "signing": {
+      "title": "Sign document",
+      "fullName": "Full name",
+      "mobile": "Mobile number",
+      "nationalId": "National ID / Iqama",
+      "nationalIdOptional": "National ID / Iqama (optional)",
+      "draw": "Draw your signature",
+      "clear": "Clear",
+      "consent": "I confirm that the information provided is accurate and I agree to sign this document electronically.",
+      "submit": "Submit signature",
+      "signed": "Document signed successfully",
+      "expired": "This signing link has expired.",
+      "alreadySigned": "This document has already been signed."
+    }
+  },
+  "payments": {
+    "title": "Payments",
+    "batches": "Payment batches",
+    "period": "Period",
+    "totalAmount": "Total amount",
+    "status": {
+      "draft": "Draft",
+      "approved": "Approved",
+      "sent_to_finance": "Sent to Finance",
+      "paid": "Paid"
+    },
+    "approveSelected": "Approve selected",
+    "approveAll": "Approve all",
+    "exportCsv": "Export CSV"
+  },
+  "tracking": {
+    "title": "Track your request",
+    "subtitle": "Enter your tracking code to view the current status",
+    "placeholder": "e.g. X7K9P2",
+    "track": "Track",
+    "notFound": "No request found with this tracking code.",
+    "lastUpdated": "Last updated"
+  },
+  "settings": {
+    "title": "Settings",
+    "requestTypes": "Request types",
+    "services": "Services catalog",
+    "consent": "Consent versions"
+  }
+}
