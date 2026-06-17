@@ -2,11 +2,15 @@
  * Run with: npx tsx lib/db/seed.ts
  * Seeds request types and initial consent version.
  */
-import { db } from "./index"
-import { requestTypes, consentVersions } from "./schema"
+import { config } from "dotenv"
+config({ path: ".env.local" })
+
 import { createId } from "@paralleldrive/cuid2"
 
 async function seed() {
+  const { db } = await import("./index")
+  const { requestTypes, consentVersions } = await import("./schema")
+
   console.log("Seeding request types…")
 
   await db

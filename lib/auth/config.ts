@@ -6,7 +6,12 @@ import { users, sessions, accounts, verifications } from "@/lib/db/schema"
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "sqlite",
-    schema: { users, sessions, accounts, verifications },
+    schema: {
+      user: users,
+      session: sessions,
+      account: accounts,
+      verification: verifications,
+    },
   }),
   emailAndPassword: {
     enabled: true,
