@@ -1,5 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getSessionCookie } from "better-auth/cookies"
+
+// Better Auth session cookie names (plain in dev, __Secure- prefixed over HTTPS).
+// Read directly instead of importing better-auth — its helpers pull in
+// Node-only modules that the Edge middleware runtime can't bundle.
+const SESSION_COOKIE_NAMES = [
+  "better-auth.session_token",
+  "__Secure-better-auth.session_token",
+]
+
+function hasSessionCookie(request: NextRequest) {
+  return SESSION_COOKIE_NAMES.some((name) => request.cookies.has(name))
+}
 
 // Routes that never require auth
 const PUBLIC_PREFIXES = [
@@ -29,9 +40,7 @@ export async function middleware(request: NextRequest) {
 
   if (isPublic(pathname)) return NextResponse.next()
 
-  const sessionCookie = getSessionCookie(request)
-
-  if (!sessionCookie) {
+  if (!hasSessionCookie(request)) {
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", pathname)
     return NextResponse.redirect(loginUrl)
