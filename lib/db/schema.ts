@@ -104,6 +104,7 @@ export const requests = sqliteTable("request", {
   customerId: text("customer_id")
     .notNull()
     .references(() => customers.id),
+  quoteNumber: text("quote_number"),
   salesRef: text("sales_ref"),
   poNumber: text("po_number"),
   deliveryDate: integer("delivery_date"),

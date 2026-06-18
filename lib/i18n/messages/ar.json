@@ -50,6 +50,7 @@
   "requests": {
     "title": "الطلبات",
     "new": "طلب جديد",
+    "quoteNumber": "رقم عرض السعر",
     "requestNumber": "رقم الطلب",
     "trackingCode": "رمز التتبع",
     "type": "النوع",

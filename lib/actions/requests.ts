@@ -24,6 +24,7 @@ type ItemInput = {
 export type CreateRequestInput = {
   typeId: string
   customerId: string
+  quoteNumber: string
   salesRef?: string
   poNumber?: string
   deliveryDate?: string
@@ -40,6 +41,7 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
 
   if (!data.typeId) return { error: "Request type is required" }
   if (!data.customerId) return { error: "Customer is required" }
+  if (!data.quoteNumber?.trim()) return { error: "Quote number is required" }
 
   const requestNumber = await generateRequestNumber()
   const trackingCode = generateTrackingCode()
@@ -51,6 +53,7 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
     trackingCode,
     typeId: data.typeId,
     customerId: data.customerId,
+    quoteNumber: data.quoteNumber.trim(),
     salesRef: data.salesRef || null,
     poNumber: data.poNumber || null,
     deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).getTime() : null,

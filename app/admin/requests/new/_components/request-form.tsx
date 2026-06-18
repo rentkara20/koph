@@ -84,6 +84,7 @@ export function RequestForm({
       const result = await createRequest({
         typeId: fd.get("typeId") as string,
         customerId: fd.get("customerId") as string,
+        quoteNumber: fd.get("quoteNumber") as string,
         salesRef: (fd.get("salesRef") as string) || undefined,
         poNumber: (fd.get("poNumber") as string) || undefined,
         deliveryDate: (fd.get("deliveryDate") as string) || undefined,
@@ -116,6 +117,21 @@ export function RequestForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Quote number — from sales team */}
+      <div className="space-y-1.5">
+        <Label htmlFor="quoteNumber">
+          {t("quoteNumber")} <span className="text-destructive">*</span>
+        </Label>
+        <Input
+          id="quoteNumber"
+          name="quoteNumber"
+          required
+          placeholder="e.g. QT-2026-001"
+          className="font-mono"
+          autoFocus
+        />
+      </div>
+
       {/* Request info */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">

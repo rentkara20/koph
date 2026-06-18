@@ -50,6 +50,7 @@ export async function globalSearch(query: string) {
         and(
           isNull(requests.deletedAt),
           or(
+            like(requests.quoteNumber, like_q),
             like(requests.requestNumber, like_q),
             like(requests.trackingCode, like_q),
             like(requests.notes, like_q),

@@ -50,6 +50,7 @@
   "requests": {
     "title": "Requests",
     "new": "New request",
+    "quoteNumber": "Quote number",
     "requestNumber": "Request number",
     "trackingCode": "Tracking code",
     "type": "Type",
