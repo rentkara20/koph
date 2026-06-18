@@ -18,11 +18,16 @@ export type ContactInput = {
 }
 
 export async function getCustomerContacts(customerId: string) {
-  return db
-    .select()
-    .from(customerContacts)
-    .where(eq(customerContacts.customerId, customerId))
-    .orderBy(customerContacts.createdAt)
+  try {
+    return await db
+      .select()
+      .from(customerContacts)
+      .where(eq(customerContacts.customerId, customerId))
+      .orderBy(customerContacts.createdAt)
+  } catch {
+    // Table not yet created — return empty until migration runs at /api/migrate-contacts
+    return []
+  }
 }
 
 export async function createCustomerContact(
