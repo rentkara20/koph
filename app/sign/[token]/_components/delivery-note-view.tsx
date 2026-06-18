@@ -36,6 +36,8 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
   const { request, customer, contact, items, signature } = data
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0)
   const quoteNum = request?.quoteNumber ?? ""
+  // Use actual sign-off date on the final document; fall back to planned delivery date for preview
+  const deliveryDateTs = signature?.signedAt ?? request?.deliveryDate ?? null
   const docRef = [
     quoteNum ? `DN#${quoteNum}` : null,
     customer?.name ?? null,
@@ -98,7 +100,7 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
         <tbody>
           {[
             { en: "Quote Number",    ar: "رقم الطلب",          val: quoteNum || "—", gray: true },
-            { en: "Delivery Date",   ar: "تاريخ التسليم",      val: formatDeliveryDate(request?.deliveryDate), gray: false },
+            { en: "Delivery Date",   ar: "تاريخ التسليم",      val: formatDeliveryDate(deliveryDateTs), gray: false },
             { en: "Prepared For",    ar: "تم اعداده لصالح",    val: customer?.name ?? "—", gray: true },
             { en: "Point of Contact",ar: "مسؤول التواصل",      val: contact?.name ?? customer?.contactPerson ?? "—", gray: false },
             { en: "Phone Number",    ar: "رقم الجوال",          val: contact?.mobile ?? customer?.mobile ?? "—", gray: true },
