@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { Loader2 } from "lucide-react"
 import { updateTaskByToken } from "@/lib/actions/tasks"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
@@ -58,19 +59,21 @@ export function TaskActions({ token, status }: { token: string; status: string }
       {status === "pending" && (
         <div className="flex gap-3">
           <Button
-            className="flex-1"
+            className="flex-1 h-12 text-base"
             disabled={loading !== null}
             onClick={() => act("accept")}
           >
-            {loading === "accept" ? "…" : "Accept task"}
+            {loading === "accept" && <Loader2 className="size-4 animate-spin mr-1" />}
+            Accept task
           </Button>
           <Button
             variant="outline"
-            className="flex-1"
+            className="flex-1 h-12 text-base"
             disabled={loading !== null}
             onClick={() => act("reject")}
           >
-            {loading === "reject" ? "…" : "Reject"}
+            {loading === "reject" && <Loader2 className="size-4 animate-spin mr-1" />}
+            Reject
           </Button>
         </div>
       )}
@@ -78,11 +81,12 @@ export function TaskActions({ token, status }: { token: string; status: string }
       {/* accepted → start */}
       {status === "accepted" && (
         <Button
-          className="w-full"
+          className="w-full h-12 text-base"
           disabled={loading !== null}
           onClick={() => act("start")}
         >
-          {loading === "start" ? "…" : "Start task"}
+          {loading === "start" && <Loader2 className="size-4 animate-spin mr-1" />}
+          Start task
         </Button>
       )}
 
@@ -90,15 +94,16 @@ export function TaskActions({ token, status }: { token: string; status: string }
       {status === "in_progress" && !showFailForm && (
         <div className="flex gap-3">
           <Button
-            className="flex-1"
+            className="flex-1 h-12 text-base"
             disabled={loading !== null}
             onClick={() => act("mark_done")}
           >
-            {loading === "mark_done" ? "…" : "Mark as done"}
+            {loading === "mark_done" && <Loader2 className="size-4 animate-spin mr-1" />}
+            Mark as done
           </Button>
           <Button
             variant="outline"
-            className="flex-1"
+            className="flex-1 h-12 text-base"
             disabled={loading !== null}
             onClick={() => setShowFailForm(true)}
           >
@@ -145,11 +150,12 @@ export function TaskActions({ token, status }: { token: string; status: string }
           <div className="flex gap-3">
             <Button
               variant="destructive"
-              className="flex-1"
+              className="flex-1 h-12 text-base"
               disabled={!failureReason || loading !== null}
               onClick={() => act("mark_failed")}
             >
-              {loading === "mark_failed" ? "…" : "Confirm failure"}
+              {loading === "mark_failed" && <Loader2 className="size-4 animate-spin mr-1" />}
+              Confirm failure
             </Button>
             <Button
               variant="outline"

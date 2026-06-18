@@ -1,10 +1,11 @@
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { Plus } from "lucide-react"
+import { Plus, Search } from "lucide-react"
 import { getRequests } from "@/lib/actions/requests"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge, requestStatusVariant } from "@/components/ui/badge"
 import { Select } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
 import { formatDate } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
 
@@ -22,13 +23,13 @@ const STATUS_OPTIONS = [
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<{ status?: string; search?: string }>
 }) {
-  const { status } = await searchParams
+  const { status, search } = await searchParams
   const [t, tCommon, requestList] = await Promise.all([
     getTranslations("requests"),
     getTranslations("common"),
-    getRequests({ status }),
+    getRequests({ status, search }),
   ])
 
   return (
@@ -42,7 +43,16 @@ export default async function RequestsPage({
       </div>
 
       {/* Filter */}
-      <form method="GET" className="flex items-center gap-3">
+      <form method="GET" className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            name="search"
+            defaultValue={search ?? ""}
+            placeholder="Search by request #, customer, quote…"
+            className="pl-8 w-64"
+          />
+        </div>
         <Select name="status" defaultValue={status ?? ""} className="w-48">
           <option value="">{tCommon("filter")}: All</option>
           {STATUS_OPTIONS.map((s) => (
@@ -57,7 +67,7 @@ export default async function RequestsPage({
         >
           {tCommon("filter")}
         </button>
-        {status && (
+        {(status || search) && (
           <Link href="/admin/requests" className={cn(buttonVariants({ variant: "ghost", size: "default" }))}>
             Clear
           </Link>

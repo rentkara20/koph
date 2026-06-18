@@ -8,6 +8,13 @@
       "when": 1781735233057,
       "tag": "0000_perpetual_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1781785757661,
+      "tag": "0001_add_city_to_customer_contacts",
+      "breakpoints": true
     }
   ]
 }

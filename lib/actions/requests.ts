@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq, isNull, like, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { activityLogs, customerContacts, customers, requestItems, requests, requestTypes } from "@/lib/db/schema"
@@ -142,6 +142,13 @@ export async function getRequests(filters?: {
                 | "on_hold"
                 | "cancelled"
                 | "rescheduled"
+            )
+          : undefined,
+        filters?.search?.trim()
+          ? or(
+              like(requests.requestNumber, `%${filters.search.trim()}%`),
+              like(requests.quoteNumber, `%${filters.search.trim()}%`),
+              like(customers.name, `%${filters.search.trim()}%`)
             )
           : undefined
       )

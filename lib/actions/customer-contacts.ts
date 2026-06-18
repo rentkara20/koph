@@ -12,6 +12,7 @@ export type ContactInput = {
   role?: string
   mobile?: string
   email?: string
+  city?: string
   address?: string
   mapsLink?: string
   notes?: string
@@ -46,6 +47,7 @@ export async function createCustomerContact(
     role: data.role?.trim() || null,
     mobile: data.mobile?.trim() || null,
     email: data.email?.trim() || null,
+    city: data.city?.trim() || null,
     address: data.address?.trim() || null,
     mapsLink: data.mapsLink?.trim() || null,
     notes: data.notes?.trim() || null,
@@ -71,6 +73,7 @@ export async function updateCustomerContact(
       role: data.role?.trim() || null,
       mobile: data.mobile?.trim() || null,
       email: data.email?.trim() || null,
+      city: data.city?.trim() || null,
       address: data.address?.trim() || null,
       mapsLink: data.mapsLink?.trim() || null,
       notes: data.notes?.trim() || null,

@@ -20,6 +20,7 @@ type Contact = {
   role: string | null
   mobile: string | null
   email: string | null
+  city: string | null
   address: string | null
   mapsLink: string | null
   notes: string | null
@@ -40,6 +41,7 @@ function ContactForm({
   const [role, setRole] = useState(initial?.role ?? "")
   const [mobile, setMobile] = useState(initial?.mobile ?? "")
   const [email, setEmail] = useState(initial?.email ?? "")
+  const [city, setCity] = useState(initial?.city ?? "")
   const [address, setAddress] = useState(initial?.address ?? "")
   const [mapsLink, setMapsLink] = useState(initial?.mapsLink ?? "")
   const [notes, setNotes] = useState(initial?.notes ?? "")
@@ -59,11 +61,15 @@ function ContactForm({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">Mobile</Label>
-          <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="+966…" />
+          <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="+966…" inputMode="tel" />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">Email</Label>
           <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">City</Label>
+          <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. RUH, JED, DMM" />
         </div>
         <div className="sm:col-span-2 space-y-1.5">
           <Label className="text-xs">Address / Branch location</Label>
@@ -87,7 +93,7 @@ function ContactForm({
           type="button"
           size="sm"
           disabled={saving || !name.trim()}
-          onClick={() => onSave({ name, role, mobile, email, address, mapsLink, notes })}
+          onClick={() => onSave({ name, role, mobile, email, city, address, mapsLink, notes })}
         >
           <Check className="size-3.5" />
           {saving ? "Saving…" : "Save"}
@@ -142,6 +148,7 @@ export function ContactsSection({
                 role: data.role ?? null,
                 mobile: data.mobile ?? null,
                 email: data.email ?? null,
+                city: data.city ?? null,
                 address: data.address ?? null,
                 mapsLink: data.mapsLink ?? null,
                 notes: data.notes ?? null,
@@ -223,6 +230,12 @@ export function ContactsSection({
                       <Mail className="size-3" />
                       {c.email}
                     </a>
+                  )}
+                  {c.city && (
+                    <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground">
+                      <MapPin className="size-3" />
+                      {c.city}
+                    </span>
                   )}
                   {c.address && (
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">

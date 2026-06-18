@@ -42,13 +42,16 @@ export default async function TaskPage({
 
   if (!data) notFound()
 
-  const { task, request, customer, requestType, items, isExpired } = data
+  const { task, request, customer, requestType, items, isExpired, linkedContact } = data
 
-  const [photos, taskServices, customerContacts] = await Promise.all([
+  const [photos, taskServices, allContacts] = await Promise.all([
     getTaskPhotos(task.id),
     getServicesForTask(task.id),
-    customer ? getCustomerContacts(customer.id) : Promise.resolve([]),
+    customer && !linkedContact ? getCustomerContacts(customer.id) : Promise.resolve([]),
   ])
+
+  // If a specific contact was selected, show only that one; otherwise show all
+  const customerContacts = linkedContact ? [linkedContact] : allContacts
 
   const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
   const canAct = !isTerminal && !isExpired
@@ -61,7 +64,7 @@ export default async function TaskPage({
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground">
             <Building2 className="h-4 w-4 text-background" />
           </div>
-          <span className="font-semibold text-sm">KOPH</span>
+          <span className="font-semibold text-sm">Rent Kara</span>
           <span className="text-muted-foreground text-sm mx-1">·</span>
           <span className="font-mono text-sm text-muted-foreground">{request.requestNumber}</span>
           <Badge variant={TASK_STATUS_VARIANT[task.status] ?? "outline"} className="ml-auto">
@@ -112,6 +115,15 @@ export default async function TaskPage({
             <div>
               <p className="text-xs text-muted-foreground">Customer</p>
               <p className="font-medium">{customer?.name ?? "—"}</p>
+              {customer?.mobile && (
+                <a
+                  href={`tel:${customer.mobile}`}
+                  className="inline-flex items-center gap-1 text-xs text-primary font-medium mt-0.5"
+                >
+                  <Phone className="size-3" />
+                  {customer.mobile}
+                </a>
+              )}
             </div>
             {customer?.city && (
               <div>
@@ -197,9 +209,14 @@ export default async function TaskPage({
                           {c.email}
                         </a>
                       )}
+                      {c.city && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground">
+                          <MapPin className="size-3" />
+                          {c.city}
+                        </span>
+                      )}
                       {c.address && (
                         <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <MapPin className="size-3" />
                           {c.address}
                         </span>
                       )}
@@ -219,6 +236,7 @@ export default async function TaskPage({
                   </li>
                 )
               })}
+
             </ul>
           </div>
         )}

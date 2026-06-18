@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
   attachments,
+  customerContacts,
   customers,
   partners,
   partnerContracts,
@@ -79,6 +80,7 @@ export async function createTask(
   data: {
     partnerId: string
     contractId?: string
+    contactId?: string
     taskTypeId?: string
     notes?: string
   }
@@ -97,6 +99,7 @@ export async function createTask(
     requestId,
     partnerId: data.partnerId,
     contractId: data.contractId || null,
+    contactId: data.contactId || null,
     taskTypeId: data.taskTypeId || null,
     taskToken,
     taskTokenExpiresAt,
@@ -143,10 +146,14 @@ export async function getTasksForRequest(requestId: string) {
       contractId: partnerTasks.contractId,
       pricingModel: partnerContracts.pricingModel,
       unitPrice: partnerContracts.unitPrice,
+      contactId: partnerTasks.contactId,
+      contactName: customerContacts.name,
+      contactCity: customerContacts.city,
     })
     .from(partnerTasks)
     .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
     .leftJoin(partnerContracts, eq(partnerTasks.contractId, partnerContracts.id))
+    .leftJoin(customerContacts, eq(partnerTasks.contactId, customerContacts.id))
     .where(eq(partnerTasks.requestId, requestId))
     .orderBy(desc(partnerTasks.createdAt))
 }
@@ -287,9 +294,12 @@ export async function getTaskByToken(token: string) {
 
   if (!request) return null
 
-  const [[customer], [requestType]] = await Promise.all([
+  const [[customer], [requestType], linkedContact] = await Promise.all([
     db.select().from(customers).where(eq(customers.id, request.customerId)),
     db.select().from(requestTypes).where(eq(requestTypes.id, request.typeId)),
+    task.contactId
+      ? db.select().from(customerContacts).where(eq(customerContacts.id, task.contactId))
+      : Promise.resolve([]),
   ])
 
   return {
@@ -299,6 +309,7 @@ export async function getTaskByToken(token: string) {
     customer: customer ?? null,
     items,
     requestType: requestType ?? null,
+    linkedContact: linkedContact[0] ?? null,
     isExpired: task.taskTokenExpiresAt < Date.now(),
   }
 }

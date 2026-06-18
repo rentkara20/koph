@@ -43,6 +43,16 @@ type TaskRow = {
   contractId: string | null
   pricingModel: string | null
   unitPrice: number | null
+  contactId: string | null
+  contactName: string | null
+  contactCity: string | null
+}
+
+type ContactOption = {
+  id: string
+  name: string
+  role: string | null
+  city: string | null
 }
 
 type PartnerData = {
@@ -259,12 +269,14 @@ export function TasksSection({
   requestId,
   tasks,
   partners,
+  contacts,
   taskServicesMap,
   allServices,
 }: {
   requestId: string
   tasks: TaskRow[]
   partners: PartnerData[]
+  contacts: ContactOption[]
   taskServicesMap: Record<string, ServiceItem[]>
   allServices: ActiveService[]
 }) {
@@ -287,6 +299,7 @@ export function TasksSection({
       const result = await createTask(requestId, {
         partnerId: fd.get("partnerId") as string,
         contractId: (fd.get("contractId") as string) || undefined,
+        contactId: (fd.get("contactId") as string) || undefined,
         notes: (fd.get("notes") as string) || undefined,
       })
       if (result.error) { setError(result.error); setLoading(false); return }
@@ -325,6 +338,11 @@ export function TasksSection({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <p className="font-medium text-sm">{task.partnerName ?? "—"}</p>
+                    {task.contactName && (
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        → {task.contactName}{task.contactCity ? ` · ${task.contactCity}` : ""}
+                      </p>
+                    )}
                     {task.notes && <p className="text-xs text-muted-foreground mt-0.5">{task.notes}</p>}
                   </div>
                   <Badge variant={TASK_STATUS_VARIANT[task.status] ?? "outline"}>
@@ -429,6 +447,20 @@ export function TasksSection({
                   {selectedPartner.contracts.map((c) => (
                     <option key={c.contractId} value={c.contractId!}>
                       {c.contractName} ({c.pricingModel?.replace(/_/g, " ")})
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            )}
+
+            {contacts.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Deliver to <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>
+                <Select name="contactId" defaultValue="">
+                  <option value="">— No specific contact —</option>
+                  {contacts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.city ? ` · ${c.city}` : ""}{c.role ? ` (${c.role})` : ""}
                     </option>
                   ))}
                 </Select>

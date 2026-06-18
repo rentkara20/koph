@@ -108,7 +108,11 @@ export default async function RequestDetailPage({
               {customer?.mobile && (
                 <div>
                   <dt className="text-muted-foreground">Mobile</dt>
-                  <dd className="font-medium mt-0.5">{customer.mobile}</dd>
+                  <dd className="font-medium mt-0.5">
+                    <a href={`tel:${customer.mobile}`} className="hover:text-primary transition-colors">
+                      {customer.mobile}
+                    </a>
+                  </dd>
                 </div>
               )}
               {customer?.city && (
@@ -191,6 +195,7 @@ export default async function RequestDetailPage({
                 requestId={request.id}
                 tasks={tasks}
                 partners={partnersWithContracts}
+                contacts={contacts}
                 taskServicesMap={taskServicesMap}
                 allServices={allServices}
               />
@@ -226,7 +231,13 @@ export default async function RequestDetailPage({
                   <div key={log.id} className="flex items-start gap-3 text-sm">
                     <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" />
                     <div>
-                      <p className="text-muted-foreground">{log.action}</p>
+                      <p className="text-muted-foreground capitalize">
+                        {log.i18nKey
+                          .replace(/^activity\./, "")
+                          .replace(/([A-Z])/g, " $1")
+                          .replace(/_/g, " ")
+                          .trim()}
+                      </p>
                       <p className="text-xs text-muted-foreground/60 mt-0.5">
                         {formatDateTime(log.createdAt)}
                       </p>

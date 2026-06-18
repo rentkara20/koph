@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import type { SignatureCanvasHandle } from "./signature-canvas"
 
-const PURPLE = "#512A83"
+const PURPLE = "var(--brand)"
 
 /* ── Full-screen canvas overlay ── */
 function FullScreenCanvas({

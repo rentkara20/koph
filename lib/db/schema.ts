@@ -103,6 +103,7 @@ export const customerContacts = sqliteTable("customer_contact", {
   role: text("role"),
   mobile: text("mobile"),
   email: text("email"),
+  city: text("city"),
   address: text("address"),
   mapsLink: text("maps_link"),
   notes: text("notes"),
@@ -226,6 +227,7 @@ export const partnerTasks = sqliteTable("partner_task", {
     .notNull()
     .references(() => partners.id),
   contractId: text("contract_id").references(() => partnerContracts.id),
+  contactId: text("contact_id").references(() => customerContacts.id, { onDelete: "set null" }),
   taskTypeId: text("task_type_id").references(() => requestTypes.id),
   // Magic link
   taskToken: text("task_token").notNull().unique(),
