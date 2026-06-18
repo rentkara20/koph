@@ -89,10 +89,10 @@ export function ReceiverSection({ requestId, customerId, contacts, receiverConta
               ))
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
+            <DropdownMenuItem>
               <Link
                 href={`/admin/customers/${customerId}`}
-                className="flex items-center gap-2 text-xs text-muted-foreground"
+                className="flex items-center gap-2 text-xs text-muted-foreground w-full"
               >
                 <ExternalLink className="size-3.5" />
                 Manage employees
