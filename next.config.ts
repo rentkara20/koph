@@ -5,7 +5,12 @@ const withNextIntl = createNextIntlPlugin("./lib/i18n/config.ts")
 
 const nextConfig: NextConfig = {
   images: {
-    remotePatterns: [],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "*.public.blob.vercel-storage.com",
+      },
+    ],
   },
 }
 

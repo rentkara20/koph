@@ -4,6 +4,7 @@ import { and, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
+  attachments,
   customers,
   partners,
   partnerContracts,
@@ -271,6 +272,13 @@ export async function getTaskByToken(token: string) {
     requestType: requestType ?? null,
     isExpired: task.taskTokenExpiresAt < Date.now(),
   }
+}
+
+export async function getTaskPhotos(taskId: string) {
+  return db
+    .select()
+    .from(attachments)
+    .where(and(eq(attachments.entityId, taskId), eq(attachments.entityType, "partner_task")))
 }
 
 // ─── Public: update task via magic link ───────────────────────────────────────

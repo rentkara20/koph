@@ -1,8 +1,10 @@
 import { notFound } from "next/navigation"
-import { getTaskByToken } from "@/lib/actions/tasks"
+import Image from "next/image"
+import { getTaskByToken, getTaskPhotos } from "@/lib/actions/tasks"
 import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
 import { TaskActions } from "./_components/task-actions"
+import { PhotoUpload } from "./_components/photo-upload"
 import { Building2 } from "lucide-react"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
@@ -38,6 +40,8 @@ export default async function TaskPage({
   if (!data) notFound()
 
   const { task, request, customer, requestType, items, isExpired } = data
+
+  const photos = await getTaskPhotos(task.id)
 
   const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
   const canAct = !isTerminal && !isExpired
@@ -177,6 +181,48 @@ export default async function TaskPage({
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+
+        {/* Photos */}
+        {(photos.length > 0 || task.status === "in_progress") && (
+          <div className="rounded-xl bg-background border overflow-hidden">
+            <div className="px-4 py-3 border-b bg-muted/50">
+              <p className="text-sm font-medium">
+                Photos{photos.length > 0 ? ` (${photos.length})` : ""}
+              </p>
+            </div>
+            <div className="p-4">
+              {task.status === "in_progress" ? (
+                <PhotoUpload
+                  token={token}
+                  existingPhotos={photos.map((p) => ({
+                    id: p.id,
+                    fileUrl: p.fileUrl,
+                    fileName: p.fileName,
+                  }))}
+                />
+              ) : (
+                photos.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {photos.map((photo) => (
+                      <div
+                        key={photo.id}
+                        className="relative aspect-square rounded-lg overflow-hidden bg-muted"
+                      >
+                        <Image
+                          src={photo.fileUrl}
+                          alt={photo.fileName}
+                          fill
+                          className="object-cover"
+                          sizes="33vw"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
           </div>
         )}
 
