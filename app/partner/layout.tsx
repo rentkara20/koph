@@ -2,8 +2,6 @@ import { redirect } from "next/navigation"
 import { getSession } from "@/lib/auth/session"
 import { PartnerNav } from "@/components/layout/partner-nav"
 
-export const dynamic = "force-dynamic"
-
 export default async function PartnerLayout({
   children,
 }: {
