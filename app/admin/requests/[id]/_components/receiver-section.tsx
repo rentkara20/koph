@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useTransition } from "react"
 import Link from "next/link"
 import { UserCheck, ChevronDown, ExternalLink, X } from "lucide-react"
 import { setRequestReceiver } from "@/lib/actions/requests"
@@ -66,14 +66,10 @@ export function ReceiverSection({ requestId, customerId, contacts, receiverConta
         )}
 
         <DropdownMenu>
-          <DropdownMenuTrigger disabled={pending} asChild>
-            <button
-              className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-            >
-              <UserCheck className="size-3.5 mr-0.5" />
-              {current ? "Change" : "Select"}
-              <ChevronDown className="size-3.5 ml-0.5" />
-            </button>
+          <DropdownMenuTrigger disabled={pending} className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50">
+            <UserCheck className="size-3.5 mr-0.5" />
+            {current ? "Change" : "Select"}
+            <ChevronDown className="size-3.5 ml-0.5" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             {contacts.length === 0 ? (
