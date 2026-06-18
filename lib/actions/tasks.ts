@@ -426,3 +426,16 @@ export async function getPartnersWithContracts() {
 
   return Array.from(map.values())
 }
+
+export async function deleteTask(taskId: string): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  const [task] = await db.select({ requestId: partnerTasks.requestId }).from(partnerTasks).where(eq(partnerTasks.id, taskId))
+  if (!task) return { error: "Not found" }
+
+  await db.delete(partnerTasks).where(eq(partnerTasks.id, taskId))
+
+  revalidatePath(`/admin/requests/${task.requestId}`)
+  return {}
+}

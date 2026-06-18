@@ -99,3 +99,13 @@ export async function getCustomer(id: string) {
 
   return customer ?? null
 }
+
+export async function deleteCustomer(id: string): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  await db.update(customers).set({ deletedAt: Date.now() }).where(eq(customers.id, id))
+
+  revalidatePath("/admin/customers")
+  return {}
+}

@@ -2,11 +2,12 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Copy, Check, Send, X, FileText } from "lucide-react"
+import { Plus, Copy, Check, Send, X, FileText, Trash2 } from "lucide-react"
 import {
   createSignatureRequest,
   markSignatureAsSent,
   cancelSignatureRequest,
+  deleteSignatureRequest,
 } from "@/lib/actions/signatures"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -85,6 +86,7 @@ export function SignaturesSection({
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -116,6 +118,11 @@ export function SignaturesSection({
 
   async function handleCancel(id: string) {
     await cancelSignatureRequest(id)
+    router.refresh()
+  }
+
+  async function handleDelete(id: string) {
+    await deleteSignatureRequest(id)
     router.refresh()
   }
 
@@ -176,7 +183,30 @@ export function SignaturesSection({
                     </button>
                   )}
 
-                  <span className="text-xs text-muted-foreground ml-auto">
+                  {/* Delete */}
+                  {confirmDeleteId === sig.id ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs ml-auto">
+                      <span className="text-muted-foreground">Delete?</span>
+                      <button
+                        onClick={() => handleDelete(sig.id)}
+                        className="text-destructive hover:underline font-medium"
+                      >Yes</button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >No</button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(sig.id)}
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors ml-auto"
+                    >
+                      <Trash2 className="size-3" />
+                      Delete
+                    </button>
+                  )}
+
+                  <span className="text-xs text-muted-foreground">
                     {formatDate(sig.createdAt)}
                   </span>
                 </div>

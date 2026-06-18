@@ -4,6 +4,7 @@ import { getAllSignatureRequests } from "@/lib/actions/signatures"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
+import { SignatureDeleteButton } from "./_components/signature-delete-button"
 
 type StatusVariant = "outline" | "info" | "success" | "secondary"
 
@@ -73,6 +74,7 @@ export default async function SignaturesPage() {
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">
                     Created
                   </th>
+                  <th className="px-4 py-2.5" />
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -108,6 +110,9 @@ export default async function SignaturesPage() {
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
                       {formatDate(sig.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <SignatureDeleteButton id={sig.id} />
                     </td>
                   </tr>
                 ))}

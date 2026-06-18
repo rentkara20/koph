@@ -3,8 +3,8 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Plus, Copy, Check, RefreshCw, X } from "lucide-react"
-import { createTask, signOffTask, cancelTask, regenerateTaskLink } from "@/lib/actions/tasks"
+import { Plus, Copy, Check, RefreshCw, X, Trash2 } from "lucide-react"
+import { createTask, signOffTask, cancelTask, regenerateTaskLink, deleteTask } from "@/lib/actions/tasks"
 import { addServiceToTask, removeServiceFromTask } from "@/lib/actions/task-services"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -287,6 +287,7 @@ export function TasksSection({
   const [selectedPartnerId, setSelectedPartnerId] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const selectedPartner = partners.find((p) => p.id === selectedPartnerId)
 
@@ -313,6 +314,11 @@ export function TasksSection({
 
   async function handleCancel(taskId: string) {
     await cancelTask(taskId)
+    router.refresh()
+  }
+
+  async function handleDelete(taskId: string) {
+    await deleteTask(taskId)
     router.refresh()
   }
 
@@ -402,7 +408,30 @@ export function TasksSection({
                     </button>
                   )}
 
-                  <span className="text-xs text-muted-foreground ml-auto">
+                  {/* Delete */}
+                  {confirmDeleteId === task.id ? (
+                    <span className="inline-flex items-center gap-1.5 text-xs ml-auto">
+                      <span className="text-muted-foreground">Delete?</span>
+                      <button
+                        onClick={() => handleDelete(task.id)}
+                        className="text-destructive hover:underline font-medium"
+                      >Yes</button>
+                      <button
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="text-muted-foreground hover:text-foreground"
+                      >No</button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteId(task.id)}
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors ml-auto"
+                    >
+                      <Trash2 className="size-3" />
+                      Delete
+                    </button>
+                  )}
+
+                  <span className="text-xs text-muted-foreground">
                     {formatDate(task.createdAt)}
                   </span>
                 </div>

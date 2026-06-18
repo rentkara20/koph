@@ -495,3 +495,17 @@ export async function rejectSignature(
 
   return { id: sig.id }
 }
+
+export async function deleteSignatureRequest(id: string): Promise<SignatureActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  const [sig] = await db.select({ requestId: signatureRequests.requestId }).from(signatureRequests).where(eq(signatureRequests.id, id))
+  if (!sig) return { error: "Not found" }
+
+  await db.delete(signatureRequests).where(eq(signatureRequests.id, id))
+
+  revalidatePath("/admin/signatures")
+  if (sig.requestId) revalidatePath(`/admin/requests/${sig.requestId}`)
+  return { id }
+}

@@ -316,3 +316,13 @@ export async function addRequestItem(
   revalidatePath(`/admin/requests/${requestId}`)
   return { id }
 }
+
+export async function deleteRequest(id: string): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  await db.update(requests).set({ deletedAt: Date.now() }).where(eq(requests.id, id))
+
+  revalidatePath("/admin/requests")
+  return {}
+}

@@ -156,3 +156,13 @@ export async function updateContractStatus(
   revalidatePath(`/admin/partners/${partnerId}`)
   return { id: contractId }
 }
+
+export async function deletePartner(id: string): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  await db.update(partners).set({ deletedAt: Date.now() }).where(eq(partners.id, id))
+
+  revalidatePath("/admin/partners")
+  return {}
+}

@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
-import { getRequest, getRequestContacts } from "@/lib/actions/requests"
+import { getRequest, getRequestContacts, deleteRequest } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
 import { getSignatureRequestsForRequest } from "@/lib/actions/signatures"
 import { getTaskServicesForRequest } from "@/lib/actions/task-services"
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { formatDate, formatDateTime } from "@/lib/utils/format"
 import { RequestStatusActions } from "./_components/request-status-actions"
+import { DeleteButton } from "@/components/delete-button"
 import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
 import { SignaturesSection } from "./_components/signatures-section"
@@ -68,7 +69,13 @@ export default async function RequestDetailPage({
             </p>
           </div>
         </div>
-        <RequestStatusActions requestId={request.id} currentStatus={request.status} />
+        <div className="flex items-center gap-2">
+          <RequestStatusActions requestId={request.id} currentStatus={request.status} />
+          <DeleteButton
+            onDelete={deleteRequest.bind(null, request.id)}
+            redirectTo="/admin/requests"
+          />
+        </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
