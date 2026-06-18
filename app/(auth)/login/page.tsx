@@ -23,19 +23,21 @@ export default function LoginPage() {
     setError("")
     setLoading(true)
 
-    const { error } = await authClient.signIn.email({
-      email,
-      password,
-    })
+    try {
+      const { error } = await authClient.signIn.email({ email, password })
 
-    if (error) {
+      if (error) {
+        setError(t("invalidCredentials"))
+        setLoading(false)
+        return
+      }
+
+      router.push("/admin/dashboard")
+      router.refresh()
+    } catch {
       setError(t("invalidCredentials"))
       setLoading(false)
-      return
     }
-
-    router.push("/admin/dashboard")
-    router.refresh()
   }
 
   return (
