@@ -40,6 +40,7 @@ export type DeliveryNoteData = {
   }[]
   signature: {
     fullName: string
+    nationalId: string | null
     signatureData: string
     signedAt: number
   } | null
@@ -97,6 +98,7 @@ export async function getDeliveryNoteData(
   const [sigData] = await db
     .select({
       fullName: customerSignatures.fullName,
+      nationalId: customerSignatures.nationalId,
       signatureData: customerSignatures.signatureData,
       signedAt: customerSignatures.signedAt,
     })

@@ -36,12 +36,12 @@ export default async function PrintPage({
             border-radius: 0 !important;
             box-shadow: none !important;
           }
-          @page { margin: 10mm; size: A4 portrait; }
+          @page { margin: 0; size: A4 landscape; }
         }
       `}</style>
 
       <PrintActions />
-      <DeliveryNoteView data={data} printMode />
+      <DeliveryNoteView data={data} />
     </>
   )
 }
