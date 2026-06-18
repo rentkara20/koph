@@ -72,18 +72,9 @@ export async function getDeliveryNoteData(
     .from(customers)
     .where(eq(customers.id, sig.customerId))
 
-  const [contactRow] = await db
-    .select({
-      name: customerContacts.name,
-      mobile: customerContacts.mobile,
-      email: customerContacts.email,
-    })
-    .from(customerContacts)
-    .where(eq(customerContacts.customerId, sig.customerId))
-    .limit(1)
-
   let requestRow = null
   let items: DeliveryNoteData["items"] = []
+  let receiverContactId: string | null = null
 
   if (sig.requestId) {
     const [r] = await db
@@ -91,11 +82,13 @@ export async function getDeliveryNoteData(
         requestNumber: requests.requestNumber,
         quoteNumber: requests.quoteNumber,
         deliveryDate: requests.deliveryDate,
+        receiverContactId: requests.receiverContactId,
       })
       .from(requests)
       .where(eq(requests.id, sig.requestId))
 
-    requestRow = r ?? null
+    requestRow = r ? { requestNumber: r.requestNumber, quoteNumber: r.quoteNumber, deliveryDate: r.deliveryDate } : null
+    receiverContactId = r?.receiverContactId ?? null
 
     items = await db
       .select({
@@ -110,6 +103,25 @@ export async function getDeliveryNoteData(
       .from(requestItems)
       .where(eq(requestItems.requestId, sig.requestId))
   }
+
+  const [contactRow] = receiverContactId
+    ? await db
+        .select({
+          name: customerContacts.name,
+          mobile: customerContacts.mobile,
+          email: customerContacts.email,
+        })
+        .from(customerContacts)
+        .where(eq(customerContacts.id, receiverContactId))
+    : await db
+        .select({
+          name: customerContacts.name,
+          mobile: customerContacts.mobile,
+          email: customerContacts.email,
+        })
+        .from(customerContacts)
+        .where(eq(customerContacts.customerId, sig.customerId))
+        .limit(1)
 
   const [sigData] = await db
     .select({

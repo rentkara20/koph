@@ -242,13 +242,12 @@ type Props = {
   consentText: string
 }
 
-export function SignatureForm({ token, requireNationalId }: Props) {
-  // suppress unused warning — kept in props for API compat
-  void requireNationalId
-
+export function SignatureForm({ token, requireNationalId, consentText }: Props) {
   const [step, setStep] = useState<Step>("review")
   const [fullName, setFullName] = useState("")
   const [nationalId, setNationalId] = useState("")
+  const [mobile, setMobile] = useState("")
+  const [consentAccepted, setConsentAccepted] = useState(false)
   const [showCanvas, setShowCanvas] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -264,6 +263,7 @@ export function SignatureForm({ token, requireNationalId }: Props) {
 
     const result = await submitSignature(token, {
       fullName: fullName.trim(),
+      mobile: mobile.trim() || undefined,
       nationalId: nationalId.trim() || undefined,
       signatureData: dataUrl,
     })
@@ -332,7 +332,8 @@ export function SignatureForm({ token, requireNationalId }: Props) {
   /* ── Step: Info entry ── */
   if (step === "info") {
     const canProceed = fullName.trim().length >= 2 &&
-      (!requireNationalId || nationalId.trim().length >= 5)
+      (!requireNationalId || nationalId.trim().length >= 5) &&
+      consentAccepted
 
     return (
       <>
@@ -398,6 +399,56 @@ export function SignatureForm({ token, requireNationalId }: Props) {
                 className="mt-1.5 font-mono"
                 inputMode="numeric"
               />
+            </div>
+
+            {/* Mobile */}
+            <div>
+              <Label htmlFor="sig-mobile" className="text-sm">
+                رقم الجوال / Mobile{" "}
+                <span style={{ color: "#999", fontSize: 11 }}>(اختياري)</span>
+              </Label>
+              <Input
+                id="sig-mobile"
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+                placeholder="05XXXXXXXX"
+                className="mt-1.5"
+                inputMode="tel"
+                type="tel"
+              />
+            </div>
+
+            {/* Consent */}
+            <div
+              style={{
+                background: "#f9fafb",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: "14px 16px",
+              }}
+            >
+              <p style={{ fontSize: 12, color: "#374151", lineHeight: 1.6, marginBottom: 12 }}>
+                {consentText}
+              </p>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "flex-start",
+                  gap: 10,
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: "#111827",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={consentAccepted}
+                  onChange={(e) => setConsentAccepted(e.target.checked)}
+                  style={{ marginTop: 2, width: 16, height: 16, accentColor: PURPLE, cursor: "pointer" }}
+                />
+                أوافق على الشروط والأحكام / I agree to the terms
+              </label>
             </div>
 
             {error && (

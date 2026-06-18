@@ -61,6 +61,15 @@ export default async function SignPage({
   const canSign = !isTerminal && !isExpired && sig.status !== "draft"
   const isSigned = sig.status === "signed"
 
+  const now = Date.now()
+  const isExpiringSoon =
+    !isExpired &&
+    !isTerminal &&
+    sig.expiryEnabled &&
+    sig.expiresAt !== null &&
+    sig.expiresAt > now &&
+    sig.expiresAt - now < 24 * 60 * 60 * 1000
+
   const consentText =
     activeConsent?.textEn ??
     "I confirm that the information provided is accurate and I agree to sign this document electronically."
@@ -134,6 +143,11 @@ export default async function SignPage({
         {isExpired && (
           <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#92400e" }}>
             This signing link has expired. Contact the operations team.
+          </div>
+        )}
+        {isExpiringSoon && (
+          <div style={{ background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#9a3412" }}>
+            ⚠️ This signing link expires soon. Please sign as soon as possible.
           </div>
         )}
         {sig.status === "draft" && !isExpired && (

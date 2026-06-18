@@ -165,52 +165,60 @@ export default async function TaskPage({
               <p className="text-xs text-muted-foreground mt-0.5">People to reach at the delivery location</p>
             </div>
             <ul className="divide-y">
-              {customerContacts.map((c) => (
-                <li key={c.id} className="px-4 py-3 space-y-1">
-                  <div>
-                    <p className="font-medium text-sm">{c.name}</p>
+              {customerContacts.map((c) => {
+                const isReceiver = request.receiverContactId === c.id
+                return (
+                  <li key={c.id} className={`px-4 py-3 space-y-1${isReceiver ? " bg-purple-50" : ""}`}>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm">{c.name}</p>
+                      {isReceiver && (
+                        <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                          Primary receiver
+                        </span>
+                      )}
+                    </div>
                     {c.role && <p className="text-xs text-muted-foreground">{c.role}</p>}
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    {c.mobile && (
-                      <a
-                        href={`tel:${c.mobile}`}
-                        className="inline-flex items-center gap-1 text-xs text-primary font-medium"
-                      >
-                        <Phone className="size-3" />
-                        {c.mobile}
-                      </a>
-                    )}
-                    {c.email && (
-                      <a
-                        href={`mailto:${c.email}`}
-                        className="inline-flex items-center gap-1 text-xs text-muted-foreground"
-                      >
-                        <Mail className="size-3" />
-                        {c.email}
-                      </a>
-                    )}
-                    {c.address && (
-                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <MapPin className="size-3" />
-                        {c.address}
-                      </span>
-                    )}
-                    {c.mapsLink && (
-                      <a
-                        href={c.mapsLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
-                      >
-                        <MapPin className="size-3" />
-                        View on map
-                      </a>
-                    )}
-                  </div>
-                  {c.notes && <p className="text-xs text-muted-foreground italic">{c.notes}</p>}
-                </li>
-              ))}
+                    <div className="flex flex-wrap gap-x-4 gap-y-1">
+                      {c.mobile && (
+                        <a
+                          href={`tel:${c.mobile}`}
+                          className="inline-flex items-center gap-1 text-xs text-primary font-medium"
+                        >
+                          <Phone className="size-3" />
+                          {c.mobile}
+                        </a>
+                      )}
+                      {c.email && (
+                        <a
+                          href={`mailto:${c.email}`}
+                          className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                        >
+                          <Mail className="size-3" />
+                          {c.email}
+                        </a>
+                      )}
+                      {c.address && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <MapPin className="size-3" />
+                          {c.address}
+                        </span>
+                      )}
+                      {c.mapsLink && (
+                        <a
+                          href={c.mapsLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                        >
+                          <MapPin className="size-3" />
+                          View on map
+                        </a>
+                      )}
+                    </div>
+                    {c.notes && <p className="text-xs text-muted-foreground italic">{c.notes}</p>}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )}
