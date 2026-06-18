@@ -1,6 +1,6 @@
 "use server"
 
-import { desc, eq } from "drizzle-orm"
+import { desc, eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
@@ -9,6 +9,7 @@ import {
   customerSignatures,
   consentVersions,
   customers,
+  partnerTasks,
   requests,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken } from "@/lib/utils/ids"
@@ -311,6 +312,146 @@ export async function submitSignature(
   }
 
   return { id }
+}
+
+// ─── Partner: get signature status for a task token ──────────────────────────
+
+export async function getSignatureForTaskToken(taskToken: string) {
+  const [task] = await db
+    .select()
+    .from(partnerTasks)
+    .where(eq(partnerTasks.taskToken, taskToken))
+
+  if (!task?.requestId) return null
+
+  const [sigReq] = await db
+    .select()
+    .from(signatureRequests)
+    .where(eq(signatureRequests.requestId, task.requestId))
+    .orderBy(desc(signatureRequests.createdAt))
+    .limit(1)
+
+  if (!sigReq) return null
+
+  const [sig] = await db
+    .select()
+    .from(customerSignatures)
+    .where(eq(customerSignatures.signatureRequestId, sigReq.id))
+
+  return {
+    sigReq,
+    sig: sig ?? null,
+    signLink: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${sigReq.secureToken}`,
+  }
+}
+
+// ─── Partner: sign on-site using task token ───────────────────────────────────
+
+export async function signOnSiteByTaskToken(
+  taskToken: string,
+  data: { fullName: string; nationalId: string; signatureData: string }
+): Promise<SignatureActionResult> {
+  const [task] = await db
+    .select()
+    .from(partnerTasks)
+    .where(eq(partnerTasks.taskToken, taskToken))
+
+  if (!task) return { error: "Task not found" }
+  if (!task.requestId) return { error: "Task has no linked request" }
+
+  if (!data.fullName?.trim()) return { error: "Full name is required" }
+  if (!data.nationalId?.trim()) return { error: "National / Iqama ID is required" }
+  if (!data.signatureData) return { error: "Signature is required" }
+
+  const [req] = await db.select().from(requests).where(eq(requests.id, task.requestId))
+  if (!req) return { error: "Request not found" }
+
+  // Find existing pending sig request or auto-create one
+  let [sigReq] = await db
+    .select()
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.requestId, task.requestId),
+        eq(signatureRequests.status, "sent")
+      )
+    )
+    .limit(1)
+
+  if (!sigReq) {
+    // Check any non-terminal sig request
+    const [existing] = await db
+      .select()
+      .from(signatureRequests)
+      .where(eq(signatureRequests.requestId, task.requestId))
+      .orderBy(desc(signatureRequests.createdAt))
+      .limit(1)
+
+    if (existing && !["signed", "cancelled", "expired", "rejected"].includes(existing.status)) {
+      sigReq = existing
+    } else {
+      // Auto-create
+      const id = createId()
+      const secureToken = generateSecureToken()
+      await db.insert(signatureRequests).values({
+        id,
+        requestId: task.requestId,
+        partnerTaskId: task.id,
+        initiatedBy: "partner",
+        customerId: req.customerId,
+        documentName: "Delivery Note",
+        secureToken,
+        requireNationalId: true,
+        status: "sent",
+      })
+      const [created] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
+      sigReq = created
+    }
+  }
+
+  if (!sigReq) return { error: "Could not find or create signature request" }
+
+  const terminal = ["signed", "rejected", "cancelled", "expired"]
+  if (terminal.includes(sigReq.status)) return { error: "This document is already signed or cancelled" }
+
+  const now = Date.now()
+  const id = createId()
+
+  await db.insert(customerSignatures).values({
+    id,
+    signatureRequestId: sigReq.id,
+    fullName: data.fullName.trim(),
+    mobile: "",
+    nationalId: data.nationalId.trim(),
+    signatureData: data.signatureData,
+    consentAcceptedAt: now,
+    signedAt: now,
+  })
+
+  await db
+    .update(signatureRequests)
+    .set({ status: "signed", updatedAt: now })
+    .where(eq(signatureRequests.id, sigReq.id))
+
+  await db.insert(signatureEvents).values({
+    id: createId(),
+    signatureRequestId: sigReq.id,
+    eventType: "signed",
+  })
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: sigReq.id,
+    action: "signature_request_signed",
+    i18nKey: "activity.signatureRequestSigned",
+    i18nData: { fullName: data.fullName },
+    performedAs: "system",
+  })
+
+  revalidatePath(`/task/${taskToken}`)
+  if (req.id) revalidatePath(`/admin/requests/${req.id}`)
+
+  return { id, token: sigReq.secureToken }
 }
 
 // ─── Public: reject / decline signature ──────────────────────────────────────

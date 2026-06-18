@@ -3,11 +3,14 @@ import Image from "next/image"
 import { getTaskByToken, getTaskPhotos } from "@/lib/actions/tasks"
 import { getServicesForTask } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
+import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
 import { TaskActions } from "./_components/task-actions"
 import { PhotoUpload } from "./_components/photo-upload"
 import { TaskChecklist } from "./_components/task-checklist"
+import { SignatureStatus } from "./_components/signature-status"
+import { OnSiteSigningFlow } from "./_components/on-site-signing"
 import { Building2, Phone, MapPin, Mail, MessageCircle } from "lucide-react"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
@@ -44,10 +47,11 @@ export default async function TaskPage({
 
   const { task, request, customer, requestType, items, isExpired, linkedContact } = data
 
-  const [photos, taskServices, allContacts] = await Promise.all([
+  const [photos, taskServices, allContacts, sigData] = await Promise.all([
     getTaskPhotos(task.id),
     getServicesForTask(task.id),
     customer && !linkedContact ? getCustomerContacts(customer.id) : Promise.resolve([]),
+    getSignatureForTaskToken(token),
   ])
 
   // If a specific contact was selected, show only that one; otherwise show all
@@ -352,6 +356,28 @@ export default async function TaskPage({
               )}
             </div>
           </div>
+        )}
+
+        {/* Signature status */}
+        {sigData && (
+          <SignatureStatus
+            status={sigData.sigReq.status}
+            signedAt={sigData.sig?.signedAt ?? null}
+            signerName={sigData.sig?.fullName ?? null}
+            signLink={sigData.signLink}
+            contactMobile={linkedContact?.mobile ?? customerContacts[0]?.mobile ?? customer?.mobile ?? null}
+            customerName={customer?.name ?? null}
+            deliveryDate={request.deliveryDate ?? null}
+          />
+        )}
+
+        {/* On-site signing — only when task is active and not yet signed */}
+        {canAct && (!sigData || !["signed"].includes(sigData.sigReq.status)) && (
+          <OnSiteSigningFlow
+            taskToken={token}
+            customerName={customer?.name ?? null}
+            customerMobile={customer?.mobile ?? null}
+          />
         )}
 
         {/* Action buttons */}
