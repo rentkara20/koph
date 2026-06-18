@@ -59,6 +59,12 @@
     "timeWindow": "Time window",
     "salesRef": "Sales reference",
     "poNumber": "PO number",
+    "requireNationalId": "Require National ID / Iqama",
+    "description": "Description",
+    "brand": "Brand",
+    "model": "Model",
+    "serialNumber": "Serial number",
+    "accessories": "Accessories",
     "status": {
       "draft": "Draft",
       "assigned": "Assigned",

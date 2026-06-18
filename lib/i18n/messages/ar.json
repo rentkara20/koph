@@ -59,6 +59,12 @@
     "timeWindow": "النافذة الزمنية",
     "salesRef": "مرجع المبيعات",
     "poNumber": "رقم أمر الشراء",
+    "requireNationalId": "إلزامية الهوية الوطنية / الإقامة",
+    "description": "الوصف",
+    "brand": "الماركة",
+    "model": "الموديل",
+    "serialNumber": "الرقم التسلسلي",
+    "accessories": "الملحقات",
     "status": {
       "draft": "مسودة",
       "assigned": "مُسند",
