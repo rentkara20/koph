@@ -115,37 +115,46 @@ export function ContactsSection({
   async function handleCreate(data: ContactInput) {
     setSaving(true)
     setError("")
-    const result = await createCustomerContact(customerId, data)
-    setSaving(false)
-    if (result.error) { setError(result.error); return }
-    setAddingNew(false)
-    router.refresh()
-    // optimistic update via refresh is fine here
+    try {
+      const result = await createCustomerContact(customerId, data)
+      if (result.error) { setError(result.error); return }
+      setAddingNew(false)
+      router.refresh()
+    } catch {
+      setError("Failed to save. Please try again.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleUpdate(id: string, data: ContactInput) {
     setSaving(true)
     setError("")
-    const result = await updateCustomerContact(id, customerId, data)
-    setSaving(false)
-    if (result.error) { setError(result.error); return }
-    setContacts((prev) =>
-      prev.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              name: data.name,
-              role: data.role ?? null,
-              mobile: data.mobile ?? null,
-              email: data.email ?? null,
-              address: data.address ?? null,
-              mapsLink: data.mapsLink ?? null,
-              notes: data.notes ?? null,
-            }
-          : c
+    try {
+      const result = await updateCustomerContact(id, customerId, data)
+      if (result.error) { setError(result.error); return }
+      setContacts((prev) =>
+        prev.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                name: data.name,
+                role: data.role ?? null,
+                mobile: data.mobile ?? null,
+                email: data.email ?? null,
+                address: data.address ?? null,
+                mapsLink: data.mapsLink ?? null,
+                notes: data.notes ?? null,
+              }
+            : c
+        )
       )
-    )
-    setEditingId(null)
+      setEditingId(null)
+    } catch {
+      setError("Failed to save. Please try again.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete(id: string) {
