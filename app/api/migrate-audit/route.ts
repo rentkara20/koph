@@ -5,26 +5,38 @@ import { sql } from "drizzle-orm"
 // Migration: adds audit fields to signature_request and customer_signature tables
 // Visit /api/migrate-audit once after deploy, then this route can be deleted
 
-const migrations = [
-  `ALTER TABLE signature_request ADD COLUMN verification_id TEXT UNIQUE`,
-  `ALTER TABLE customer_signature ADD COLUMN signed_at_tz TEXT NOT NULL DEFAULT 'Asia/Riyadh'`,
-  `ALTER TABLE customer_signature ADD COLUMN user_agent TEXT`,
-  `ALTER TABLE customer_signature ADD COLUMN audit_data_hash TEXT`,
-]
-
 export async function GET() {
-  const results: { sql: string; status: string }[] = []
+  const results: { column: string; status: string }[] = []
 
-  for (const statement of migrations) {
+  const migrations: Array<{ column: string; fn: () => Promise<void> }> = [
+    {
+      column: "signature_request.verification_id",
+      fn: () => db.run(sql`ALTER TABLE signature_request ADD COLUMN verification_id TEXT`),
+    },
+    {
+      column: "customer_signature.signed_at_tz",
+      fn: () => db.run(sql`ALTER TABLE customer_signature ADD COLUMN signed_at_tz TEXT NOT NULL DEFAULT 'Asia/Riyadh'`),
+    },
+    {
+      column: "customer_signature.user_agent",
+      fn: () => db.run(sql`ALTER TABLE customer_signature ADD COLUMN user_agent TEXT`),
+    },
+    {
+      column: "customer_signature.audit_data_hash",
+      fn: () => db.run(sql`ALTER TABLE customer_signature ADD COLUMN audit_data_hash TEXT`),
+    },
+  ]
+
+  for (const { column, fn } of migrations) {
     try {
-      await db.run(sql.raw(statement))
-      results.push({ sql: statement, status: "applied" })
+      await fn()
+      results.push({ column, status: "applied" })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       if (msg.includes("duplicate column") || msg.includes("already exists")) {
-        results.push({ sql: statement, status: "already exists" })
+        results.push({ column, status: "already exists" })
       } else {
-        results.push({ sql: statement, status: `error: ${msg}` })
+        results.push({ column, status: `error: ${msg}` })
       }
     }
   }
