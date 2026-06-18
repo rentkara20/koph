@@ -8,7 +8,7 @@ import { sql } from "drizzle-orm"
 export async function GET() {
   const results: { column: string; status: string }[] = []
 
-  const migrations: Array<{ column: string; fn: () => Promise<void> }> = [
+  const migrations: Array<{ column: string; fn: () => Promise<unknown> }> = [
     {
       column: "signature_request.verification_id",
       fn: () => db.run(sql`ALTER TABLE signature_request ADD COLUMN verification_id TEXT`),
