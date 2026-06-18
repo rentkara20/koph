@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { TaskActions } from "./_components/task-actions"
 import { PhotoUpload } from "./_components/photo-upload"
 import { TaskChecklist } from "./_components/task-checklist"
-import { Building2, Phone, MapPin, Mail } from "lucide-react"
+import { Building2, Phone, MapPin, Mail, MessageCircle } from "lucide-react"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   pending: "outline",
@@ -125,10 +125,10 @@ export default async function TaskPage({
                 </a>
               )}
             </div>
-            {customer?.city && (
+            {(linkedContact?.city ?? customer?.city) && (
               <div>
                 <p className="text-xs text-muted-foreground">City</p>
-                <p className="font-medium">{customer.city}</p>
+                <p className="font-medium">{linkedContact?.city ?? customer?.city}</p>
               </div>
             )}
             {customer?.address && (
@@ -231,6 +231,30 @@ export default async function TaskPage({
                           View on map
                         </a>
                       )}
+                      {c.mobile && (() => {
+                        const phone = c.mobile.replace(/\D/g, "")
+                        const lines = [
+                          `Hello ${c.name},`,
+                          `This is a delivery notification from Rent Kara.`,
+                          ``,
+                          `Customer: ${customer?.name ?? ""}`,
+                          request.deliveryDate ? `Delivery date: ${formatDate(request.deliveryDate)}` : null,
+                          c.city ? `City: ${c.city}` : null,
+                          c.address ? `Address: ${c.address}` : null,
+                          c.mapsLink ? `Map: ${c.mapsLink}` : null,
+                        ].filter(Boolean).join("\n")
+                        return (
+                          <a
+                            href={`https://wa.me/${phone}?text=${encodeURIComponent(lines)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-green-600 font-medium hover:text-green-700"
+                          >
+                            <MessageCircle className="size-3" />
+                            WhatsApp
+                          </a>
+                        )
+                      })()}
                     </div>
                     {c.notes && <p className="text-xs text-muted-foreground italic">{c.notes}</p>}
                   </li>
