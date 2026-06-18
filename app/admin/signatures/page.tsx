@@ -77,9 +77,18 @@ export default async function SignaturesPage() {
               </thead>
               <tbody className="divide-y">
                 {signatures.map((sig) => (
-                  <tr key={sig.id} className="hover:bg-muted/30">
+                  <tr key={sig.id} className={`hover:bg-muted/30 transition-colors ${sig.requestId ? "relative cursor-pointer" : ""}`}>
                     <td className="px-4 py-3">
-                      <p className="font-medium">{sig.documentName}</p>
+                      {sig.requestId ? (
+                        <Link
+                          href={`/admin/requests/${sig.requestId}`}
+                          className="font-medium after:absolute after:inset-0"
+                        >
+                          {sig.documentName}
+                        </Link>
+                      ) : (
+                        <p className="font-medium">{sig.documentName}</p>
+                      )}
                       {sig.requireNationalId && (
                         <p className="text-xs text-muted-foreground mt-0.5">Requires ID</p>
                       )}
@@ -88,16 +97,9 @@ export default async function SignaturesPage() {
                       {sig.customerName ?? "—"}
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
-                      {sig.requestId ? (
-                        <Link
-                          href={`/admin/requests/${sig.requestId}`}
-                          className="font-mono text-xs text-primary hover:underline"
-                        >
-                          {sig.requestNumber ?? sig.requestId.slice(0, 8)}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground text-xs">Standalone</span>
-                      )}
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {sig.requestNumber ?? (sig.requestId ? sig.requestId.slice(0, 8) : "Standalone")}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <Badge variant={STATUS_VARIANT[sig.status] ?? "outline"}>

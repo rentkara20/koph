@@ -58,11 +58,11 @@ export default async function CustomersPage({
             </thead>
             <tbody className="divide-y">
               {customerList.map((c) => (
-                <tr key={c.id} className="hover:bg-muted/30 transition-colors">
+                <tr key={c.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3">
                     <Link
                       href={`/admin/customers/${c.id}`}
-                      className="font-medium hover:text-primary transition-colors"
+                      className="font-medium after:absolute after:inset-0"
                     >
                       {c.name}
                     </Link>

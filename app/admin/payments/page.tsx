@@ -61,11 +61,11 @@ export default async function PaymentsPage() {
               </thead>
               <tbody className="divide-y">
                 {batches.map((batch) => (
-                  <tr key={batch.id} className="hover:bg-muted/30 transition-colors">
+                  <tr key={batch.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
                     <td className="px-4 py-3 font-medium">
                       <Link
                         href={`/admin/payments/${batch.id}`}
-                        className="hover:text-primary transition-colors"
+                        className="after:absolute after:inset-0"
                       >
                         {batch.partnerName ?? "—"}
                       </Link>

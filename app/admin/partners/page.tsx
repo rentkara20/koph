@@ -41,11 +41,11 @@ export default async function PartnersPage() {
             </thead>
             <tbody className="divide-y">
               {partnerList.map((p) => (
-                <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                <tr key={p.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3">
                     <Link
                       href={`/admin/partners/${p.id}`}
-                      className="font-medium hover:text-primary transition-colors"
+                      className="font-medium after:absolute after:inset-0"
                     >
                       {p.name}
                     </Link>

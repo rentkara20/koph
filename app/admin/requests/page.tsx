@@ -93,11 +93,11 @@ export default async function RequestsPage({
             </thead>
             <tbody className="divide-y">
               {requestList.map((r) => (
-                <tr key={r.id} className="hover:bg-muted/30 transition-colors">
+                <tr key={r.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
                   <td className="px-4 py-3">
                     <Link
                       href={`/admin/requests/${r.id}`}
-                      className="font-mono font-medium hover:text-primary transition-colors"
+                      className="font-mono font-medium after:absolute after:inset-0"
                     >
                       {r.requestNumber}
                     </Link>
