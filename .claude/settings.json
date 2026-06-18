@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__b7970593-7602-40cd-ba0b-851ab0184646__notion-fetch",
+      "mcp__b7970593-7602-40cd-ba0b-851ab0184646__notion-query-database-view",
+      "mcp__b7970593-7602-40cd-ba0b-851ab0184646__notion-search",
+      "mcp__Claude_Preview__preview_list",
+      "mcp__Claude_in_Chrome__read_page"
+    ]
+  }
+}
