@@ -16,6 +16,7 @@ import { RequestStatusActions } from "./_components/request-status-actions"
 import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
 import { SignaturesSection } from "./_components/signatures-section"
+import { ItemsSection } from "./_components/items-section"
 import { cn } from "@/lib/utils"
 
 export default async function RequestDetailPage({
@@ -149,56 +150,16 @@ export default async function RequestDetailPage({
           </Card>
 
           {/* Items */}
-          {items.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  {t("items")} ({items.length})
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <table className="w-full text-sm">
-                  <thead className="border-b bg-muted/50">
-                    <tr>
-                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                        Description
-                      </th>
-                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">
-                        Brand / Model
-                      </th>
-                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden md:table-cell">
-                        S/N
-                      </th>
-                      <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                        Qty
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {items.map((item) => (
-                      <tr key={item.id}>
-                        <td className="px-4 py-3">
-                          <p className="font-medium">{item.description}</p>
-                          {item.accessories && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {item.accessories}
-                            </p>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                          {[item.brand, item.model].filter(Boolean).join(" / ") || "—"}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground font-mono text-xs hidden md:table-cell">
-                          {item.serialNumber ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">{item.quantity}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          )}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {t("items")} ({items.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <ItemsSection requestId={request.id} initialItems={items} />
+            </CardContent>
+          </Card>
 
           {/* Tasks */}
           <Card>

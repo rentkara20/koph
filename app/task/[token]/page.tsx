@@ -2,12 +2,13 @@ import { notFound } from "next/navigation"
 import Image from "next/image"
 import { getTaskByToken, getTaskPhotos } from "@/lib/actions/tasks"
 import { getServicesForTask } from "@/lib/actions/task-services"
+import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
 import { TaskActions } from "./_components/task-actions"
 import { PhotoUpload } from "./_components/photo-upload"
 import { TaskChecklist } from "./_components/task-checklist"
-import { Building2 } from "lucide-react"
+import { Building2, Phone, MapPin, Mail } from "lucide-react"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   pending: "outline",
@@ -43,9 +44,10 @@ export default async function TaskPage({
 
   const { task, request, customer, requestType, items, isExpired } = data
 
-  const [photos, taskServices] = await Promise.all([
+  const [photos, taskServices, customerContacts] = await Promise.all([
     getTaskPhotos(task.id),
     getServicesForTask(task.id),
+    customer ? getCustomerContacts(customer.id) : Promise.resolve([]),
   ])
 
   const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
@@ -154,6 +156,64 @@ export default async function TaskPage({
             </div>
           )}
         </div>
+
+        {/* Customer contacts / branch info for partner */}
+        {customerContacts.length > 0 && (
+          <div className="rounded-xl bg-background border overflow-hidden">
+            <div className="px-4 py-3 border-b bg-muted/50">
+              <p className="text-sm font-medium">Contact persons</p>
+              <p className="text-xs text-muted-foreground mt-0.5">People to reach at the delivery location</p>
+            </div>
+            <ul className="divide-y">
+              {customerContacts.map((c) => (
+                <li key={c.id} className="px-4 py-3 space-y-1">
+                  <div>
+                    <p className="font-medium text-sm">{c.name}</p>
+                    {c.role && <p className="text-xs text-muted-foreground">{c.role}</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1">
+                    {c.mobile && (
+                      <a
+                        href={`tel:${c.mobile}`}
+                        className="inline-flex items-center gap-1 text-xs text-primary font-medium"
+                      >
+                        <Phone className="size-3" />
+                        {c.mobile}
+                      </a>
+                    )}
+                    {c.email && (
+                      <a
+                        href={`mailto:${c.email}`}
+                        className="inline-flex items-center gap-1 text-xs text-muted-foreground"
+                      >
+                        <Mail className="size-3" />
+                        {c.email}
+                      </a>
+                    )}
+                    {c.address && (
+                      <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin className="size-3" />
+                        {c.address}
+                      </span>
+                    )}
+                    {c.mapsLink && (
+                      <a
+                        href={c.mapsLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                      >
+                        <MapPin className="size-3" />
+                        View on map
+                      </a>
+                    )}
+                  </div>
+                  {c.notes && <p className="text-xs text-muted-foreground italic">{c.notes}</p>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Items */}
         {items.length > 0 && (

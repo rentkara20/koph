@@ -92,6 +92,24 @@ export const customers = sqliteTable("customer", {
   deletedAt: integer("deleted_at"),
 })
 
+// ─── Customer contacts (branches / receiving employees) ─────────────────────
+
+export const customerContacts = sqliteTable("customer_contact", {
+  id: text("id").primaryKey(),
+  customerId: text("customer_id")
+    .notNull()
+    .references(() => customers.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  role: text("role"),
+  mobile: text("mobile"),
+  email: text("email"),
+  address: text("address"),
+  mapsLink: text("maps_link"),
+  notes: text("notes"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+})
+
 // ─── Requests ───────────────────────────────────────────────────────────────
 
 export const requests = sqliteTable("request", {
@@ -482,3 +500,5 @@ export type Attachment = typeof attachments.$inferSelect
 export type ActivityLog = typeof activityLogs.$inferSelect
 export type PaymentBatch = typeof paymentBatches.$inferSelect
 export type PartnerPayment = typeof partnerPayments.$inferSelect
+
+export type CustomerContact = typeof customerContacts.$inferSelect

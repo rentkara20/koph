@@ -2,9 +2,11 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { getCustomer } from "@/lib/actions/customers"
+import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { CustomerEditForm } from "./_components/customer-edit-form"
+import { ContactsSection } from "./_components/contacts-section"
 import { cn } from "@/lib/utils"
 
 export default async function CustomerDetailPage({
@@ -13,7 +15,10 @@ export default async function CustomerDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const customer = await getCustomer(id)
+  const [customer, contacts] = await Promise.all([
+    getCustomer(id),
+    getCustomerContacts(id),
+  ])
 
   if (!customer) notFound()
 
@@ -35,6 +40,18 @@ export default async function CustomerDetailPage({
         </CardHeader>
         <CardContent>
           <CustomerEditForm customer={customer} />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Contacts &amp; Branches</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Employees or branch locations that can receive orders. Partners see these when assigned a task.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <ContactsSection customerId={id} initialContacts={contacts} />
         </CardContent>
       </Card>
     </div>

@@ -209,3 +209,75 @@ export async function getRequestTypes() {
     .where(eq(requestTypes.isActive, true))
     .orderBy(requestTypes.sortOrder)
 }
+
+type ItemUpdateInput = {
+  description: string
+  brand?: string
+  model?: string
+  serialNumber?: string
+  quantity: number
+  accessories?: string
+  notes?: string
+}
+
+export async function updateRequestItem(
+  itemId: string,
+  data: ItemUpdateInput
+): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+  if (!data.description?.trim()) return { error: "Description is required" }
+
+  await db
+    .update(requestItems)
+    .set({
+      description: data.description.trim(),
+      brand: data.brand?.trim() || null,
+      model: data.model?.trim() || null,
+      serialNumber: data.serialNumber?.trim() || null,
+      quantity: data.quantity,
+      accessories: data.accessories?.trim() || null,
+      notes: data.notes?.trim() || null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(requestItems.id, itemId))
+
+  return {}
+}
+
+export async function deleteRequestItem(
+  itemId: string,
+  requestId: string
+): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  await db.delete(requestItems).where(eq(requestItems.id, itemId))
+  revalidatePath(`/admin/requests/${requestId}`)
+  return {}
+}
+
+export async function addRequestItem(
+  requestId: string,
+  data: ItemUpdateInput
+): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+  if (!data.description?.trim()) return { error: "Description is required" }
+
+  const id = createId()
+  await db.insert(requestItems).values({
+    id,
+    requestId,
+    description: data.description.trim(),
+    brand: data.brand?.trim() || null,
+    model: data.model?.trim() || null,
+    serialNumber: data.serialNumber?.trim() || null,
+    quantity: data.quantity,
+    accessories: data.accessories?.trim() || null,
+    notes: data.notes?.trim() || null,
+  })
+
+  revalidatePath(`/admin/requests/${requestId}`)
+  return { id }
+}
