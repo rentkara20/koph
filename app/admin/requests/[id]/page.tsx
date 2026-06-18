@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
-import { getRequest } from "@/lib/actions/requests"
+import { getRequest, getRequestContacts } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
 import { getSignatureRequestsForRequest } from "@/lib/actions/signatures"
 import { getTaskServicesForRequest } from "@/lib/actions/task-services"
@@ -17,6 +17,7 @@ import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
 import { SignaturesSection } from "./_components/signatures-section"
 import { ItemsSection } from "./_components/items-section"
+import { ReceiverSection } from "./_components/receiver-section"
 import { cn } from "@/lib/utils"
 
 export default async function RequestDetailPage({
@@ -35,6 +36,8 @@ export default async function RequestDetailPage({
     getTranslations("requests"),
     getTranslations("common"),
   ])
+
+  const contacts = data ? await getRequestContacts(data.request.customerId) : []
 
   if (!data) notFound()
 
@@ -146,6 +149,21 @@ export default async function RequestDetailPage({
                   <dd className="font-medium mt-0.5">{request.notes}</dd>
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Receiver */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Receiver</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ReceiverSection
+                requestId={request.id}
+                customerId={request.customerId}
+                contacts={contacts}
+                receiverContactId={request.receiverContactId ?? null}
+              />
             </CardContent>
           </Card>
 

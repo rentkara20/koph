@@ -3,7 +3,7 @@
 import { and, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { activityLogs, customers, requestItems, requests, requestTypes } from "@/lib/db/schema"
+import { activityLogs, customerContacts, customers, requestItems, requests, requestTypes } from "@/lib/db/schema"
 import { createId, generateTrackingCode } from "@/lib/utils/ids"
 import { generateRequestNumber } from "@/lib/utils/request-number"
 import { logActivity } from "@/lib/utils/activity"
@@ -255,6 +255,34 @@ export async function deleteRequestItem(
   await db.delete(requestItems).where(eq(requestItems.id, itemId))
   revalidatePath(`/admin/requests/${requestId}`)
   return {}
+}
+
+export async function setRequestReceiver(
+  requestId: string,
+  contactId: string | null
+): Promise<ActionResult> {
+  const session = await getSession()
+  if (!session) return { error: "Unauthorized" }
+
+  await db
+    .update(requests)
+    .set({ receiverContactId: contactId, updatedAt: Date.now() })
+    .where(eq(requests.id, requestId))
+
+  revalidatePath(`/admin/requests/${requestId}`)
+  return {}
+}
+
+export async function getRequestContacts(customerId: string) {
+  try {
+    return await db
+      .select()
+      .from(customerContacts)
+      .where(eq(customerContacts.customerId, customerId))
+      .orderBy(customerContacts.createdAt)
+  } catch {
+    return []
+  }
 }
 
 export async function addRequestItem(

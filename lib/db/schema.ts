@@ -146,6 +146,7 @@ export const requests = sqliteTable("request", {
   requireNationalId: integer("require_national_id", { mode: "boolean" })
     .notNull()
     .default(false),
+  receiverContactId: text("receiver_contact_id").references(() => customerContacts.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdBy: text("created_by").references(() => users.id),
   createdAt: integer("created_at").notNull().$defaultFn(now),
