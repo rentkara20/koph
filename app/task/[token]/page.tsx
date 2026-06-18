@@ -1,10 +1,12 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import { getTaskByToken, getTaskPhotos } from "@/lib/actions/tasks"
+import { getServicesForTask } from "@/lib/actions/task-services"
 import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
 import { TaskActions } from "./_components/task-actions"
 import { PhotoUpload } from "./_components/photo-upload"
+import { TaskChecklist } from "./_components/task-checklist"
 import { Building2 } from "lucide-react"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
@@ -41,7 +43,10 @@ export default async function TaskPage({
 
   const { task, request, customer, requestType, items, isExpired } = data
 
-  const photos = await getTaskPhotos(task.id)
+  const [photos, taskServices] = await Promise.all([
+    getTaskPhotos(task.id),
+    getServicesForTask(task.id),
+  ])
 
   const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
   const canAct = !isTerminal && !isExpired
@@ -182,6 +187,19 @@ export default async function TaskPage({
               ))}
             </ul>
           </div>
+        )}
+
+        {/* Service checklist */}
+        {taskServices.length > 0 && (
+          <TaskChecklist
+            token={token}
+            services={taskServices.map((s) => ({
+              id: s.id,
+              nameEn: s.nameEn ?? "",
+              nameAr: s.nameAr ?? "",
+              isCompleted: s.isCompleted,
+            }))}
+          />
         )}
 
         {/* Photos */}

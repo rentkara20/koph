@@ -8,6 +8,7 @@ import {
   customers,
   partners,
   partnerContracts,
+  partnerPayments,
   partnerTasks,
   requestItems,
   requests,
@@ -140,9 +141,12 @@ export async function getTasksForRequest(requestId: string) {
       partnerId: partnerTasks.partnerId,
       partnerName: partners.name,
       contractId: partnerTasks.contractId,
+      pricingModel: partnerContracts.pricingModel,
+      unitPrice: partnerContracts.unitPrice,
     })
     .from(partnerTasks)
     .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
+    .leftJoin(partnerContracts, eq(partnerTasks.contractId, partnerContracts.id))
     .where(eq(partnerTasks.requestId, requestId))
     .orderBy(desc(partnerTasks.createdAt))
 }
@@ -170,6 +174,31 @@ export async function signOffTask(
       updatedAt: Date.now(),
     })
     .where(eq(partnerTasks.id, taskId))
+
+  // Auto-create partner_payment when task has a contract
+  if (task.contractId) {
+    const [contract] = await db
+      .select()
+      .from(partnerContracts)
+      .where(eq(partnerContracts.id, task.contractId))
+
+    if (contract) {
+      const isFlat = contract.pricingModel === "per_order" || contract.pricingModel === "fixed"
+      const finalQty = isFlat ? 1 : (quantity ?? 1)
+      const totalAmount = finalQty * contract.unitPrice
+
+      await db.insert(partnerPayments).values({
+        id: createId(),
+        partnerId: task.partnerId,
+        partnerTaskId: task.id,
+        pricingModel: contract.pricingModel,
+        quantity: finalQty,
+        unitPrice: contract.unitPrice,
+        totalAmount,
+        status: "pending",
+      })
+    }
+  }
 
   await logActivity({
     entityType: "request",

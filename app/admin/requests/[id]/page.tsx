@@ -4,6 +4,9 @@ import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getRequest } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
+import { getSignatureRequestsForRequest } from "@/lib/actions/signatures"
+import { getTaskServicesForRequest } from "@/lib/actions/task-services"
+import { getActiveServices } from "@/lib/actions/services"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge, requestStatusVariant } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,6 +15,7 @@ import { formatDate, formatDateTime } from "@/lib/utils/format"
 import { RequestStatusActions } from "./_components/request-status-actions"
 import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
+import { SignaturesSection } from "./_components/signatures-section"
 import { cn } from "@/lib/utils"
 
 export default async function RequestDetailPage({
@@ -20,10 +24,13 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [data, tasks, partnersWithContracts, t, tCommon] = await Promise.all([
+  const [data, tasks, partnersWithContracts, signatures, taskServicesMap, allServices, t, tCommon] = await Promise.all([
     getRequest(id),
     getTasksForRequest(id),
     getPartnersWithContracts(),
+    getSignatureRequestsForRequest(id),
+    getTaskServicesForRequest(id),
+    getActiveServices(),
     getTranslations("requests"),
     getTranslations("common"),
   ])
@@ -197,6 +204,24 @@ export default async function RequestDetailPage({
                 requestId={request.id}
                 tasks={tasks}
                 partners={partnersWithContracts}
+                taskServicesMap={taskServicesMap}
+                allServices={allServices}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Signatures */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Signature requests ({signatures.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <SignaturesSection
+                requestId={request.id}
+                signatures={signatures}
+                defaultRequireNationalId={request.requireNationalId}
               />
             </CardContent>
           </Card>

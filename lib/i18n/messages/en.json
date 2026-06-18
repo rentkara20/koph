@@ -146,7 +146,12 @@
     "title": "Signatures",
     "new": "New signature request",
     "document": "Document",
+    "documentName": "Document name",
     "sendLink": "Send link",
+    "markSent": "Mark as sent",
+    "copyLink": "Copy signing link",
+    "linkCopied": "Signing link copied!",
+    "noRequests": "No signature requests yet.",
     "requireNationalId": "Require National ID / Iqama",
     "status": {
       "draft": "Draft",
@@ -166,11 +171,17 @@
       "nationalIdOptional": "National ID / Iqama (optional)",
       "draw": "Draw your signature",
       "clear": "Clear",
+      "clearSignature": "Clear signature",
       "consent": "I confirm that the information provided is accurate and I agree to sign this document electronically.",
+      "consentAccept": "I accept the above terms and consent to sign electronically",
       "submit": "Submit signature",
+      "decline": "Decline to sign",
       "signed": "Document signed successfully",
+      "declined": "Signature declined",
       "expired": "This signing link has expired.",
-      "alreadySigned": "This document has already been signed."
+      "alreadySigned": "This document has already been signed.",
+      "notActive": "This signing link is not active yet.",
+      "cancelled": "This signature request has been cancelled."
     }
   },
   "payments": {

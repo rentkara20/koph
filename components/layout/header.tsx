@@ -1,6 +1,8 @@
 "use client"
 
+import { useState } from "react"
 import { useTranslations } from "next-intl"
+import { Search } from "lucide-react"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +23,7 @@ interface HeaderProps {
 export function Header({ userName, userRole }: HeaderProps) {
   const t = useTranslations("nav")
   const router = useRouter()
+  const [query, setQuery] = useState("")
   const initials = userName
     .split(" ")
     .map((n) => n[0])
@@ -33,9 +36,26 @@ export function Header({ userName, userRole }: HeaderProps) {
     router.push("/login")
   }
 
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault()
+    const q = query.trim()
+    if (q.length >= 2) {
+      router.push(`/admin/search?q=${encodeURIComponent(q)}`)
+    }
+  }
+
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
-      <div className="flex-1" />
+      <form onSubmit={handleSearch} className="flex items-center gap-1.5 flex-1 max-w-xs">
+        <Search className="size-3.5 text-muted-foreground shrink-0" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search…"
+          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </form>
 
       <div className="flex items-center gap-3">
         <LanguageSwitcher />

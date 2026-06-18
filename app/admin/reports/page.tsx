@@ -1,0 +1,186 @@
+import {
+  getRequestsByStatus,
+  getPartnerPerformance,
+  getPaymentSummaryByMonth,
+  getPendingPaymentsSummary,
+} from "@/lib/actions/reports"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+
+const REQUEST_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
+  draft: "outline",
+  assigned: "info",
+  in_progress: "warning",
+  completed: "success",
+  failed: "destructive",
+  on_hold: "secondary",
+  cancelled: "secondary",
+  rescheduled: "outline",
+}
+
+const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success"> = {
+  draft: "outline",
+  approved: "info",
+  sent_to_finance: "warning",
+  paid: "success",
+}
+
+export default async function ReportsPage() {
+  const [statusRows, partnerPerf, paymentSummary, pendingSummary] = await Promise.all([
+    getRequestsByStatus(),
+    getPartnerPerformance(),
+    getPaymentSummaryByMonth(),
+    getPendingPaymentsSummary(),
+  ])
+
+  const totalRequests = statusRows.reduce((s, r) => s + r.count, 0)
+
+  return (
+    <div className="space-y-6 max-w-4xl">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">Reports</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Operations overview</p>
+      </div>
+
+      {/* Pending payments summary */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Total requests</p>
+            <p className="text-2xl font-bold tabular-nums mt-1">{totalRequests}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Pending payments</p>
+            <p className="text-2xl font-bold tabular-nums mt-1">{pendingSummary.pendingCount}</p>
+          </CardContent>
+        </Card>
+        <Card className="sm:col-span-2">
+          <CardContent className="pt-4">
+            <p className="text-xs text-muted-foreground">Pending amount (SAR)</p>
+            <p className="text-2xl font-bold tabular-nums mt-1">
+              {Number(pendingSummary.pendingTotal).toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Requests by status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Requests by status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {statusRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No requests yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {statusRows.map((row) => {
+                const pct = totalRequests > 0 ? (row.count / totalRequests) * 100 : 0
+                return (
+                  <div key={row.status} className="flex items-center gap-3">
+                    <div className="w-28 shrink-0">
+                      <Badge variant={REQUEST_STATUS_VARIANT[row.status] ?? "outline"}>
+                        {row.status.replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-foreground/20"
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <span className="text-sm tabular-nums font-medium w-8 text-right">
+                      {row.count}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Partner performance */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Partner performance
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {partnerPerf.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">No partner tasks yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Partner</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Total</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-green-700">Closed</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-red-700">Failed</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Active</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {partnerPerf.map((p) => (
+                  <tr key={p.id}>
+                    <td className="px-4 py-3 font-medium">{p.name}</td>
+                    <td className="px-4 py-3 tabular-nums">{p.total}</td>
+                    <td className="px-4 py-3 tabular-nums text-green-700">{p.closed}</td>
+                    <td className="px-4 py-3 tabular-nums text-red-700">{p.failed}</td>
+                    <td className="px-4 py-3 tabular-nums text-muted-foreground">{p.active}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Payment summary by month */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Payment summary by period
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {paymentSummary.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">No payment batches yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Period</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Batches</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Total (SAR)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {paymentSummary.map((row, idx) => (
+                  <tr key={idx}>
+                    <td className="px-4 py-3 font-mono">{row.period}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant={BATCH_STATUS_VARIANT[row.status] ?? "outline"}>
+                        {row.status.replace(/_/g, " ")}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 tabular-nums">{row.batchCount}</td>
+                    <td className="px-4 py-3 font-medium tabular-nums">
+                      {Number(row.totalAmount).toFixed(2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

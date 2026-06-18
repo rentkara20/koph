@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { Plus, Copy, Check, RefreshCw, X } from "lucide-react"
 import { createTask, signOffTask, cancelTask, regenerateTaskLink } from "@/lib/actions/tasks"
+import { addServiceToTask, removeServiceFromTask } from "@/lib/actions/task-services"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -40,6 +41,8 @@ type TaskRow = {
   partnerId: string
   partnerName: string | null
   contractId: string | null
+  pricingModel: string | null
+  unitPrice: number | null
 }
 
 type PartnerData = {
@@ -53,6 +56,23 @@ type PartnerData = {
     pricingModel: string | null
     unitPrice: number | null
   }[]
+}
+
+type ServiceItem = {
+  id: string
+  serviceId: string
+  nameEn: string | null
+  nameAr: string | null
+  isCompleted: boolean
+  completedAt: number | null
+}
+
+type ActiveService = {
+  id: string
+  nameEn: string
+  nameAr: string
+  isActive: boolean
+  sortOrder: number
 }
 
 function CopyTaskLink({ token }: { token: string }) {
@@ -77,12 +97,36 @@ function CopyTaskLink({ token }: { token: string }) {
   )
 }
 
-function SignOffButton({ taskId, pricingModel }: { taskId: string; pricingModel: string | null }) {
+const QTY_LABEL: Record<string, string> = {
+  per_item: "items",
+  per_day: "days",
+  per_hour: "hrs",
+}
+
+function SignOffButton({
+  taskId,
+  pricingModel,
+  unitPrice,
+}: {
+  taskId: string
+  pricingModel: string | null
+  unitPrice: number | null
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [qty, setQty] = useState("")
   const [loading, setLoading] = useState(false)
   const needsQty = pricingModel === "per_day" || pricingModel === "per_hour" || pricingModel === "per_item"
+
+  const parsedQty = qty ? parseFloat(qty) : null
+  const total =
+    unitPrice != null
+      ? needsQty
+        ? parsedQty != null && parsedQty > 0
+          ? parsedQty * unitPrice
+          : null
+        : unitPrice
+      : null
 
   async function handleSignOff() {
     setLoading(true)
@@ -97,21 +141,116 @@ function SignOffButton({ taskId, pricingModel }: { taskId: string; pricingModel:
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 flex-wrap">
       {needsQty && (
         <Input
           type="number"
           min={1}
-          placeholder="Qty"
+          placeholder={QTY_LABEL[pricingModel!] ?? "qty"}
           value={qty}
           onChange={(e) => setQty(e.target.value)}
           className="h-7 w-20 text-xs"
         />
       )}
-      <Button size="sm" disabled={loading} onClick={handleSignOff}>
-        {loading ? "…" : "Confirm sign-off"}
+      {total != null && (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          SAR {total.toFixed(2)}
+        </span>
+      )}
+      <Button
+        size="sm"
+        disabled={loading || (needsQty && !qty)}
+        onClick={handleSignOff}
+      >
+        {loading ? "…" : "Confirm"}
       </Button>
       <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+    </div>
+  )
+}
+
+function TaskServiceManager({
+  taskId,
+  isTerminal,
+  services,
+  allServices,
+}: {
+  taskId: string
+  isTerminal: boolean
+  services: ServiceItem[]
+  allServices: ActiveService[]
+}) {
+  const router = useRouter()
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [adding, setAdding] = useState(false)
+
+  const assignedIds = new Set(services.map((s) => s.serviceId))
+  const available = allServices.filter((s) => !assignedIds.has(s.id))
+
+  async function handleRemove(taskServiceId: string) {
+    setRemoving(taskServiceId)
+    await removeServiceFromTask(taskServiceId)
+    setRemoving(null)
+    router.refresh()
+  }
+
+  async function handleAdd(serviceId: string) {
+    setAdding(true)
+    await addServiceToTask(taskId, serviceId)
+    setAdding(false)
+    router.refresh()
+  }
+
+  if (services.length === 0 && (isTerminal || available.length === 0)) return null
+
+  return (
+    <div className="pt-2 border-t space-y-2">
+      <p className="text-xs text-muted-foreground font-medium">Services</p>
+      {services.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {services.map((svc) => (
+            <span
+              key={svc.id}
+              className={[
+                "inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium border",
+                svc.isCompleted
+                  ? "bg-green-50 text-green-800 border-green-200"
+                  : "bg-muted text-muted-foreground border-border",
+              ].join(" ")}
+            >
+              {svc.nameEn ?? ""}
+              {!isTerminal && (
+                <button
+                  onClick={() => handleRemove(svc.id)}
+                  disabled={removing === svc.id}
+                  className="ml-0.5 opacity-60 hover:opacity-100"
+                >
+                  <X className="size-2.5" />
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {!isTerminal && available.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Select
+            defaultValue=""
+            disabled={adding}
+            className="h-6 text-xs py-0 w-44"
+            onChange={(e) => {
+              const val = e.target.value
+              if (val) { e.target.value = ""; handleAdd(val) }
+            }}
+          >
+            <option value="">+ Add service</option>
+            {available.map((s) => (
+              <option key={s.id} value={s.id}>{s.nameEn}</option>
+            ))}
+          </Select>
+          {adding && <span className="text-xs text-muted-foreground">Adding…</span>}
+        </div>
+      )}
     </div>
   )
 }
@@ -120,10 +259,14 @@ export function TasksSection({
   requestId,
   tasks,
   partners,
+  taskServicesMap,
+  allServices,
 }: {
   requestId: string
   tasks: TaskRow[]
   partners: PartnerData[]
+  taskServicesMap: Record<string, ServiceItem[]>
+  allServices: ActiveService[]
 }) {
   const t = useTranslations("tasks")
   const tCommon = useTranslations("common")
@@ -175,6 +318,8 @@ export function TasksSection({
           {tasks.map((task) => {
             const isExpired = task.taskTokenExpiresAt < Date.now()
             const isActive = ["pending", "accepted", "in_progress", "pending_signoff"].includes(task.status)
+            const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
+            const taskServices = taskServicesMap[task.id] ?? []
             return (
               <div key={task.id} className="rounded-lg border p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">
@@ -193,6 +338,14 @@ export function TasksSection({
                     {task.failureNotes ? ` — ${task.failureNotes}` : ""}
                   </p>
                 )}
+
+                {/* Services checklist manager */}
+                <TaskServiceManager
+                  taskId={task.id}
+                  isTerminal={isTerminal}
+                  services={taskServices}
+                  allServices={allServices}
+                />
 
                 <div className="flex flex-wrap items-center gap-3 pt-1">
                   {/* Copy link for active tasks */}
@@ -213,7 +366,11 @@ export function TasksSection({
 
                   {/* Sign off */}
                   {task.status === "pending_signoff" && (
-                    <SignOffButton taskId={task.id} pricingModel={null} />
+                    <SignOffButton
+                      taskId={task.id}
+                      pricingModel={task.pricingModel}
+                      unitPrice={task.unitPrice}
+                    />
                   )}
 
                   {/* Cancel */}
