@@ -117,15 +117,15 @@ export function RequestForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Quote number — from sales team */}
+      {/* Quote number — from sales team, optional */}
       <div className="space-y-1.5">
         <Label htmlFor="quoteNumber">
-          {t("quoteNumber")} <span className="text-destructive">*</span>
+          {t("quoteNumber")}{" "}
+          <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
         </Label>
         <Input
           id="quoteNumber"
           name="quoteNumber"
-          required
           placeholder="e.g. QT-2026-001"
           className="font-mono"
           autoFocus

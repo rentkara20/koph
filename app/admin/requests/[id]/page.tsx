@@ -76,12 +76,14 @@ export default async function RequestDetailPage({
               <CardTitle className="text-sm font-medium text-muted-foreground">Details</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
-              <div className="sm:col-span-2">
-                <dt className="text-muted-foreground">{t("quoteNumber")}</dt>
-                <dd className="font-mono font-semibold mt-0.5 text-base">
-                  {request.quoteNumber ?? "—"}
-                </dd>
-              </div>
+              {request.quoteNumber && (
+                <div className="sm:col-span-2">
+                  <dt className="text-muted-foreground">{t("quoteNumber")}</dt>
+                  <dd className="font-mono font-semibold mt-0.5 text-base">
+                    {request.quoteNumber}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-muted-foreground">{t("type")}</dt>
                 <dd className="font-medium mt-0.5">{requestType?.nameEn ?? "—"}</dd>

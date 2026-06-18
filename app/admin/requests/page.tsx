@@ -77,6 +77,9 @@ export default async function RequestsPage({
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
                   {t("requestNumber")}
                 </th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">
+                  {t("quoteNumber")}
+                </th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">
                   {t("type")}
                 </th>
@@ -101,6 +104,9 @@ export default async function RequestsPage({
                     >
                       {r.requestNumber}
                     </Link>
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground hidden lg:table-cell">
+                    {r.quoteNumber ?? "—"}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
                     {r.typeName ?? "—"}
