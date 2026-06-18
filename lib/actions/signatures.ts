@@ -238,7 +238,7 @@ export async function submitSignature(
   token: string,
   data: {
     fullName: string
-    mobile: string
+    mobile?: string
     nationalId?: string
     signatureData: string
     ipAddress?: string
@@ -259,7 +259,6 @@ export async function submitSignature(
   }
 
   if (!data.fullName?.trim()) return { error: "Full name is required" }
-  if (!data.mobile?.trim()) return { error: "Mobile number is required" }
   if (sig.requireNationalId && !data.nationalId?.trim()) {
     return { error: "National ID / Iqama is required" }
   }
@@ -278,7 +277,7 @@ export async function submitSignature(
     id,
     signatureRequestId: sig.id,
     fullName: data.fullName.trim(),
-    mobile: data.mobile.trim(),
+    mobile: data.mobile?.trim() ?? "",
     nationalId: data.nationalId?.trim() || null,
     signatureData: data.signatureData,
     consentVersion: consent?.version ?? null,
