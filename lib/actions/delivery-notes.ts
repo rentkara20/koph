@@ -134,11 +134,26 @@ export async function getDeliveryNoteData(
       signatureData: customerSignatures.signatureData,
       signedAt: customerSignatures.signedAt,
       ipAddress: customerSignatures.ipAddress,
-      userAgent: customerSignatures.userAgent,
-      auditDataHash: customerSignatures.auditDataHash,
     })
     .from(customerSignatures)
     .where(eq(customerSignatures.signatureRequestId, sig.id))
+
+  // Fetch audit fields separately — these columns may not exist before migration runs
+  let auditFields: { userAgent: string | null; auditDataHash: string | null } = {
+    userAgent: null,
+    auditDataHash: null,
+  }
+  if (sigData) {
+    try {
+      const [af] = await db
+        .select({ userAgent: customerSignatures.userAgent, auditDataHash: customerSignatures.auditDataHash })
+        .from(customerSignatures)
+        .where(eq(customerSignatures.signatureRequestId, sig.id))
+      auditFields = { userAgent: af?.userAgent ?? null, auditDataHash: af?.auditDataHash ?? null }
+    } catch {
+      // columns not yet migrated — safe to ignore
+    }
+  }
 
   return {
     sig: {
@@ -153,6 +168,8 @@ export async function getDeliveryNoteData(
     customer: customerRow ?? null,
     contact: contactRow ?? null,
     items,
-    signature: sigData ?? null,
+    signature: sigData
+      ? { ...sigData, userAgent: auditFields.userAgent, auditDataHash: auditFields.auditDataHash }
+      : null,
   }
 }
