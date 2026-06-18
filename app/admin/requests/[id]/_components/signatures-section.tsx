@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Copy, Check, Send, X } from "lucide-react"
+import { Plus, Copy, Check, Send, X, FileText } from "lucide-react"
 import {
   createSignatureRequest,
   markSignatureAsSent,
@@ -143,6 +143,18 @@ export function SignaturesSection({
 
                 <div className="flex flex-wrap items-center gap-3 pt-1">
                   {isActive && <CopySignLink token={sig.secureToken} />}
+
+                  {sig.status === "signed" && (
+                    <a
+                      href={`/sign/${sig.secureToken}/print`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      <FileText className="size-3" />
+                      Delivery note
+                    </a>
+                  )}
 
                   {sig.status === "draft" && (
                     <button

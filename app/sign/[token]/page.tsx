@@ -2,9 +2,11 @@ import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import { Building2 } from "lucide-react"
 import { getSignatureByToken, recordSignatureOpened } from "@/lib/actions/signatures"
-import { formatDate } from "@/lib/utils/format"
+import { getDeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { Badge } from "@/components/ui/badge"
 import { SignatureForm } from "./_components/signature-form"
+import { DeliveryNoteView } from "./_components/delivery-note-view"
+import { DownloadButton } from "./_components/download-button"
 
 type StatusVariant = "outline" | "info" | "success" | "secondary"
 
@@ -36,13 +38,16 @@ export default async function SignPage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const data = await getSignatureByToken(token)
+  const [data, deliveryNote] = await Promise.all([
+    getSignatureByToken(token),
+    getDeliveryNoteData(token),
+  ])
 
   if (!data) notFound()
 
-  const { sig, customer, request, activeConsent, isExpired } = data
+  const { sig, activeConsent, isExpired } = data
 
-  // Transition sent → opened and log the event
+  // Transition sent → opened
   if (sig.status === "sent") {
     const headersList = await headers()
     const ip = headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined
@@ -52,6 +57,7 @@ export default async function SignPage({
 
   const isTerminal = ["signed", "rejected", "expired", "cancelled"].includes(sig.status)
   const canSign = !isTerminal && !isExpired && sig.status !== "draft"
+  const isSigned = sig.status === "signed"
 
   const consentText =
     activeConsent?.textEn ??
@@ -61,7 +67,7 @@ export default async function SignPage({
     <div className="min-h-svh bg-muted/30">
       {/* Header */}
       <div className="bg-background border-b sticky top-0 z-10">
-        <div className="flex items-center gap-2.5 px-4 py-3 max-w-lg mx-auto">
+        <div className="flex items-center gap-2.5 px-4 py-3 max-w-2xl mx-auto">
           <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground">
             <Building2 className="h-4 w-4 text-background" />
           </div>
@@ -77,7 +83,7 @@ export default async function SignPage({
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-2xl mx-auto px-4 py-6 space-y-5">
         {/* Status banners */}
         {isExpired && (
           <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
@@ -94,53 +100,50 @@ export default async function SignPage({
             This signature request has been cancelled.
           </div>
         )}
-        {sig.status === "signed" && (
-          <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
-            ✓ This document has already been signed.
-          </div>
-        )}
         {sig.status === "rejected" && (
           <div className="rounded-lg bg-muted border px-4 py-3 text-sm text-muted-foreground">
             This document signing was declined.
           </div>
         )}
 
-        {/* Document info card */}
-        <div className="rounded-xl bg-background border p-4 space-y-3">
-          <div>
-            <p className="text-xs text-muted-foreground mb-0.5">Document</p>
-            <p className="font-semibold">{sig.documentName}</p>
-          </div>
-
-          {customer && (
-            <div className="grid grid-cols-2 gap-3 text-sm pt-1 border-t">
-              <div>
-                <p className="text-xs text-muted-foreground">Customer</p>
-                <p className="font-medium">{customer.name}</p>
+        {/* Signed — show delivery note with embedded signature + download */}
+        {isSigned && deliveryNote && (
+          <>
+            <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
+              ✓ Document signed successfully. You can download your delivery note below.
+            </div>
+            <div className="space-y-3">
+              <DeliveryNoteView data={deliveryNote} />
+              <div className="flex justify-center pt-2">
+                <DownloadButton token={token} />
               </div>
-              {customer.mobile && (
-                <div>
-                  <p className="text-xs text-muted-foreground">Mobile</p>
-                  <p className="font-medium">{customer.mobile}</p>
-                </div>
-              )}
             </div>
-          )}
+          </>
+        )}
 
-          {request && (
-            <div className="pt-1 border-t text-sm">
-              <p className="text-xs text-muted-foreground mb-0.5">Reference</p>
-              <p className="font-mono text-sm">{request.requestNumber}</p>
+        {/* Not yet signed — show delivery note (what they're receiving), then sign form */}
+        {!isSigned && deliveryNote && (
+          <>
+            <div>
+              <p className="text-sm font-medium text-muted-foreground mb-3">
+                Please review the items below before signing:
+              </p>
+              <DeliveryNoteView data={deliveryNote} />
             </div>
-          )}
 
-          <div className="pt-1 border-t text-xs text-muted-foreground">
-            Requested {formatDate(sig.createdAt)}
-          </div>
-        </div>
+            {canSign && (
+              <SignatureForm
+                token={token}
+                requireNationalId={sig.requireNationalId}
+                documentName={sig.documentName}
+                consentText={consentText}
+              />
+            )}
+          </>
+        )}
 
-        {/* Signing form */}
-        {canSign && (
+        {/* Fallback if no delivery note data */}
+        {!deliveryNote && canSign && (
           <SignatureForm
             token={token}
             requireNationalId={sig.requireNationalId}
