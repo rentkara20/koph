@@ -66,12 +66,14 @@ export function ReceiverSection({ requestId, customerId, contacts, receiverConta
         )}
 
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" disabled={pending}>
-              <UserCheck className="size-3.5 mr-1.5" />
+          <DropdownMenuTrigger disabled={pending} asChild>
+            <button
+              className="inline-flex items-center gap-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-medium shadow-sm hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            >
+              <UserCheck className="size-3.5 mr-0.5" />
               {current ? "Change" : "Select"}
-              <ChevronDown className="size-3.5 ml-1" />
-            </Button>
+              <ChevronDown className="size-3.5 ml-0.5" />
+            </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
             {contacts.length === 0 ? (
