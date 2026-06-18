@@ -33,7 +33,7 @@ const RentKaraLogo = () => (
 )
 
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
-  const { request, customer, items, signature } = data
+  const { request, customer, contact, items, signature } = data
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0)
   const quoteNum = request?.quoteNumber ?? ""
   const docRef = [
@@ -100,9 +100,9 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
             { en: "Quote Number",    ar: "رقم الطلب",          val: quoteNum || "—", gray: true },
             { en: "Delivery Date",   ar: "تاريخ التسليم",      val: formatDeliveryDate(request?.deliveryDate), gray: false },
             { en: "Prepared For",    ar: "تم اعداده لصالح",    val: customer?.name ?? "—", gray: true },
-            { en: "Point of Contact",ar: "مسؤول التواصل",      val: customer?.contactPerson ?? "—", gray: false },
-            { en: "Phone Number",    ar: "رقم الجوال",          val: customer?.mobile ?? "—", gray: true },
-            { en: "E-mail",          ar: "البريد الإلكتروني",  val: customer?.email ?? "—", gray: false },
+            { en: "Point of Contact",ar: "مسؤول التواصل",      val: contact?.name ?? customer?.contactPerson ?? "—", gray: false },
+            { en: "Phone Number",    ar: "رقم الجوال",          val: contact?.mobile ?? customer?.mobile ?? "—", gray: true },
+            { en: "E-mail",          ar: "البريد الإلكتروني",  val: contact?.email ?? customer?.email ?? "—", gray: false },
           ].map(({ en, ar, val, gray }) => (
             <tr key={en} style={{ background: gray ? GRAY_ROW : "#fff" }}>
               <td style={{ padding: "0 3mm", height: "4.6mm", verticalAlign: "middle", fontWeight: 700 }}>{en}</td>

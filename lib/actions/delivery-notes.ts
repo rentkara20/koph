@@ -3,6 +3,7 @@
 import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
+  customerContacts,
   customers,
   customerSignatures,
   requestItems,
@@ -26,6 +27,11 @@ export type DeliveryNoteData = {
   customer: {
     name: string
     contactPerson: string | null
+    mobile: string | null
+    email: string | null
+  } | null
+  contact: {
+    name: string
     mobile: string | null
     email: string | null
   } | null
@@ -65,6 +71,16 @@ export async function getDeliveryNoteData(
     })
     .from(customers)
     .where(eq(customers.id, sig.customerId))
+
+  const [contactRow] = await db
+    .select({
+      name: customerContacts.name,
+      mobile: customerContacts.mobile,
+      email: customerContacts.email,
+    })
+    .from(customerContacts)
+    .where(eq(customerContacts.customerId, sig.customerId))
+    .limit(1)
 
   let requestRow = null
   let items: DeliveryNoteData["items"] = []
@@ -115,6 +131,7 @@ export async function getDeliveryNoteData(
     },
     request: requestRow,
     customer: customerRow ?? null,
+    contact: contactRow ?? null,
     items,
     signature: sigData ?? null,
   }
