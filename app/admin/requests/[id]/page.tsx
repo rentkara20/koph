@@ -3,6 +3,7 @@ import Link from "next/link"
 import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getRequest } from "@/lib/actions/requests"
+import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge, requestStatusVariant } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,6 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { formatDate, formatDateTime } from "@/lib/utils/format"
 import { RequestStatusActions } from "./_components/request-status-actions"
 import { CopyButton } from "./_components/copy-button"
+import { TasksSection } from "./_components/tasks-section"
 import { cn } from "@/lib/utils"
 
 export default async function RequestDetailPage({
@@ -18,8 +20,10 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [data, t, tCommon] = await Promise.all([
+  const [data, tasks, partnersWithContracts, t, tCommon] = await Promise.all([
     getRequest(id),
+    getTasksForRequest(id),
+    getPartnersWithContracts(),
     getTranslations("requests"),
     getTranslations("common"),
   ])
@@ -180,6 +184,22 @@ export default async function RequestDetailPage({
               </CardContent>
             </Card>
           )}
+
+          {/* Tasks */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Partner tasks ({tasks.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <TasksSection
+                requestId={request.id}
+                tasks={tasks}
+                partners={partnersWithContracts}
+              />
+            </CardContent>
+          </Card>
 
           {/* Activity log */}
           {logs.length > 0 && (
