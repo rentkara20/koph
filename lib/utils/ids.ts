@@ -21,3 +21,10 @@ export function generateSecureToken(): string {
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
 }
+
+// Verification ID: AUD-XXXXXX (no 0/O/I/1 to avoid misreading)
+const auditAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+const generateAuditCode = customAlphabet(auditAlphabet, 6)
+export function generateVerificationId(): string {
+  return "AUD-" + generateAuditCode()
+}

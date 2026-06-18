@@ -44,11 +44,15 @@ export type DeliveryNoteData = {
     quantity: number
     accessories: string | null
   }[]
+  verificationId: string | null
   signature: {
     fullName: string
     nationalId: string | null
     signatureData: string
     signedAt: number
+    ipAddress: string | null
+    userAgent: string | null
+    auditDataHash: string | null
   } | null
 }
 
@@ -129,6 +133,9 @@ export async function getDeliveryNoteData(
       nationalId: customerSignatures.nationalId,
       signatureData: customerSignatures.signatureData,
       signedAt: customerSignatures.signedAt,
+      ipAddress: customerSignatures.ipAddress,
+      userAgent: customerSignatures.userAgent,
+      auditDataHash: customerSignatures.auditDataHash,
     })
     .from(customerSignatures)
     .where(eq(customerSignatures.signatureRequestId, sig.id))
@@ -141,6 +148,7 @@ export async function getDeliveryNoteData(
       createdAt: sig.createdAt,
       requireNationalId: sig.requireNationalId,
     },
+    verificationId: sig.verificationId ?? null,
     request: requestRow,
     customer: customerRow ?? null,
     contact: contactRow ?? null,

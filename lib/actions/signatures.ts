@@ -2,6 +2,7 @@
 
 import { desc, eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { headers } from "next/headers"
 import { db } from "@/lib/db"
 import {
   signatureRequests,
@@ -12,9 +13,29 @@ import {
   partnerTasks,
   requests,
 } from "@/lib/db/schema"
-import { createId, generateSecureToken } from "@/lib/utils/ids"
+import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
 import { getSession } from "@/lib/auth/session"
+
+async function captureRequestMeta() {
+  const h = await headers()
+  const ipAddress =
+    h.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    h.get("x-real-ip") ??
+    h.get("cf-connecting-ip") ??
+    null
+  const userAgent = h.get("user-agent") ?? null
+  return { ipAddress, userAgent }
+}
+
+async function buildAuditHash(payload: (string | null | undefined)[]): Promise<string> {
+  const text = payload.map((v) => v ?? "").join("|")
+  const buffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))
+  const hex = Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+  return "sha256:" + hex
+}
 
 export type SignatureActionResult = { error?: string; id?: string; token?: string }
 
@@ -36,6 +57,7 @@ export async function createSignatureRequest(
   if (!req) return { error: "Request not found" }
 
   const secureToken = generateSecureToken()
+  const verificationId = generateVerificationId()
   const id = createId()
 
   await db.insert(signatureRequests).values({
@@ -46,6 +68,7 @@ export async function createSignatureRequest(
     customerId: req.customerId,
     documentName: data.documentName.trim(),
     secureToken,
+    verificationId,
     requireNationalId: data.requireNationalId ?? false,
     status: "draft",
   })
@@ -242,7 +265,6 @@ export async function submitSignature(
     mobile?: string
     nationalId?: string
     signatureData: string
-    ipAddress?: string
   }
 ): Promise<SignatureActionResult> {
   const [sig] = await db
@@ -271,20 +293,59 @@ export async function submitSignature(
     .where(eq(consentVersions.isActive, true))
     .limit(1)
 
+  // Ensure verificationId exists on the sig request
+  let verificationId = sig.verificationId
+  if (!verificationId) {
+    verificationId = generateVerificationId()
+    await db.update(signatureRequests).set({ verificationId }).where(eq(signatureRequests.id, sig.id))
+  }
+
+  // Fetch related data for audit hash
+  const [customerRow] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, sig.customerId))
+  let requestNumber = ""
+  let quoteNumber = ""
+  if (sig.requestId) {
+    const [reqRow] = await db
+      .select({ requestNumber: requests.requestNumber, quoteNumber: requests.quoteNumber })
+      .from(requests)
+      .where(eq(requests.id, sig.requestId))
+    requestNumber = reqRow?.requestNumber ?? ""
+    quoteNumber = reqRow?.quoteNumber ?? ""
+  }
+
+  const { ipAddress, userAgent } = await captureRequestMeta()
   const id = createId()
   const now = Date.now()
+  const signedAtIso = new Date(now).toISOString()
+  const fullName = data.fullName.trim()
+  const nationalId = data.nationalId?.trim() || null
+
+  const auditDataHash = await buildAuditHash([
+    requestNumber,
+    quoteNumber,
+    customerRow?.name ?? "",
+    fullName,
+    nationalId,
+    signedAtIso,
+    verificationId,
+    ipAddress,
+    userAgent,
+  ])
 
   await db.insert(customerSignatures).values({
     id,
     signatureRequestId: sig.id,
-    fullName: data.fullName.trim(),
+    fullName,
     mobile: data.mobile?.trim() ?? "",
-    nationalId: data.nationalId?.trim() || null,
+    nationalId,
     signatureData: data.signatureData,
     consentVersion: consent?.version ?? null,
     consentAcceptedAt: now,
     signedAt: now,
-    ipAddress: data.ipAddress ?? null,
+    signedAtTz: "Asia/Riyadh",
+    ipAddress,
+    userAgent,
+    auditDataHash,
   })
 
   await db
@@ -296,7 +357,8 @@ export async function submitSignature(
     id: createId(),
     signatureRequestId: sig.id,
     eventType: "signed",
-    ipAddress: data.ipAddress ?? null,
+    ipAddress,
+    userAgent,
   })
 
   if (sig.requestId) {
@@ -393,6 +455,7 @@ export async function signOnSiteByTaskToken(
       // Auto-create
       const id = createId()
       const secureToken = generateSecureToken()
+      const newVerificationId = generateVerificationId()
       await db.insert(signatureRequests).values({
         id,
         requestId: task.requestId,
@@ -401,6 +464,7 @@ export async function signOnSiteByTaskToken(
         customerId: req.customerId,
         documentName: "Delivery Note",
         secureToken,
+        verificationId: newVerificationId,
         requireNationalId: true,
         status: "sent",
       })
@@ -414,18 +478,48 @@ export async function signOnSiteByTaskToken(
   const terminal = ["signed", "rejected", "cancelled", "expired"]
   if (terminal.includes(sigReq.status)) return { error: "This document is already signed or cancelled" }
 
+  // Ensure verificationId exists on the sig request
+  let verificationId = sigReq.verificationId
+  if (!verificationId) {
+    verificationId = generateVerificationId()
+    await db.update(signatureRequests).set({ verificationId }).where(eq(signatureRequests.id, sigReq.id))
+  }
+
+  // Fetch customer name for audit hash
+  const [customerRow] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, req.customerId))
+
+  const { ipAddress, userAgent } = await captureRequestMeta()
   const now = Date.now()
   const id = createId()
+  const fullName = data.fullName.trim()
+  const nationalId = data.nationalId.trim()
+  const signedAtIso = new Date(now).toISOString()
+
+  const auditDataHash = await buildAuditHash([
+    req.requestNumber,
+    req.quoteNumber,
+    customerRow?.name ?? "",
+    fullName,
+    nationalId,
+    signedAtIso,
+    verificationId,
+    ipAddress,
+    userAgent,
+  ])
 
   await db.insert(customerSignatures).values({
     id,
     signatureRequestId: sigReq.id,
-    fullName: data.fullName.trim(),
+    fullName,
     mobile: "",
-    nationalId: data.nationalId.trim(),
+    nationalId,
     signatureData: data.signatureData,
     consentAcceptedAt: now,
     signedAt: now,
+    signedAtTz: "Asia/Riyadh",
+    ipAddress,
+    userAgent,
+    auditDataHash,
   })
 
   await db

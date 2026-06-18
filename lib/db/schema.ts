@@ -327,6 +327,7 @@ export const signatureRequests = sqliteTable("signature_request", {
   documentName: text("document_name").notNull(),
   documentUrl: text("document_url"),
   secureToken: text("secure_token").notNull().unique(),
+  verificationId: text("verification_id").unique(),
   // Configurable per signature request
   requireNationalId: integer("require_national_id", { mode: "boolean" })
     .notNull()
@@ -385,7 +386,10 @@ export const customerSignatures = sqliteTable("customer_signature", {
   consentVersion: text("consent_version").references(() => consentVersions.version),
   consentAcceptedAt: integer("consent_accepted_at"),
   signedAt: integer("signed_at").notNull().$defaultFn(now),
+  signedAtTz: text("signed_at_tz").notNull().default("Asia/Riyadh"),
   ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  auditDataHash: text("audit_data_hash"),
 })
 
 // ─── Attachments ─────────────────────────────────────────────────────────────

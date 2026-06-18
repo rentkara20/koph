@@ -1,5 +1,5 @@
 import type { DeliveryNoteData } from "@/lib/actions/delivery-notes"
-import { formatDate } from "@/lib/utils/format"
+import { formatDate, formatAuditDateTime } from "@/lib/utils/format"
 
 const PURPLE = "#512A83"
 const BLUE = "#60B5D1"
@@ -33,7 +33,7 @@ const RentKaraLogo = () => (
 )
 
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
-  const { request, customer, contact, items, signature } = data
+  const { request, customer, contact, items, signature, verificationId } = data
   const totalQty = items.reduce((sum, i) => sum + i.quantity, 0)
   const quoteNum = request?.quoteNumber ?? ""
   // Use actual sign-off date on the final document; fall back to planned delivery date for preview
@@ -44,6 +44,7 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
   ].filter(Boolean).join(" ")
 
   return (
+    <>
     <div
       id="delivery-note-root"
       style={{
@@ -275,6 +276,161 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
         fontSize: "5pt", color: "#333",
       }}>
         {docRef}
+      </div>
+    </div>
+
+    {/* Audit page — printed as second page, only when signed */}
+    {signature && <AuditPage data={data} />}
+    </>
+  )
+}
+
+// ─── Audit Page ──────────────────────────────────────────────────────────────
+
+function AuditRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <tr>
+      <td style={{
+        padding: "2mm 3mm",
+        fontWeight: 700,
+        fontSize: "7.5pt",
+        color: "#444",
+        whiteSpace: "nowrap",
+        width: "50mm",
+        borderBottom: "0.2mm solid #e0e0e0",
+        verticalAlign: "top",
+      }}>{label}</td>
+      <td style={{
+        padding: "2mm 3mm",
+        fontSize: "7.5pt",
+        borderBottom: "0.2mm solid #e0e0e0",
+        fontFamily: mono ? "monospace" : "inherit",
+        wordBreak: "break-all",
+        verticalAlign: "top",
+      }}>{value || "—"}</td>
+    </tr>
+  )
+}
+
+function AuditSectionHeader({ title }: { title: string }) {
+  return (
+    <tr>
+      <td colSpan={2} style={{
+        padding: "2mm 3mm",
+        background: PURPLE,
+        color: "#fff",
+        fontWeight: 700,
+        fontSize: "8pt",
+        letterSpacing: "0.3mm",
+      }}>{title}</td>
+    </tr>
+  )
+}
+
+function AuditPage({ data }: { data: DeliveryNoteData }) {
+  const { request, customer, signature, verificationId } = data
+  if (!signature) return null
+
+  const verifyUrl = verificationId
+    ? `https://koph.vercel.app/verify/${verificationId}`
+    : null
+
+  return (
+    <div
+      style={{
+        width: "297mm",
+        minHeight: "210mm",
+        position: "relative",
+        background: "#ffffff",
+        fontFamily: 'Arial, Helvetica, "Tahoma", sans-serif',
+        color: "#222",
+        fontSize: "7.5pt",
+        pageBreakBefore: "always",
+        paddingBottom: "16mm",
+      }}
+    >
+      {/* Header strip */}
+      <div style={{ position: "absolute", top: "4mm", left: "4mm", width: "289mm", height: "16mm", background: GRAY_HEADER }} />
+      <div style={{
+        position: "absolute", top: "4mm", right: "4mm",
+        width: "160mm", height: "16mm", background: PURPLE,
+        clipPath: "polygon(16% 0, 100% 0, 100% 100%, 0% 100%)",
+      }} />
+      <div style={{ position: "absolute", top: "6mm", left: "9mm" }}>
+        <RentKaraLogo />
+      </div>
+
+      {/* Title */}
+      <div style={{
+        position: "absolute", top: "23mm", left: "13mm", right: "13mm",
+        height: "10mm", borderBottom: `0.7mm solid ${PURPLE}`,
+        display: "flex", alignItems: "flex-end", justifyContent: "space-between",
+        paddingBottom: "1.5mm",
+      }}>
+        <span style={{ fontSize: "15pt", fontWeight: 700, color: PURPLE }}>Electronic Signature Audit</span>
+        <span style={{ fontSize: "13pt", fontWeight: 700, color: PURPLE, direction: "rtl" }}>سجل التوقيع الإلكتروني</span>
+      </div>
+
+      {/* Audit table */}
+      <div style={{ position: "absolute", top: "37mm", left: "13mm", right: "13mm" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", border: `0.3mm solid ${GRAY_HEADER}` }}>
+          <tbody>
+            <AuditSectionHeader title="REQUEST INFORMATION" />
+            <AuditRow label="Request Number" value={request?.requestNumber ?? "—"} mono />
+            <AuditRow label="Quote Number" value={request?.quoteNumber ?? "—"} mono />
+            <AuditRow label="Customer" value={customer?.name ?? "—"} />
+
+            <AuditSectionHeader title="SIGNER INFORMATION" />
+            <AuditRow label="Recipient Name" value={signature.fullName} />
+            <AuditRow label="National ID / Iqama" value={signature.nationalId ?? "—"} mono />
+
+            <AuditSectionHeader title="SIGNATURE DETAILS" />
+            <AuditRow label="Signed At" value={formatAuditDateTime(signature.signedAt)} />
+            <AuditRow label="Verification ID" value={verificationId ?? "—"} mono />
+            {verifyUrl && <AuditRow label="Verify URL" value={verifyUrl} mono />}
+
+            <AuditSectionHeader title="TECHNICAL AUDIT INFORMATION" />
+            <AuditRow label="IP Address" value={signature.ipAddress ?? "—"} mono />
+            <AuditRow label="User Agent" value={signature.userAgent ?? "—"} />
+            <AuditRow label="Audit Data Hash" value={signature.auditDataHash ?? "—"} mono />
+          </tbody>
+        </table>
+
+        {/* Signature image */}
+        <div style={{ marginTop: "6mm" }}>
+          <div style={{
+            fontSize: "8pt", fontWeight: 700, color: PURPLE,
+            borderBottom: `0.5mm solid ${PURPLE}`, paddingBottom: "1mm", marginBottom: "3mm",
+          }}>
+            Captured Signature / التوقيع المُلتقط
+          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={signature.signatureData}
+            alt="Signature"
+            style={{
+              maxWidth: "80mm",
+              maxHeight: "25mm",
+              border: `0.3mm solid ${GRAY_HEADER}`,
+              padding: "2mm",
+              background: "#fff",
+              display: "block",
+            }}
+          />
+        </div>
+
+        {/* Footer note */}
+        <div style={{
+          marginTop: "6mm",
+          fontSize: "6.5pt",
+          color: "#777",
+          borderTop: `0.3mm solid ${GRAY_HEADER}`,
+          paddingTop: "2mm",
+        }}>
+          This audit record is automatically generated and cryptographically bound to the signed document.
+          The Audit Data Hash confirms the integrity of the information recorded at the time of signing.
+          {verifyUrl && ` Verify authenticity at: ${verifyUrl}`}
+        </div>
       </div>
     </div>
   )
