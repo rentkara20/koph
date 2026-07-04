@@ -7,14 +7,18 @@ import { db } from "@/lib/db"
 import {
   signatureRequests,
   signatureEvents,
+  signatureItemConditions,
   customerSignatures,
+  customerContacts,
   consentVersions,
   customers,
+  partners,
   partnerTasks,
   requests,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
+import { notify, notifyAdmins } from "@/lib/utils/notify"
 import { getSession, getSessionWithRole } from "@/lib/auth/session"
 import {
   createSignatureRequestSchema,
@@ -276,6 +280,12 @@ export async function submitSignature(
     mobile?: string
     nationalId?: string
     signatureData: string
+    itemConditions?: {
+      requestItemId: string
+      condition: "good" | "damaged" | "missing"
+      receivedQuantity?: number
+      notes?: string
+    }[]
   }
 ): Promise<SignatureActionResult> {
   const [sig] = await db
@@ -314,13 +324,19 @@ export async function submitSignature(
   const [customerRow] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, sig.customerId))
   let requestNumber = ""
   let quoteNumber = ""
+  let receiverContactId: string | null = null
   if (sig.requestId) {
     const [reqRow] = await db
-      .select({ requestNumber: requests.requestNumber, quoteNumber: requests.quoteNumber })
+      .select({
+        requestNumber: requests.requestNumber,
+        quoteNumber: requests.quoteNumber,
+        receiverContactId: requests.receiverContactId,
+      })
       .from(requests)
       .where(eq(requests.id, sig.requestId))
     requestNumber = reqRow?.requestNumber ?? ""
     quoteNumber = reqRow?.quoteNumber ?? ""
+    receiverContactId = reqRow?.receiverContactId ?? null
   }
 
   const { ipAddress, userAgent } = await captureRequestMeta()
@@ -371,6 +387,20 @@ export async function submitSignature(
       ipAddress,
       userAgent,
     })
+
+    // Per-item acknowledgement of received condition.
+    if (data.itemConditions && data.itemConditions.length > 0) {
+      await tx.insert(signatureItemConditions).values(
+        data.itemConditions.map((c) => ({
+          id: createId(),
+          signatureRequestId: sig.id,
+          requestItemId: c.requestItemId,
+          condition: c.condition,
+          receivedQuantity: c.receivedQuantity ?? null,
+          notes: c.notes ?? null,
+        }))
+      )
+    }
   })
 
   if (sig.requestId) {
@@ -385,7 +415,144 @@ export async function submitSignature(
     revalidatePath(`/admin/requests/${sig.requestId}`)
   }
 
+  // Notifications + two-stage signatory chaining. Best-effort: never fail the
+  // signature just because a downstream notification/stage-2 step errors.
+  try {
+    await handlePostSignature({
+      sig,
+      requestNumber,
+      receiverContactId,
+      signerName: fullName,
+    })
+  } catch {
+    // swallow — signing already succeeded and is the user-visible outcome
+  }
+
   return { id }
+}
+
+type PostSignatureCtx = {
+  sig: typeof signatureRequests.$inferSelect
+  requestNumber: string
+  receiverContactId: string | null
+  signerName: string
+}
+
+async function handlePostSignature(ctx: PostSignatureCtx) {
+  const { sig, requestNumber, receiverContactId, signerName } = ctx
+
+  // 1) Notify the assigned partner (if they have a portal login) + all admins.
+  if (sig.requestId) {
+    const [task] = await db
+      .select({ partnerId: partnerTasks.partnerId })
+      .from(partnerTasks)
+      .where(eq(partnerTasks.requestId, sig.requestId))
+      .orderBy(desc(partnerTasks.createdAt))
+      .limit(1)
+
+    if (task?.partnerId) {
+      const [partner] = await db
+        .select({ userId: partners.userId })
+        .from(partners)
+        .where(eq(partners.id, task.partnerId))
+      if (partner?.userId) {
+        await notify({
+          userId: partner.userId,
+          type: "customer_signed",
+          i18nKey: "notifications.customerSigned",
+          i18nData: { customerName: signerName, requestNumber },
+          linkUrl: `/admin/requests/${sig.requestId}`,
+          entityType: "signature_request",
+          entityId: sig.id,
+        })
+      }
+    }
+
+    await notifyAdmins({
+      type: "customer_signed",
+      i18nKey: "notifications.customerSigned",
+      i18nData: { customerName: signerName, requestNumber },
+      linkUrl: `/admin/requests/${sig.requestId}`,
+      entityType: "signature_request",
+      entityId: sig.id,
+    })
+  }
+
+  // 2) Two-stage signatory chaining.
+  if (sig.signatoryRole === "authorized") {
+    // Final stage signed → the delivery note is now fully signed.
+    if (sig.requestId) {
+      await notifyAdmins({
+        type: "fully_signed",
+        i18nKey: "notifications.fullySigned",
+        i18nData: { requestNumber },
+        linkUrl: `/admin/requests/${sig.requestId}`,
+        entityType: "signature_request",
+        entityId: sig.id,
+      })
+    }
+    return
+  }
+
+  // Receiver just signed — decide whether an authorised signatory must follow.
+  const signerContactId = sig.signatoryContactId ?? receiverContactId
+  let signerIsAuthorized = false
+  if (signerContactId) {
+    const [signer] = await db
+      .select({ isAuthorizedSignatory: customerContacts.isAuthorizedSignatory })
+      .from(customerContacts)
+      .where(eq(customerContacts.id, signerContactId))
+    signerIsAuthorized = signer?.isAuthorizedSignatory ?? false
+  }
+  if (signerIsAuthorized) return
+
+  // Find an authorised signatory for this customer other than the signer.
+  const authorized = await db
+    .select({ id: customerContacts.id, name: customerContacts.name, mobile: customerContacts.mobile })
+    .from(customerContacts)
+    .where(
+      and(
+        eq(customerContacts.customerId, sig.customerId),
+        eq(customerContacts.isAuthorizedSignatory, true)
+      )
+    )
+  const target = authorized.find((c) => c.id !== signerContactId)
+  if (!target) return
+
+  // Create the stage-2 signature request for the authorised signatory.
+  const stage2Id = createId()
+  await db.insert(signatureRequests).values({
+    id: stage2Id,
+    requestId: sig.requestId,
+    partnerTaskId: sig.partnerTaskId,
+    initiatedBy: "system",
+    customerId: sig.customerId,
+    signatoryRole: "authorized",
+    parentSignatureRequestId: sig.id,
+    signatoryContactId: target.id,
+    documentName: sig.documentName,
+    secureToken: generateSecureToken(),
+    requireNationalId: sig.requireNationalId,
+    status: "sent",
+  })
+
+  if (sig.requestId) {
+    await logActivity({
+      entityType: "signature_request",
+      entityId: stage2Id,
+      action: "authorized_signoff_requested",
+      i18nKey: "activity.authorizedSignoffRequested",
+      performedAs: "system",
+    })
+    await notifyAdmins({
+      type: "authorized_signoff_pending",
+      i18nKey: "notifications.authorizedSignoffPending",
+      i18nData: { requestNumber },
+      linkUrl: `/admin/requests/${sig.requestId}`,
+      entityType: "signature_request",
+      entityId: stage2Id,
+    })
+  }
 }
 
 // ─── Partner: get signature status for a task token ──────────────────────────

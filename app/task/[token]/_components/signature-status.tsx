@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Clock, ExternalLink, MessageCircle } from "lucide-react"
 import { formatDate } from "@/lib/utils/format"
+import { buildWhatsappUrl, signLinkMessage } from "@/lib/utils/whatsapp"
 
 type Props = {
   status: string
@@ -10,6 +11,7 @@ type Props = {
   signLink: string
   contactMobile: string | null
   customerName: string | null
+  requestNumber: string
   deliveryDate: number | null
 }
 
@@ -20,23 +22,14 @@ export function SignatureStatus({
   signLink,
   contactMobile,
   customerName,
-  deliveryDate,
+  requestNumber,
 }: Props) {
   const isSigned = status === "signed"
 
-  function buildWhatsAppUrl() {
-    if (!contactMobile) return null
-    const phone = contactMobile.replace(/\D/g, "")
-    const lines = [
-      `Hello${customerName ? ` ${customerName}` : ""},`,
-      `Please sign the delivery document using the link below:`,
-      signLink,
-      deliveryDate ? `Delivery date: ${formatDate(deliveryDate)}` : null,
-    ].filter(Boolean).join("\n")
-    return `https://wa.me/${phone}?text=${encodeURIComponent(lines)}`
-  }
-
-  const waUrl = buildWhatsAppUrl()
+  const waUrl = buildWhatsappUrl(
+    contactMobile,
+    signLinkMessage({ customerName, requestNumber, signLink })
+  )
 
   if (isSigned) {
     return (

@@ -96,7 +96,14 @@
     "signatureRequests": "طلبات التوقيع",
     "createdOn": "أُنشئ في {date}",
     "mobile": "الجوال",
-    "city": "المدينة"
+    "city": "المدينة",
+    "logistics": "الشحن",
+    "origin": "الاستلام من",
+    "destination": "التسليم إلى",
+    "scheduledAt": "الموعد المحدد",
+    "save": "حفظ",
+    "notSet": "غير محدد",
+    "authorizedSignatory": "مفوّض بالتوقيع"
   },
   "tasks": {
     "title": "المهام",
@@ -133,7 +140,12 @@
     "linkCopied": "تم نسخ رابط المهمة",
     "photos": "الصور",
     "addPhotos": "إضافة صور",
-    "maxPhotos": "الحد الأقصى 10 صور، 5 ميغابايت لكل صورة"
+    "maxPhotos": "الحد الأقصى 10 صور، 5 ميغابايت لكل صورة",
+    "executionMode": "طريقة التنفيذ",
+    "manual": "مندوب خاص (رابط)",
+    "apiCourier": "شركة شحن (API)",
+    "whatsappPartner": "واتساب للمنفّذ",
+    "apiCourierSoon": "الربط عبر API قريباً"
   },
   "customers": {
     "title": "العملاء",
@@ -199,7 +211,12 @@
       "expired": "انتهت صلاحية رابط التوقيع.",
       "alreadySigned": "تم توقيع هذه الوثيقة مسبقاً.",
       "notActive": "رابط التوقيع غير نشط بعد.",
-      "cancelled": "تم إلغاء طلب التوقيع هذا."
+      "cancelled": "تم إلغاء طلب التوقيع هذا.",
+      "itemsCondition": "حالة الأصناف المستلمة",
+      "good": "سليم",
+      "damaged": "تالف",
+      "missing": "مفقود",
+      "receivedQty": "المستلم"
     }
   },
   "payments": {
@@ -254,7 +271,8 @@
     "auditHash": "بصمة التدقيق",
     "verifyAt": "تحقق من هذا المستند على",
     "scanToVerify": "امسح للتحقق",
-    "tamperNote": "هذه الشهادة محمية من التلاعب. أي تغيير في المستند يُبطل بصمة التدقيق أدناه."
+    "tamperNote": "هذه الشهادة محمية من التلاعب. أي تغيير في المستند يُبطل بصمة التدقيق أدناه.",
+    "condition": "الحالة"
   },
   "tracking": {
     "title": "تتبع طلبك",
@@ -289,7 +307,11 @@
     "statusUpdated": "تم تحديث الحالة",
     "requestResumed": "تم استئناف الطلب",
     "genericError": "حدث خطأ ما. حاول مرة أخرى.",
-    "networkError": "خطأ في الاتصال — تحقق من الشبكة وأعد المحاولة."
+    "networkError": "خطأ في الاتصال — تحقق من الشبكة وأعد المحاولة.",
+    "logisticsSaved": "تم تحديث بيانات الشحن",
+    "noMobile": "لا يوجد رقم جوال مسجّل لهذا المستلم",
+    "whatsappOpened": "جاري فتح واتساب…",
+    "conditionsSaved": "تم تسجيل حالة الأصناف"
   },
   "dashboard": {
     "title": "لوحة التحكم",
@@ -356,5 +378,15 @@
     "verified": "مستند موثّق",
     "verifyNote": "هذا التوقيع مُسجَّل بسجل تدقيق محمي من التلاعب.",
     "poweredBy": "كارا — شركة كارا لتقنية المعلومات"
+  },
+  "notifications": {
+    "title": "الإشعارات",
+    "empty": "لا توجد إشعارات",
+    "markAllRead": "تعليم الكل كمقروء",
+    "viewAll": "عرض الكل",
+    "taskAssigned": "طلب جديد رقم {requestNumber} تم تعيينه لك",
+    "customerSigned": "{customerName} وقّع سند التسليم للطلب {requestNumber}",
+    "authorizedSignoffPending": "بانتظار توقيع المفوّض للطلب {requestNumber}",
+    "fullySigned": "تم توقيع سند التسليم للطلب {requestNumber} بالكامل"
   }
 }

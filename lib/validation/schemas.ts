@@ -13,11 +13,19 @@ export const signatureDataSchema = z
   .max(2_800_000, "Signature image is too large")
   .refine((v) => v.startsWith("data:image/"), "Invalid signature format")
 
+export const itemConditionSchema = z.object({
+  requestItemId: nonEmpty(60),
+  condition: z.enum(["good", "damaged", "missing"]),
+  receivedQuantity: z.number().int().min(0).optional(),
+  notes: z.string().trim().max(500).optional(),
+})
+
 export const submitSignatureSchema = z.object({
   fullName: nonEmpty(200),
   mobile: z.string().trim().max(30).optional(),
   nationalId: z.string().trim().max(30).optional(),
   signatureData: signatureDataSchema,
+  itemConditions: z.array(itemConditionSchema).max(200).optional(),
 })
 
 export const signOnSiteSchema = z.object({
@@ -74,6 +82,7 @@ export const createTaskSchema = z.object({
   contractId: z.string().trim().max(60).optional(),
   contactId: z.string().trim().max(60).optional(),
   taskTypeId: z.string().trim().max(60).optional(),
+  executionMode: z.enum(["manual", "api_courier"]).optional(),
   notes: z.string().trim().max(1000).optional(),
 })
 

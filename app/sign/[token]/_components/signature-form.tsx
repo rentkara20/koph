@@ -10,16 +10,26 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SignatureCanvas, type SignatureCanvasHandle } from "./signature-canvas"
 
+type SignItem = {
+  id: string
+  description: string
+  quantity: number
+}
+
 type Props = {
   token: string
   requireNationalId: boolean
   documentName: string
   consentText: string
+  items: SignItem[]
 }
 
 type FieldKey = "fullName" | "nationalId" | "signature"
+type Condition = "good" | "damaged" | "missing"
 
-export function SignatureForm({ token, requireNationalId, consentText }: Props) {
+const CONDITIONS: Condition[] = ["good", "damaged", "missing"]
+
+export function SignatureForm({ token, requireNationalId, consentText, items }: Props) {
   const t = useTranslations("signatures.signing")
   const tc = useTranslations("common")
   const canvasRef = useRef<SignatureCanvasHandle>(null)
@@ -27,6 +37,9 @@ export function SignatureForm({ token, requireNationalId, consentText }: Props) 
   const [fullName, setFullName] = useState("")
   const [nationalId, setNationalId] = useState("")
   const [mobile, setMobile] = useState("")
+  const [conditions, setConditions] = useState<Record<string, Condition>>(
+    () => Object.fromEntries(items.map((i) => [i.id, "good" as Condition]))
+  )
   const [consentAccepted, setConsentAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [invalid, setInvalid] = useState<Set<FieldKey>>(new Set())
@@ -62,6 +75,10 @@ export function SignatureForm({ token, requireNationalId, consentText }: Props) 
       mobile: mobile.trim() || undefined,
       nationalId: nationalId.trim() || undefined,
       signatureData: canvasRef.current?.toDataURL() ?? "",
+      itemConditions: items.map((i) => ({
+        requestItemId: i.id,
+        condition: conditions[i.id] ?? "good",
+      })),
     })
     setLoading(false)
 
@@ -140,6 +157,49 @@ export function SignatureForm({ token, requireNationalId, consentText }: Props) 
             placeholder="05XXXXXXXX"
           />
         </div>
+
+        {/* Per-item condition */}
+        {items.length > 0 && (
+          <div className="space-y-2">
+            <Label className="text-sm">{t("itemsCondition")}</Label>
+            <ul className="divide-y rounded-lg border border-border">
+              {items.map((item) => (
+                <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {item.description}
+                    {item.quantity > 1 && (
+                      <span className="text-muted-foreground"> ×{item.quantity}</span>
+                    )}
+                  </span>
+                  <div className="flex shrink-0 gap-1">
+                    {CONDITIONS.map((c) => {
+                      const active = (conditions[item.id] ?? "good") === c
+                      const tone =
+                        c === "good"
+                          ? "data-[on=true]:bg-emerald-600"
+                          : c === "damaged"
+                            ? "data-[on=true]:bg-amber-600"
+                            : "data-[on=true]:bg-destructive"
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          data-on={active}
+                          onClick={() =>
+                            setConditions((prev) => ({ ...prev, [item.id]: c }))
+                          }
+                          className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors data-[on=true]:border-transparent data-[on=true]:text-white ${tone}`}
+                        >
+                          {t(c)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* Signature pad */}
         <SignatureCanvas

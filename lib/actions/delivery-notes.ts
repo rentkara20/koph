@@ -9,6 +9,7 @@ import {
   requestItems,
   requests,
   signatureRequests,
+  signatureItemConditions,
 } from "@/lib/db/schema"
 
 export type DeliveryNoteData = {
@@ -43,6 +44,8 @@ export type DeliveryNoteData = {
     serialNumber: string | null
     quantity: number
     accessories: string | null
+    condition: "good" | "damaged" | "missing" | null
+    receivedQuantity: number | null
   }[]
   verificationId: string | null
   signature: {
@@ -94,7 +97,7 @@ export async function getDeliveryNoteData(
     requestRow = r ? { requestNumber: r.requestNumber, quoteNumber: r.quoteNumber, deliveryDate: r.deliveryDate } : null
     receiverContactId = r?.receiverContactId ?? null
 
-    items = await db
+    const rawItems = await db
       .select({
         id: requestItems.id,
         description: requestItems.description,
@@ -106,6 +109,22 @@ export async function getDeliveryNoteData(
       })
       .from(requestItems)
       .where(eq(requestItems.requestId, sig.requestId))
+
+    // Merge the signer's per-item condition acknowledgement (if any).
+    const conditionRows = await db
+      .select({
+        requestItemId: signatureItemConditions.requestItemId,
+        condition: signatureItemConditions.condition,
+        receivedQuantity: signatureItemConditions.receivedQuantity,
+      })
+      .from(signatureItemConditions)
+      .where(eq(signatureItemConditions.signatureRequestId, sig.id))
+    const conditionMap = new Map(conditionRows.map((c) => [c.requestItemId, c]))
+
+    items = rawItems.map((i) => {
+      const c = conditionMap.get(i.id)
+      return { ...i, condition: c?.condition ?? null, receivedQuantity: c?.receivedQuantity ?? null }
+    })
   }
 
   const [contactRow] = receiverContactId

@@ -26,6 +26,7 @@ type Contact = {
   address: string | null
   mapsLink: string | null
   notes: string | null
+  isAuthorizedSignatory: boolean
 }
 
 function ContactForm({
@@ -47,6 +48,7 @@ function ContactForm({
   const [address, setAddress] = useState(initial?.address ?? "")
   const [mapsLink, setMapsLink] = useState(initial?.mapsLink ?? "")
   const [notes, setNotes] = useState(initial?.notes ?? "")
+  const [isAuthorizedSignatory, setIsAuthorizedSignatory] = useState(initial?.isAuthorizedSignatory ?? false)
 
   return (
     <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
@@ -85,6 +87,20 @@ function ContactForm({
           <Label className="text-xs">Notes</Label>
           <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any special instructions…" />
         </div>
+        <label className="sm:col-span-2 flex items-start gap-2 text-sm cursor-pointer">
+          <input
+            type="checkbox"
+            checked={isAuthorizedSignatory}
+            onChange={(e) => setIsAuthorizedSignatory(e.target.checked)}
+            className="mt-0.5 size-4 accent-kara-purple"
+          />
+          <span>
+            Authorised to sign delivery notes
+            <span className="block text-xs text-muted-foreground">
+              If the receiver is not authorised, a second signing stage is sent to an authorised signatory.
+            </span>
+          </span>
+        </label>
       </div>
       <div className="flex gap-2 justify-end">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
@@ -95,7 +111,7 @@ function ContactForm({
           type="button"
           size="sm"
           disabled={saving || !name.trim()}
-          onClick={() => onSave({ name, role, mobile, email, city, address, mapsLink, notes })}
+          onClick={() => onSave({ name, role, mobile, email, city, address, mapsLink, notes, isAuthorizedSignatory })}
         >
           <Check className="size-3.5" />
           {saving ? "Saving…" : "Save"}
@@ -158,6 +174,7 @@ export function ContactsSection({
                 address: data.address ?? null,
                 mapsLink: data.mapsLink ?? null,
                 notes: data.notes ?? null,
+                isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
               }
             : c
         )
@@ -207,7 +224,14 @@ export function ContactsSection({
               <div key={c.id} className="rounded-lg border p-3 group">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium text-sm">{c.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm">{c.name}</p>
+                      {c.isAuthorizedSignatory && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                          Authorised signatory
+                        </span>
+                      )}
+                    </div>
                     {c.role && <p className="text-xs text-muted-foreground">{c.role}</p>}
                   </div>
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

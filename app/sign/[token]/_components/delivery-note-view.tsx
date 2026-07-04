@@ -174,6 +174,21 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
                   <td style={{ padding: "0 2mm", height: "5mm", verticalAlign: "middle" }}>
                     {item.description}
                     {(item.brand || item.model) && ` — ${[item.brand, item.model].filter(Boolean).join(" ")}`}
+                    {item.condition && item.condition !== "good" && (
+                      <span
+                        style={{
+                          marginInlineStart: "2mm",
+                          padding: "0 1.2mm",
+                          borderRadius: "1mm",
+                          fontSize: "6.5pt",
+                          fontWeight: 700,
+                          color: "#fff",
+                          background: item.condition === "damaged" ? "#B45309" : "#B91C1C",
+                        }}
+                      >
+                        {item.condition === "damaged" ? "DAMAGED / تالف" : "MISSING / مفقود"}
+                      </span>
+                    )}
                   </td>
                   <td style={{ padding: "0 2mm", height: "5mm", verticalAlign: "middle", textAlign: "center", fontWeight: 700 }}>
                     {item.quantity}

@@ -107,6 +107,11 @@ export const customerContacts = sqliteTable("customer_contact", {
   address: text("address"),
   mapsLink: text("maps_link"),
   notes: text("notes"),
+  // Whether this contact is legally authorised to sign delivery notes.
+  // A receiver who is not authorised triggers a second signing stage.
+  isAuthorizedSignatory: integer("is_authorized_signatory", { mode: "boolean" })
+    .notNull()
+    .default(false),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 })
@@ -148,6 +153,11 @@ export const requests = sqliteTable("request", {
     .notNull()
     .default(false),
   receiverContactId: text("receiver_contact_id").references(() => customerContacts.id, { onDelete: "set null" }),
+  // Logistics — where the courier picks up and where it is delivered
+  origin: text("origin"),
+  destination: text("destination"),
+  // Agreed slot (proposed over WhatsApp in v1, stored free-form epoch when confirmed)
+  scheduledAt: integer("scheduled_at"),
   notes: text("notes"),
   createdBy: text("created_by").references(() => users.id),
   createdAt: integer("created_at").notNull().$defaultFn(now),
@@ -229,6 +239,10 @@ export const partnerTasks = sqliteTable("partner_task", {
   contractId: text("contract_id").references(() => partnerContracts.id),
   contactId: text("contact_id").references(() => customerContacts.id, { onDelete: "set null" }),
   taskTypeId: text("task_type_id").references(() => requestTypes.id),
+  // How the task is executed: manual (magic link UI) or api_courier (Sesame etc.)
+  executionMode: text("execution_mode", { enum: ["manual", "api_courier"] })
+    .notNull()
+    .default("manual"),
   // Magic link
   taskToken: text("task_token").notNull().unique(),
   taskTokenExpiresAt: integer("task_token_expires_at").notNull(),
@@ -327,6 +341,14 @@ export const signatureRequests = sqliteTable("signature_request", {
   customerId: text("customer_id")
     .notNull()
     .references(() => customers.id),
+  // Two-stage signing: receiver acknowledges, authorised signatory finalises.
+  signatoryRole: text("signatory_role", { enum: ["receiver", "authorized"] })
+    .notNull()
+    .default("receiver"),
+  // Stage-2 requests point back at the receiver's stage-1 request.
+  parentSignatureRequestId: text("parent_signature_request_id"),
+  // The customer contact expected to sign this request (receiver or authorised).
+  signatoryContactId: text("signatory_contact_id").references(() => customerContacts.id, { onDelete: "set null" }),
   documentName: text("document_name").notNull(),
   documentUrl: text("document_url"),
   secureToken: text("secure_token").notNull().unique(),
@@ -394,6 +416,41 @@ export const customerSignatures = sqliteTable("customer_signature", {
   userAgent: text("user_agent"),
   auditDataHash: text("audit_data_hash"),
 })
+
+// ─── Signature item conditions (per-item acknowledgement on signing) ─────────
+
+export const signatureItemConditions = sqliteTable("signature_item_condition", {
+  id: text("id").primaryKey(),
+  signatureRequestId: text("signature_request_id")
+    .notNull()
+    .references(() => signatureRequests.id, { onDelete: "cascade" }),
+  requestItemId: text("request_item_id")
+    .notNull()
+    .references(() => requestItems.id, { onDelete: "cascade" }),
+  condition: text("condition", { enum: ["good", "damaged", "missing"] })
+    .notNull()
+    .default("good"),
+  receivedQuantity: integer("received_quantity"),
+  notes: text("notes"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+}, (t) => [index("signature_item_condition_sig_idx").on(t.signatureRequestId)])
+
+// ─── Notifications (in-app bell for admin + partner users) ───────────────────
+
+export const notifications = sqliteTable("notification", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(), // e.g. "task_assigned", "customer_signed"
+  i18nKey: text("i18n_key").notNull(),
+  i18nData: text("i18n_data"), // JSON — interpolation data
+  linkUrl: text("link_url"), // where clicking the notification navigates
+  entityType: text("entity_type"),
+  entityId: text("entity_id"),
+  readAt: integer("read_at"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+}, (t) => [index("notification_user_idx").on(t.userId, t.readAt)])
 
 // ─── Attachments ─────────────────────────────────────────────────────────────
 
@@ -517,3 +574,7 @@ export type PaymentBatch = typeof paymentBatches.$inferSelect
 export type PartnerPayment = typeof partnerPayments.$inferSelect
 
 export type CustomerContact = typeof customerContacts.$inferSelect
+export type SignatureItemCondition = typeof signatureItemConditions.$inferSelect
+export type NewSignatureItemCondition = typeof signatureItemConditions.$inferInsert
+export type Notification = typeof notifications.$inferSelect
+export type NewNotification = typeof notifications.$inferInsert

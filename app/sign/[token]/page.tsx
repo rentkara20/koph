@@ -236,6 +236,7 @@ export default async function SignPage({
                 requireNationalId={sig.requireNationalId}
                 documentName={sig.documentName}
                 consentText={consentText}
+                items={items.map((i) => ({ id: i.id, description: i.description, quantity: i.quantity }))}
               />
             )}
           </>

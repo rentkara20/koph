@@ -16,6 +16,7 @@ export type ContactInput = {
   address?: string
   mapsLink?: string
   notes?: string
+  isAuthorizedSignatory?: boolean
 }
 
 export async function getCustomerContacts(customerId: string) {
@@ -51,6 +52,7 @@ export async function createCustomerContact(
     address: data.address?.trim() || null,
     mapsLink: data.mapsLink?.trim() || null,
     notes: data.notes?.trim() || null,
+    isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
   })
 
   revalidatePath(`/admin/customers/${customerId}`)
@@ -77,6 +79,7 @@ export async function updateCustomerContact(
       address: data.address?.trim() || null,
       mapsLink: data.mapsLink?.trim() || null,
       notes: data.notes?.trim() || null,
+      isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
       updatedAt: Date.now(),
     })
     .where(eq(customerContacts.id, id))

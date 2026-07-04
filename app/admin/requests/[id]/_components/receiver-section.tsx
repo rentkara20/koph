@@ -92,7 +92,7 @@ export function ReceiverSection({ requestId, customerId, contacts, receiverConta
               contacts.map((c) => (
                 <DropdownMenuItem
                   key={c.id}
-                  onSelect={() => select(c.id)}
+                  onClick={() => select(c.id)}
                   className="flex flex-col items-start gap-0"
                 >
                   <span className="font-medium">{c.name}</span>

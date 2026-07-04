@@ -400,10 +400,61 @@ export async function setRequestReceiver(
   const session = await getSession()
   if (!session) return { error: "Unauthorized" }
 
-  await db
-    .update(requests)
-    .set({ receiverContactId: contactId, updatedAt: Date.now() })
-    .where(eq(requests.id, requestId))
+  try {
+    await db
+      .update(requests)
+      .set({ receiverContactId: contactId, updatedAt: Date.now() })
+      .where(eq(requests.id, requestId))
+
+    await logActivity({
+      entityType: "request",
+      entityId: requestId,
+      action: "receiver_set",
+      i18nKey: "activity.receiverSet",
+      performedBy: session.user.id,
+    })
+  } catch {
+    return { error: "Failed to update receiver" }
+  }
+
+  revalidatePath(`/admin/requests/${requestId}`)
+  return {}
+}
+
+export type LogisticsInput = {
+  origin?: string | null
+  destination?: string | null
+  scheduledAt?: number | null
+}
+
+export async function setRequestLogistics(
+  requestId: string,
+  data: LogisticsInput
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  try {
+    await db
+      .update(requests)
+      .set({
+        origin: data.origin?.trim() || null,
+        destination: data.destination?.trim() || null,
+        scheduledAt: data.scheduledAt ?? null,
+        updatedAt: Date.now(),
+      })
+      .where(eq(requests.id, requestId))
+
+    await logActivity({
+      entityType: "request",
+      entityId: requestId,
+      action: "logistics_updated",
+      i18nKey: "activity.logisticsUpdated",
+      performedBy: session.user.id,
+    })
+  } catch {
+    return { error: "Failed to update logistics" }
+  }
 
   revalidatePath(`/admin/requests/${requestId}`)
   return {}

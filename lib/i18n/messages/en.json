@@ -96,7 +96,14 @@
     "signatureRequests": "Signature requests",
     "createdOn": "Created {date}",
     "mobile": "Mobile",
-    "city": "City"
+    "city": "City",
+    "logistics": "Logistics",
+    "origin": "Pickup from",
+    "destination": "Deliver to",
+    "scheduledAt": "Scheduled time",
+    "save": "Save",
+    "notSet": "Not set",
+    "authorizedSignatory": "Authorised to sign"
   },
   "tasks": {
     "title": "Tasks",
@@ -133,7 +140,12 @@
     "linkCopied": "Task link copied",
     "photos": "Photos",
     "addPhotos": "Add photos",
-    "maxPhotos": "Maximum 10 photos, 5MB each"
+    "maxPhotos": "Maximum 10 photos, 5MB each",
+    "executionMode": "Execution",
+    "manual": "Own courier (link)",
+    "apiCourier": "Shipping company (API)",
+    "whatsappPartner": "WhatsApp partner",
+    "apiCourierSoon": "API dispatch coming soon"
   },
   "customers": {
     "title": "Customers",
@@ -199,7 +211,12 @@
       "expired": "This signing link has expired.",
       "alreadySigned": "This document has already been signed.",
       "notActive": "This signing link is not active yet.",
-      "cancelled": "This signature request has been cancelled."
+      "cancelled": "This signature request has been cancelled.",
+      "itemsCondition": "Condition of received items",
+      "good": "Good",
+      "damaged": "Damaged",
+      "missing": "Missing",
+      "receivedQty": "Received"
     }
   },
   "payments": {
@@ -254,7 +271,8 @@
     "auditHash": "Audit hash",
     "verifyAt": "Verify this document at",
     "scanToVerify": "Scan to verify",
-    "tamperNote": "This certificate is tamper-evident. Any change to the document invalidates the audit hash below."
+    "tamperNote": "This certificate is tamper-evident. Any change to the document invalidates the audit hash below.",
+    "condition": "Condition"
   },
   "tracking": {
     "title": "Track your request",
@@ -289,7 +307,11 @@
     "statusUpdated": "Status updated",
     "requestResumed": "Request resumed",
     "genericError": "Something went wrong. Please try again.",
-    "networkError": "Network error — check your connection and retry."
+    "networkError": "Network error — check your connection and retry.",
+    "logisticsSaved": "Logistics updated",
+    "noMobile": "No mobile number on file for this contact",
+    "whatsappOpened": "Opening WhatsApp…",
+    "conditionsSaved": "Item conditions recorded"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -356,5 +378,15 @@
     "verified": "Verified document",
     "verifyNote": "This signature is recorded with a tamper-evident audit trail.",
     "poweredBy": "KARA — شركة كارا لتقنية المعلومات"
+  },
+  "notifications": {
+    "title": "Notifications",
+    "empty": "No notifications yet",
+    "markAllRead": "Mark all as read",
+    "viewAll": "View all",
+    "taskAssigned": "New task for request {requestNumber} assigned to you",
+    "customerSigned": "{customerName} signed the delivery note for {requestNumber}",
+    "authorizedSignoffPending": "Authorised sign-off pending for {requestNumber}",
+    "fullySigned": "Delivery note for {requestNumber} is fully signed"
   }
 }

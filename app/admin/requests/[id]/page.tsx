@@ -19,6 +19,7 @@ import { TasksSection } from "./_components/tasks-section"
 import { SignaturesSection } from "./_components/signatures-section"
 import { ItemsSection } from "./_components/items-section"
 import { ReceiverSection } from "./_components/receiver-section"
+import { LogisticsSection } from "./_components/logistics-section"
 import { NextStepBanner } from "./_components/next-step-banner"
 import { cn } from "@/lib/utils"
 
@@ -189,6 +190,21 @@ export default async function RequestDetailPage({
             </CardContent>
           </Card>
 
+          {/* Logistics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t("logistics")}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <LogisticsSection
+                requestId={request.id}
+                origin={request.origin ?? null}
+                destination={request.destination ?? null}
+                scheduledAt={request.scheduledAt ?? null}
+              />
+            </CardContent>
+          </Card>
+
           {/* Items */}
           <Card>
             <CardHeader>
@@ -211,6 +227,7 @@ export default async function RequestDetailPage({
             <CardContent>
               <TasksSection
                 requestId={request.id}
+                requestNumber={request.requestNumber}
                 tasks={tasks}
                 partners={partnersWithContracts}
                 contacts={contacts}

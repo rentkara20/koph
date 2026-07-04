@@ -4,8 +4,9 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, Copy, Check, RefreshCw, X, Trash2 } from "lucide-react"
+import { Plus, Copy, Check, RefreshCw, X, Trash2, MessageCircle } from "lucide-react"
 import { createTask, signOffTask, cancelTask, regenerateTaskLink, deleteTask } from "@/lib/actions/tasks"
+import { buildWhatsappUrl, partnerAssignmentMessage, taskLink } from "@/lib/utils/whatsapp"
 import { addServiceToTask, removeServiceFromTask } from "@/lib/actions/task-services"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -41,6 +42,8 @@ type TaskRow = {
   createdAt: number
   partnerId: string
   partnerName: string | null
+  partnerMobile: string | null
+  executionMode: string
   contractId: string | null
   pricingModel: string | null
   unitPrice: number | null
@@ -280,6 +283,7 @@ function TaskServiceManager({
 
 export function TasksSection({
   requestId,
+  requestNumber,
   tasks,
   partners,
   contacts,
@@ -287,6 +291,7 @@ export function TasksSection({
   allServices,
 }: {
   requestId: string
+  requestNumber: string
   tasks: TaskRow[]
   partners: PartnerData[]
   contacts: ContactOption[]
@@ -315,6 +320,7 @@ export function TasksSection({
         partnerId: fd.get("partnerId") as string,
         contractId: (fd.get("contractId") as string) || undefined,
         contactId: (fd.get("contactId") as string) || undefined,
+        executionMode: ((fd.get("executionMode") as string) || "manual") as "manual" | "api_courier",
         notes: (fd.get("notes") as string) || undefined,
       })
       if (result.error) { setError(result.error); toast.error(result.error); setLoading(false); return }
@@ -408,6 +414,34 @@ export function TasksSection({
                   {/* Copy link for active tasks */}
                   {isActive && !isExpired && (
                     <CopyTaskLink token={task.taskToken} />
+                  )}
+
+                  {/* WhatsApp the task link to the partner */}
+                  {isActive && !isExpired && task.executionMode === "manual" && (() => {
+                    const url = buildWhatsappUrl(
+                      task.partnerMobile,
+                      partnerAssignmentMessage({
+                        partnerName: task.partnerName ?? "",
+                        requestNumber,
+                        taskLink: taskLink(task.taskToken),
+                      })
+                    )
+                    if (!url) return null
+                    return (
+                      <a
+                        href={url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 transition-colors"
+                      >
+                        <MessageCircle className="size-3" />
+                        {t("whatsappPartner")}
+                      </a>
+                    )
+                  })()}
+
+                  {task.executionMode === "api_courier" && isActive && (
+                    <span className="text-xs text-muted-foreground italic">{t("apiCourierSoon")}</span>
                   )}
 
                   {/* Regenerate if expired and still in actionable state */}
@@ -528,6 +562,14 @@ export function TasksSection({
                 </Select>
               </div>
             )}
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("executionMode")}</Label>
+              <Select name="executionMode" defaultValue="manual">
+                <option value="manual">{t("manual")}</option>
+                <option value="api_courier">{t("apiCourier")}</option>
+              </Select>
+            </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs">{tCommon("notes")} <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>

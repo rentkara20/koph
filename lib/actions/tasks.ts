@@ -17,6 +17,7 @@ import {
 } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
+import { notify } from "@/lib/utils/notify"
 import { getSession, getSessionWithRole } from "@/lib/auth/session"
 import {
   createTaskSchema,
@@ -75,6 +76,7 @@ export async function createTask(
     contractId?: string
     contactId?: string
     taskTypeId?: string
+    executionMode?: "manual" | "api_courier"
     notes?: string
   }
 ): Promise<ActionResult> {
@@ -95,6 +97,7 @@ export async function createTask(
     contractId: data.contractId || null,
     contactId: data.contactId || null,
     taskTypeId: data.taskTypeId || null,
+    executionMode: data.executionMode ?? "manual",
     taskToken,
     taskTokenExpiresAt,
     status: "pending",
@@ -110,6 +113,32 @@ export async function createTask(
     i18nKey: "activity.taskAssigned",
     performedBy: session.user.id,
   })
+
+  // Notify the partner in-app when they have a portal login linked.
+  try {
+    const [partner] = await db
+      .select({ userId: partners.userId })
+      .from(partners)
+      .where(eq(partners.id, data.partnerId))
+    const [request] = await db
+      .select({ requestNumber: requests.requestNumber })
+      .from(requests)
+      .where(eq(requests.id, requestId))
+
+    if (partner?.userId) {
+      await notify({
+        userId: partner.userId,
+        type: "task_assigned",
+        i18nKey: "notifications.taskAssigned",
+        i18nData: { requestNumber: request?.requestNumber ?? "" },
+        linkUrl: `/task/${taskToken}`,
+        entityType: "partner_task",
+        entityId: id,
+      })
+    }
+  } catch {
+    // Notification failures must not block task assignment.
+  }
 
   await syncRequestStatus(requestId)
   revalidatePath(`/admin/requests/${requestId}`)
@@ -137,6 +166,8 @@ export async function getTasksForRequest(requestId: string) {
       createdAt: partnerTasks.createdAt,
       partnerId: partnerTasks.partnerId,
       partnerName: partners.name,
+      partnerMobile: partners.mobile,
+      executionMode: partnerTasks.executionMode,
       contractId: partnerTasks.contractId,
       pricingModel: partnerContracts.pricingModel,
       unitPrice: partnerContracts.unitPrice,

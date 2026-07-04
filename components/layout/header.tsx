@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { LanguageSwitcher } from "./language-switcher"
+import { NotificationBell } from "./notification-bell"
 import { authClient } from "@/lib/auth/client"
 import { useRouter } from "next/navigation"
 
@@ -60,6 +61,7 @@ export function Header({ userName, userRole }: HeaderProps) {
 
       <div className="flex items-center gap-3">
         <LanguageSwitcher />
+        <NotificationBell />
 
         <DropdownMenu>
           <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-full outline-none hover:ring-2 hover:ring-ring hover:ring-offset-1">

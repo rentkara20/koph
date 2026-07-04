@@ -6,6 +6,7 @@ import { getServicesForTask } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { formatDate } from "@/lib/utils/format"
+import { buildWhatsappUrl, customerGreetingMessage } from "@/lib/utils/whatsapp"
 import { Badge } from "@/components/ui/badge"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { TaskActions } from "./_components/task-actions"
@@ -57,6 +58,11 @@ export default async function TaskPage({
 
   const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
   const canAct = !isTerminal && !isExpired
+
+  // Short items summary for the customer WhatsApp greeting.
+  const itemsSummary = items
+    .map((i) => `${i.description}${i.quantity > 1 ? ` ×${i.quantity}` : ""}`)
+    .join("، ")
 
   return (
     <div className="min-h-svh bg-muted/30">
@@ -234,20 +240,20 @@ export default async function TaskPage({
                         </a>
                       )}
                       {c.mobile && (() => {
-                        const phone = c.mobile.replace(/\D/g, "")
-                        const lines = [
-                          `Hello ${c.name},`,
-                          `This is a delivery notification from Rent Kara.`,
-                          ``,
-                          `Customer: ${customer?.name ?? ""}`,
-                          request.deliveryDate ? `Delivery date: ${formatDate(request.deliveryDate)}` : null,
-                          c.city ? `City: ${c.city}` : null,
-                          c.address ? `Address: ${c.address}` : null,
-                          c.mapsLink ? `Map: ${c.mapsLink}` : null,
-                        ].filter(Boolean).join("\n")
+                        const waUrl = buildWhatsappUrl(
+                          c.mobile,
+                          customerGreetingMessage({
+                            courierName: "مندوب كارا",
+                            customerName: c.name,
+                            requestNumber: request.requestNumber,
+                            itemsSummary,
+                            signLink: sigData?.signLink ?? null,
+                          })
+                        )
+                        if (!waUrl) return null
                         return (
                           <a
-                            href={`https://wa.me/${phone}?text=${encodeURIComponent(lines)}`}
+                            href={waUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1 text-xs text-green-600 font-medium hover:text-green-700"
@@ -365,6 +371,7 @@ export default async function TaskPage({
             signLink={sigData.signLink}
             contactMobile={linkedContact?.mobile ?? customerContacts[0]?.mobile ?? customer?.mobile ?? null}
             customerName={customer?.name ?? null}
+            requestNumber={request.requestNumber}
             deliveryDate={request.deliveryDate ?? null}
           />
         )}
