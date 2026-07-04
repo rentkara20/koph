@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import { generateBatch } from "@/lib/actions/payments"
 import { Button } from "@/components/ui/button"
@@ -18,6 +20,7 @@ type PendingRow = {
 
 export function GenerateBatchForm({ pending }: { pending: PendingRow[] }) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -31,16 +34,23 @@ export function GenerateBatchForm({ pending }: { pending: PendingRow[] }) {
 
     const [partnerId, period] = combo.split("|")
     setLoading(true)
-    const result = await generateBatch(partnerId, period)
-    setLoading(false)
+    try {
+      const result = await generateBatch(partnerId, period)
+      setLoading(false)
 
-    if (result.error) {
-      setError(result.error)
-      return
+      if (result.error) {
+        setError(result.error)
+        toast.error(result.error)
+        return
+      }
+
+      toast.success(tToast("batchGenerated"))
+      setOpen(false)
+      router.push(`/admin/payments/${result.id}`)
+    } catch {
+      setLoading(false)
+      toast.error(tToast("genericError"))
     }
-
-    setOpen(false)
-    router.push(`/admin/payments/${result.id}`)
   }
 
   if (!open) {

@@ -2,18 +2,28 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
 import { deleteSignatureRequest } from "@/lib/actions/signatures"
 
 export function SignatureDeleteButton({ id }: { id: string }) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [confirming, setConfirming] = useState(false)
   const [loading, setLoading] = useState(false)
 
   async function handleDelete() {
     setLoading(true)
-    await deleteSignatureRequest(id)
-    router.refresh()
+    try {
+      const result = await deleteSignatureRequest(id)
+      if (result.error) { toast.error(result.error); setLoading(false); return }
+      toast.success(tToast("deleted"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+      setLoading(false)
+    }
   }
 
   if (confirming) {

@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Plus, Pencil, Trash2, MapPin, Phone, Mail, Check, X } from "lucide-react"
 import {
   createCustomerContact,
@@ -111,6 +113,7 @@ export function ContactsSection({
   initialContacts: Contact[]
 }) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [contacts, setContacts] = useState<Contact[]>(initialContacts)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addingNew, setAddingNew] = useState(false)
@@ -123,11 +126,13 @@ export function ContactsSection({
     setError("")
     try {
       const result = await createCustomerContact(customerId, data)
-      if (result.error) { setError(result.error); return }
+      if (result.error) { setError(result.error); toast.error(result.error); return }
+      toast.success(tToast("created"))
       setAddingNew(false)
       router.refresh()
     } catch {
       setError("Failed to save. Please try again.")
+      toast.error(tToast("genericError"))
     } finally {
       setSaving(false)
     }
@@ -138,7 +143,8 @@ export function ContactsSection({
     setError("")
     try {
       const result = await updateCustomerContact(id, customerId, data)
-      if (result.error) { setError(result.error); return }
+      if (result.error) { setError(result.error); toast.error(result.error); return }
+      toast.success(tToast("updated"))
       setContacts((prev) =>
         prev.map((c) =>
           c.id === id
@@ -159,6 +165,7 @@ export function ContactsSection({
       setEditingId(null)
     } catch {
       setError("Failed to save. Please try again.")
+      toast.error(tToast("genericError"))
     } finally {
       setSaving(false)
     }
@@ -167,9 +174,16 @@ export function ContactsSection({
   async function handleDelete(id: string) {
     if (!confirm("Delete this contact?")) return
     setDeletingId(id)
-    await deleteCustomerContact(id, customerId)
-    setContacts((prev) => prev.filter((c) => c.id !== id))
-    setDeletingId(null)
+    try {
+      const result = await deleteCustomerContact(id, customerId)
+      if (result?.error) { setError(result.error); toast.error(result.error); setDeletingId(null); return }
+      toast.success(tToast("deleted"))
+      setContacts((prev) => prev.filter((c) => c.id !== id))
+    } catch {
+      toast.error(tToast("genericError"))
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   return (

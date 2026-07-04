@@ -1,17 +1,19 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
+import { getTranslations } from "next-intl/server"
 import { getTaskByToken, getTaskPhotos } from "@/lib/actions/tasks"
 import { getServicesForTask } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
+import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { TaskActions } from "./_components/task-actions"
 import { PhotoUpload } from "./_components/photo-upload"
 import { TaskChecklist } from "./_components/task-checklist"
 import { SignatureStatus } from "./_components/signature-status"
 import { OnSiteSigningFlow } from "./_components/on-site-signing"
-import { Building2, Phone, MapPin, Mail, MessageCircle } from "lucide-react"
+import { Phone, MapPin, Mail, MessageCircle } from "lucide-react"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   pending: "outline",
@@ -24,24 +26,20 @@ const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "succ
   cancelled: "secondary",
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  pending: "Pending acceptance",
-  accepted: "Accepted",
-  in_progress: "In progress",
-  pending_signoff: "Awaiting sign-off",
-  closed: "Closed",
-  rejected: "Rejected",
-  failed: "Failed",
-  cancelled: "Cancelled",
-}
-
 export default async function TaskPage({
   params,
 }: {
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const data = await getTaskByToken(token)
+  const [data, t, tStatus, tReq, tCust, tPortal] = await Promise.all([
+    getTaskByToken(token),
+    getTranslations("tasks"),
+    getTranslations("tasks.status"),
+    getTranslations("requests"),
+    getTranslations("customers"),
+    getTranslations("portal"),
+  ])
 
   if (!data) notFound()
 
@@ -65,15 +63,15 @@ export default async function TaskPage({
       {/* Header */}
       <div className="bg-background border-b sticky top-0 z-10">
         <div className="flex items-center gap-2.5 px-4 py-3 max-w-lg mx-auto">
-          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground">
-            <Building2 className="h-4 w-4 text-background" />
+          <Image src="/kara-logo.png" alt="KARA" width={74} height={32} className="h-7 w-auto dark:hidden" priority />
+          <Image src="/kara-logo-light.png" alt="KARA" width={74} height={32} className="hidden h-7 w-auto dark:block" priority />
+          <span className="font-mono text-xs text-muted-foreground">{request.requestNumber}</span>
+          <div className="ms-auto flex items-center gap-2">
+            <Badge variant={TASK_STATUS_VARIANT[task.status] ?? "outline"}>
+              {tStatus(task.status)}
+            </Badge>
+            <LocaleToggle />
           </div>
-          <span className="font-semibold text-sm">Rent Kara</span>
-          <span className="text-muted-foreground text-sm mx-1">·</span>
-          <span className="font-mono text-sm text-muted-foreground">{request.requestNumber}</span>
-          <Badge variant={TASK_STATUS_VARIANT[task.status] ?? "outline"} className="ml-auto">
-            {STATUS_LABEL[task.status] ?? task.status}
-          </Badge>
         </div>
       </div>
 
@@ -81,43 +79,43 @@ export default async function TaskPage({
         {/* Expired / terminal banners */}
         {isExpired && !isTerminal && (
           <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
-            This task link has expired. Contact the operations team to get a new link.
+            {tPortal("expired")}
           </div>
         )}
         {task.status === "closed" && (
           <div className="rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-800">
-            ✓ Task completed and signed off.
+            ✓ {tPortal("allDone")}
           </div>
         )}
         {task.status === "pending_signoff" && (
           <div className="rounded-lg bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800">
-            Task submitted. Waiting for the operations team to sign off.
+            {tPortal("done")}
           </div>
         )}
         {task.status === "rejected" && (
           <div className="rounded-lg bg-muted border px-4 py-3 text-sm text-muted-foreground">
-            You rejected this task.
+            {tPortal("rejected")}
           </div>
         )}
         {task.status === "cancelled" && (
           <div className="rounded-lg bg-muted border px-4 py-3 text-sm text-muted-foreground">
-            This task has been cancelled by the operations team.
+            {tPortal("failed")}
           </div>
         )}
         {task.status === "failed" && task.failureReason && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
-            Task marked as failed: {task.failureReason.replace(/_/g, " ")}
+            {t(`failureReasons.${task.failureReason}`)}
             {task.failureNotes ? `. ${task.failureNotes}` : ""}
           </div>
         )}
 
         {/* Request info card */}
         <div className="rounded-xl bg-background border p-4 space-y-3">
-          <h2 className="font-semibold">{requestType?.nameEn ?? "Task"}</h2>
+          <h2 className="font-semibold">{requestType?.nameEn ?? tPortal("yourTask")}</h2>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
-              <p className="text-xs text-muted-foreground">Customer</p>
+              <p className="text-xs text-muted-foreground">{tReq("customer")}</p>
               <p className="font-medium">{customer?.name ?? "—"}</p>
               {customer?.mobile && (
                 <a
@@ -131,13 +129,13 @@ export default async function TaskPage({
             </div>
             {(linkedContact?.city ?? customer?.city) && (
               <div>
-                <p className="text-xs text-muted-foreground">City</p>
+                <p className="text-xs text-muted-foreground">{tCust("city")}</p>
                 <p className="font-medium">{linkedContact?.city ?? customer?.city}</p>
               </div>
             )}
             {customer?.address && (
               <div className="col-span-2">
-                <p className="text-xs text-muted-foreground">Address</p>
+                <p className="text-xs text-muted-foreground">{tCust("address")}</p>
                 <p className="font-medium">{customer.address}</p>
                 {customer.mapsLink && (
                   <a
@@ -153,13 +151,13 @@ export default async function TaskPage({
             )}
             {request.deliveryDate && (
               <div>
-                <p className="text-xs text-muted-foreground">Delivery date</p>
+                <p className="text-xs text-muted-foreground">{tReq("deliveryDate")}</p>
                 <p className="font-medium">{formatDate(request.deliveryDate)}</p>
               </div>
             )}
             {request.timeWindow && (
               <div>
-                <p className="text-xs text-muted-foreground">Time window</p>
+                <p className="text-xs text-muted-foreground">{tReq("timeWindow")}</p>
                 <p className="font-medium">{request.timeWindow}</p>
               </div>
             )}
@@ -167,7 +165,7 @@ export default async function TaskPage({
 
           {task.notes && (
             <div className="pt-1 border-t text-sm">
-              <p className="text-xs text-muted-foreground mb-1">Notes from ops</p>
+              <p className="text-xs text-muted-foreground mb-1">{tPortal("instructions")}</p>
               <p>{task.notes}</p>
             </div>
           )}
@@ -273,7 +271,7 @@ export default async function TaskPage({
         {items.length > 0 && (
           <div className="rounded-xl bg-background border overflow-hidden">
             <div className="px-4 py-3 border-b bg-muted/50">
-              <p className="text-sm font-medium">Items ({items.length})</p>
+              <p className="text-sm font-medium">{tPortal("items")} ({items.length})</p>
             </div>
             <ul className="divide-y">
               {items.map((item) => (
@@ -321,7 +319,7 @@ export default async function TaskPage({
           <div className="rounded-xl bg-background border overflow-hidden">
             <div className="px-4 py-3 border-b bg-muted/50">
               <p className="text-sm font-medium">
-                Photos{photos.length > 0 ? ` (${photos.length})` : ""}
+                {t("photos")}{photos.length > 0 ? ` (${photos.length})` : ""}
               </p>
             </div>
             <div className="p-4">

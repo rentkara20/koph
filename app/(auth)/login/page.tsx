@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Image from "next/image"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { authClient } from "@/lib/auth/client"
@@ -8,7 +9,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Building2 } from "lucide-react"
 
 export default function LoginPage() {
   const t = useTranslations("auth")
@@ -43,10 +43,23 @@ export default function LoginPage() {
   return (
     <Card className="w-full max-w-sm">
       <CardHeader className="text-center">
-        <div className="mb-2 flex justify-center">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-foreground">
-            <Building2 className="h-5 w-5 text-background" />
-          </div>
+        <div className="mb-3 flex justify-center">
+          <Image
+            src="/kara-logo.png"
+            alt="KARA"
+            width={130}
+            height={57}
+            className="h-12 w-auto dark:hidden"
+            priority
+          />
+          <Image
+            src="/kara-logo-light.png"
+            alt="KARA"
+            width={130}
+            height={57}
+            className="hidden h-12 w-auto dark:block"
+            priority
+          />
         </div>
         <CardTitle className="text-xl">{t("loginTitle")}</CardTitle>
         <CardDescription>{t("loginSubtitle")}</CardDescription>

@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Download } from "lucide-react"
 import { approveBatch, markBatchSentToFinance, markBatchPaid } from "@/lib/actions/payments"
 import { Button } from "@/components/ui/button"
@@ -24,20 +26,29 @@ type Props = {
 
 export function BatchActions({ batchId, status, partnerName, period, payments }: Props) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
   async function handle(
-    action: () => Promise<{ error?: string }>
+    action: () => Promise<{ error?: string }>,
+    successKey: string
   ) {
     setError("")
     setLoading(true)
-    const result = await action()
-    setLoading(false)
-    if (result.error) {
-      setError(result.error)
-    } else {
-      router.refresh()
+    try {
+      const result = await action()
+      setLoading(false)
+      if (result.error) {
+        setError(result.error)
+        toast.error(result.error)
+      } else {
+        toast.success(tToast(successKey))
+        router.refresh()
+      }
+    } catch {
+      setLoading(false)
+      toast.error(tToast("genericError"))
     }
   }
 
@@ -75,7 +86,7 @@ export function BatchActions({ batchId, status, partnerName, period, payments }:
           <Button
             size="sm"
             disabled={loading}
-            onClick={() => handle(() => approveBatch(batchId))}
+            onClick={() => handle(() => approveBatch(batchId), "batchApproved")}
           >
             {loading ? "…" : "Approve batch"}
           </Button>
@@ -84,7 +95,7 @@ export function BatchActions({ batchId, status, partnerName, period, payments }:
           <Button
             size="sm"
             disabled={loading}
-            onClick={() => handle(() => markBatchSentToFinance(batchId))}
+            onClick={() => handle(() => markBatchSentToFinance(batchId), "batchSent")}
           >
             {loading ? "…" : "Mark sent to finance"}
           </Button>
@@ -93,7 +104,7 @@ export function BatchActions({ batchId, status, partnerName, period, payments }:
           <Button
             size="sm"
             disabled={loading}
-            onClick={() => handle(() => markBatchPaid(batchId))}
+            onClick={() => handle(() => markBatchPaid(batchId), "batchPaid")}
           >
             {loading ? "…" : "Mark as paid"}
           </Button>

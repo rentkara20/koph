@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { customerContacts } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession } from "@/lib/auth/session"
+import { getSessionWithRole } from "@/lib/auth/session"
 
 export type ContactInput = {
   name: string
@@ -35,7 +35,7 @@ export async function createCustomerContact(
   customerId: string,
   data: ContactInput
 ): Promise<{ error?: string; id?: string }> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
   if (!data.name?.trim()) return { error: "Name is required" }
 
@@ -62,7 +62,7 @@ export async function updateCustomerContact(
   customerId: string,
   data: ContactInput
 ): Promise<{ error?: string }> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
   if (!data.name?.trim()) return { error: "Name is required" }
 
@@ -89,7 +89,7 @@ export async function deleteCustomerContact(
   id: string,
   customerId: string
 ): Promise<{ error?: string }> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   await db.delete(customerContacts).where(eq(customerContacts.id, id))

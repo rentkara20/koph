@@ -8,6 +8,8 @@ import { Separator } from "@/components/ui/separator"
 import { buttonVariants } from "@/components/ui/button"
 import { formatDate } from "@/lib/utils/format"
 import { BatchActions } from "./_components/batch-actions"
+import { CopyStatementLink } from "./_components/copy-statement-link"
+import { PaymentLineActions } from "./_components/payment-line-actions"
 import { cn } from "@/lib/utils"
 
 const STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success"> = {
@@ -60,6 +62,7 @@ export default async function PaymentBatchPage({
             </p>
           </div>
         </div>
+        {batch.statementToken && <CopyStatementLink token={batch.statementToken} />}
       </div>
 
       {/* Summary card */}
@@ -167,6 +170,7 @@ export default async function PaymentBatchPage({
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">Qty</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">Unit (SAR)</th>
                   <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Total (SAR)</th>
+                  <th className="px-4 py-2.5 text-end font-medium text-muted-foreground"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -193,8 +197,15 @@ export default async function PaymentBatchPage({
                     <td className="px-4 py-3 tabular-nums hidden sm:table-cell">
                       {p.unitPrice.toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 font-medium tabular-nums">
+                    <td className={cn("px-4 py-3 font-medium tabular-nums", p.status === "on_hold" && "opacity-60")}>
                       {p.totalAmount.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-end">
+                      <PaymentLineActions
+                        paymentId={p.id}
+                        status={p.status}
+                        batchStatus={batch.status}
+                      />
                     </td>
                   </tr>
                 ))}
@@ -207,6 +218,7 @@ export default async function PaymentBatchPage({
                   <td className="px-4 py-2.5 font-semibold tabular-nums">
                     {payments.reduce((s, p) => s + p.totalAmount, 0).toFixed(2)}
                   </td>
+                  <td></td>
                 </tr>
               </tfoot>
             </table>

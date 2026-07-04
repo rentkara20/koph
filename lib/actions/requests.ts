@@ -1,13 +1,14 @@
 "use server"
 
-import { and, desc, eq, isNull, like, or } from "drizzle-orm"
+import { and, count, desc, eq, isNull, like, notInArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { activityLogs, customerContacts, customers, requestItems, requests, requestTypes } from "@/lib/db/schema"
+import { activityLogs, customerContacts, customers, partnerTasks, requestItems, requests, requestTypes, signatureRequests } from "@/lib/db/schema"
 import { createId, generateTrackingCode } from "@/lib/utils/ids"
 import { generateRequestNumber } from "@/lib/utils/request-number"
 import { logActivity } from "@/lib/utils/activity"
-import { getSession } from "@/lib/auth/session"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { createRequestSchema, itemInputSchema, firstError } from "@/lib/validation/schemas"
 
 export type ActionResult = { error?: string; id?: string }
 
@@ -36,11 +37,11 @@ export type CreateRequestInput = {
 }
 
 export async function createRequest(data: CreateRequestInput): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  if (!data.typeId) return { error: "Request type is required" }
-  if (!data.customerId) return { error: "Customer is required" }
+  const parsed = createRequestSchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
 
 
   const requestNumber = await generateRequestNumber()
@@ -105,58 +106,88 @@ export type RequestListItem = {
   typeName: string | null
 }
 
+export type RequestListPage = {
+  rows: RequestListItem[]
+  total: number
+  page: number
+  pageSize: number
+  totalPages: number
+}
+
+const REQUESTS_PAGE_SIZE = 50
+
 export async function getRequests(filters?: {
   status?: string
   search?: string
-}): Promise<RequestListItem[]> {
+  page?: number
+}): Promise<RequestListPage> {
+  const empty: RequestListPage = { rows: [], total: 0, page: 1, pageSize: REQUESTS_PAGE_SIZE, totalPages: 0 }
   const session = await getSession()
-  if (!session) return []
+  if (!session) return empty
 
-  const rows = await db
-    .select({
-      id: requests.id,
-      requestNumber: requests.requestNumber,
-      trackingCode: requests.trackingCode,
-      quoteNumber: requests.quoteNumber,
-      status: requests.status,
-      deliveryDate: requests.deliveryDate,
-      createdAt: requests.createdAt,
-      customerName: customers.name,
-      typeName: requestTypes.nameEn,
-    })
-    .from(requests)
-    .leftJoin(customers, eq(requests.customerId, customers.id))
-    .leftJoin(requestTypes, eq(requests.typeId, requestTypes.id))
-    .where(
-      and(
-        isNull(requests.deletedAt),
-        filters?.status
-          ? eq(
-              requests.status,
-              filters.status as
-                | "draft"
-                | "assigned"
-                | "in_progress"
-                | "completed"
-                | "failed"
-                | "on_hold"
-                | "cancelled"
-                | "rescheduled"
-            )
-          : undefined,
-        filters?.search?.trim()
-          ? or(
-              like(requests.requestNumber, `%${filters.search.trim()}%`),
-              like(requests.quoteNumber, `%${filters.search.trim()}%`),
-              like(customers.name, `%${filters.search.trim()}%`)
-            )
-          : undefined
-      )
-    )
-    .orderBy(desc(requests.createdAt))
-    .limit(200)
+  const page = Math.max(1, filters?.page ?? 1)
+  const offset = (page - 1) * REQUESTS_PAGE_SIZE
 
-  return rows as RequestListItem[]
+  const where = and(
+    isNull(requests.deletedAt),
+    filters?.status
+      ? eq(
+          requests.status,
+          filters.status as
+            | "draft"
+            | "assigned"
+            | "in_progress"
+            | "completed"
+            | "failed"
+            | "on_hold"
+            | "cancelled"
+            | "rescheduled"
+        )
+      : undefined,
+    filters?.search?.trim()
+      ? or(
+          like(requests.requestNumber, `%${filters.search.trim()}%`),
+          like(requests.quoteNumber, `%${filters.search.trim()}%`),
+          like(customers.name, `%${filters.search.trim()}%`)
+        )
+      : undefined
+  )
+
+  const [rows, totalResult] = await Promise.all([
+    db
+      .select({
+        id: requests.id,
+        requestNumber: requests.requestNumber,
+        trackingCode: requests.trackingCode,
+        quoteNumber: requests.quoteNumber,
+        status: requests.status,
+        deliveryDate: requests.deliveryDate,
+        createdAt: requests.createdAt,
+        customerName: customers.name,
+        typeName: requestTypes.nameEn,
+      })
+      .from(requests)
+      .leftJoin(customers, eq(requests.customerId, customers.id))
+      .leftJoin(requestTypes, eq(requests.typeId, requestTypes.id))
+      .where(where)
+      .orderBy(desc(requests.createdAt))
+      .limit(REQUESTS_PAGE_SIZE)
+      .offset(offset),
+    db
+      .select({ value: count() })
+      .from(requests)
+      .leftJoin(customers, eq(requests.customerId, customers.id))
+      .where(where),
+  ])
+
+  const total = totalResult[0]?.value ?? 0
+  return {
+    rows: rows as RequestListItem[],
+    total,
+    page,
+    pageSize: REQUESTS_PAGE_SIZE,
+    totalPages: Math.ceil(total / REQUESTS_PAGE_SIZE),
+  }
 }
 
 export async function getRequest(id: string) {
@@ -190,10 +221,27 @@ export async function updateRequestStatus(
   id: string,
   status: ManualStatus
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  await db.update(requests).set({ status, updatedAt: Date.now() }).where(eq(requests.id, id))
+  await db.transaction(async (tx) => {
+    await tx.update(requests).set({ status, updatedAt: Date.now() }).where(eq(requests.id, id))
+
+    // Cancelling/failing a request must stop its partner tasks too — otherwise
+    // partners keep working dead jobs via still-live magic links, and later
+    // sign-offs would generate payments for cancelled work
+    if (status === "cancelled" || status === "failed") {
+      await tx
+        .update(partnerTasks)
+        .set({ status: "cancelled", taskTokenExpiresAt: Date.now(), updatedAt: Date.now() })
+        .where(
+          and(
+            eq(partnerTasks.requestId, id),
+            notInArray(partnerTasks.status, ["closed", "cancelled", "rejected", "failed"])
+          )
+        )
+    }
+  })
 
   await logActivity({
     entityType: "request",
@@ -201,6 +249,57 @@ export async function updateRequestStatus(
     action: "status_changed",
     i18nKey: "activity.statusChanged",
     i18nData: { status },
+    performedBy: session.user.id,
+  })
+
+  revalidatePath(`/admin/requests/${id}`)
+  revalidatePath("/admin/requests")
+  return { id }
+}
+
+// Resume a manually held/rescheduled request back into the active flow by
+// re-deriving its status from its tasks (mirror of syncRequestStatus, which
+// deliberately never overrides manual statuses)
+export async function resumeRequest(id: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const [request] = await db
+    .select()
+    .from(requests)
+    .where(and(eq(requests.id, id), isNull(requests.deletedAt)))
+  if (!request) return { error: "Not found" }
+  if (!["on_hold", "rescheduled", "failed", "cancelled"].includes(request.status)) {
+    return { error: "Request is not paused" }
+  }
+
+  const tasks = await db.select().from(partnerTasks).where(eq(partnerTasks.requestId, id))
+  const active = tasks.filter((t) =>
+    ["pending", "accepted", "in_progress", "pending_signoff"].includes(t.status)
+  )
+  const closed = tasks.filter((t) => t.status === "closed")
+  const inProgress = tasks.filter((t) => ["in_progress", "pending_signoff"].includes(t.status))
+
+  const derived =
+    inProgress.length > 0
+      ? "in_progress"
+      : active.length === 0 && closed.length > 0
+        ? "completed"
+        : active.length > 0
+          ? "assigned"
+          : "draft"
+
+  await db
+    .update(requests)
+    .set({ status: derived as typeof request.status, updatedAt: Date.now() })
+    .where(eq(requests.id, id))
+
+  await logActivity({
+    entityType: "request",
+    entityId: id,
+    action: "status_changed",
+    i18nKey: "activity.statusChanged",
+    i18nData: { status: derived },
     performedBy: session.user.id,
   })
 
@@ -227,13 +326,41 @@ type ItemUpdateInput = {
   notes?: string
 }
 
+// Items are part of what the customer signs (delivery note renders them live).
+// Once a signature request left draft, editing items would silently change a
+// signed/pending legal document — the audit hash would no longer match reality.
+async function itemsAreFrozen(requestId: string): Promise<boolean> {
+  const [sig] = await db
+    .select({ id: signatureRequests.id })
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.requestId, requestId),
+        notInArray(signatureRequests.status, ["draft", "cancelled", "rejected", "expired"])
+      )
+    )
+    .limit(1)
+  return !!sig
+}
+
+const ITEMS_FROZEN_ERROR =
+  "Items are locked: a signature request is active or signed for this request"
+
 export async function updateRequestItem(
   itemId: string,
   data: ItemUpdateInput
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
-  if (!data.description?.trim()) return { error: "Description is required" }
+  const parsedItem = itemInputSchema.safeParse(data)
+  if (!parsedItem.success) return { error: firstError(parsedItem.error) }
+
+  const [item] = await db
+    .select({ requestId: requestItems.requestId })
+    .from(requestItems)
+    .where(eq(requestItems.id, itemId))
+  if (!item) return { error: "Item not found" }
+  if (await itemsAreFrozen(item.requestId)) return { error: ITEMS_FROZEN_ERROR }
 
   await db
     .update(requestItems)
@@ -256,8 +383,10 @@ export async function deleteRequestItem(
   itemId: string,
   requestId: string
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
+
+  if (await itemsAreFrozen(requestId)) return { error: ITEMS_FROZEN_ERROR }
 
   await db.delete(requestItems).where(eq(requestItems.id, itemId))
   revalidatePath(`/admin/requests/${requestId}`)
@@ -296,9 +425,12 @@ export async function addRequestItem(
   requestId: string,
   data: ItemUpdateInput
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
-  if (!data.description?.trim()) return { error: "Description is required" }
+  const parsedItem = itemInputSchema.safeParse(data)
+  if (!parsedItem.success) return { error: firstError(parsedItem.error) }
+
+  if (await itemsAreFrozen(requestId)) return { error: ITEMS_FROZEN_ERROR }
 
   const id = createId()
   await db.insert(requestItems).values({
@@ -318,10 +450,24 @@ export async function addRequestItem(
 }
 
 export async function deleteRequest(id: string): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  await db.update(requests).set({ deletedAt: Date.now() }).where(eq(requests.id, id))
+  await db.transaction(async (tx) => {
+    await tx.update(requests).set({ deletedAt: Date.now() }).where(eq(requests.id, id))
+
+    // Kill live partner links on delete — a soft-deleted request must not stay
+    // workable through task tokens
+    await tx
+      .update(partnerTasks)
+      .set({ status: "cancelled", taskTokenExpiresAt: Date.now(), updatedAt: Date.now() })
+      .where(
+        and(
+          eq(partnerTasks.requestId, id),
+          notInArray(partnerTasks.status, ["closed", "cancelled", "rejected", "failed"])
+        )
+      )
+  })
 
   revalidatePath("/admin/requests")
   return {}

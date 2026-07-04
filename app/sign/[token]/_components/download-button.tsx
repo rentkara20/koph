@@ -1,43 +1,36 @@
 "use client"
 
+import { useTranslations } from "next-intl"
+import { Download, Printer } from "lucide-react"
+import { Button } from "@/components/ui/button"
+
 export function DownloadButton({ token }: { token: string }) {
+  const t = useTranslations("common")
+
+  function openPrint(autoPrint: boolean) {
+    const w = window.open(`/sign/${token}/print`, "_blank")
+    if (autoPrint) w?.addEventListener("load", () => w.print())
+  }
+
   return (
-    <div style={{ display: "flex", gap: 10, width: "100%" }}>
-      <button
-        onClick={() => window.open(`/sign/${token}/print`, "_blank")}
-        style={{
-          flex: 1,
-          padding: "14px",
-          background: "#512A83",
-          color: "#fff",
-          border: "none",
-          borderRadius: 10,
-          fontSize: 15,
-          fontWeight: 700,
-          cursor: "pointer",
-        }}
+    <div className="flex w-full gap-2.5">
+      <Button
+        size="lg"
+        className="flex-1 bg-kara-purple hover:bg-kara-purple/90"
+        onClick={() => openPrint(false)}
       >
-        📥 تحميل PDF
-      </button>
-      <button
-        onClick={() => {
-          const w = window.open(`/sign/${token}/print`, "_blank")
-          w?.addEventListener("load", () => w.print())
-        }}
-        style={{
-          flex: 1,
-          padding: "14px",
-          background: "#fff",
-          color: "#512A83",
-          border: "1.5px solid #512A83",
-          borderRadius: 10,
-          fontSize: 15,
-          fontWeight: 700,
-          cursor: "pointer",
-        }}
+        <Download className="size-4" aria-hidden />
+        {t("export")}
+      </Button>
+      <Button
+        size="lg"
+        variant="outline"
+        className="border-kara-purple text-kara-purple hover:bg-kara-purple-soft"
+        onClick={() => openPrint(true)}
+        aria-label="Print"
       >
-        🖨️ طباعة
-      </button>
+        <Printer className="size-4" aria-hidden />
+      </Button>
     </div>
   )
 }

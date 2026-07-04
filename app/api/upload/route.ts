@@ -1,4 +1,5 @@
 import { handleUpload, type HandleUploadBody } from "@vercel/blob/client"
+import { del } from "@vercel/blob"
 import { and, count, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { partnerTasks, attachments } from "@/lib/db/schema"
@@ -49,6 +50,29 @@ export async function POST(request: Request): Promise<Response> {
         const { taskId } = JSON.parse(tokenPayload ?? "{}")
         if (!taskId) return
 
+        // Re-check the cap here to close the TOCTOU window: two concurrent
+        // uploads can both pass onBeforeGenerateToken. If we're already at the
+        // limit, drop this blob instead of persisting an over-limit photo.
+        const [{ value: photoCount }] = await db
+          .select({ value: count() })
+          .from(attachments)
+          .where(and(eq(attachments.entityId, taskId as string), eq(attachments.entityType, "partner_task")))
+
+        if (photoCount >= MAX_PHOTOS_PER_TASK) {
+          await del(blob.url).catch(() => {})
+          return
+        }
+
+        // Capture the real byte size (not available on the callback payload) via
+        // a HEAD request so future storage reporting isn't silently wrong.
+        let fileSize = 0
+        try {
+          const head = await fetch(blob.url, { method: "HEAD" })
+          fileSize = Number(head.headers.get("content-length") ?? 0)
+        } catch {
+          fileSize = 0
+        }
+
         await db.insert(attachments).values({
           id: createId(),
           entityType: "partner_task",
@@ -56,7 +80,7 @@ export async function POST(request: Request): Promise<Response> {
           fileName: blob.pathname.split("/").pop() ?? blob.pathname,
           fileUrl: blob.url,
           fileType: blob.contentType ?? "image/jpeg",
-          fileSize: 0,
+          fileSize,
           uploadSource: "partner_link",
         })
       },

@@ -5,14 +5,14 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { partners, partnerContracts, requestTypes } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession } from "@/lib/auth/session"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type ActionResult = { error?: string; id?: string }
 
 // ─── Partners ────────────────────────────────────────────────────────────────
 
 export async function createPartner(formData: FormData): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const name = (formData.get("name") as string)?.trim()
@@ -35,7 +35,7 @@ export async function createPartner(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updatePartner(id: string, formData: FormData): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const name = (formData.get("name") as string)?.trim()
@@ -110,7 +110,7 @@ export async function addContract(
   partnerId: string,
   formData: FormData
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const name = (formData.get("name") as string)?.trim()
@@ -145,7 +145,7 @@ export async function updateContractStatus(
   partnerId: string,
   status: "active" | "expired" | "cancelled"
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   await db
@@ -158,7 +158,7 @@ export async function updateContractStatus(
 }
 
 export async function deletePartner(id: string): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   await db.update(partners).set({ deletedAt: Date.now() }).where(eq(partners.id, id))

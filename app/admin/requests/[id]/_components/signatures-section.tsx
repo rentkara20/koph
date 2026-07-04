@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Plus, Copy, Check, Send, X, FileText, Trash2 } from "lucide-react"
 import {
   createSignatureRequest,
@@ -50,12 +52,14 @@ type SigRow = {
 }
 
 function CopySignLink({ token }: { token: string }) {
+  const tToast = useTranslations("toast")
   const [copied, setCopied] = useState(false)
   const url = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${token}`
 
   async function handleCopy() {
     await navigator.clipboard.writeText(url)
     setCopied(true)
+    toast.success(tToast("linkCopied"))
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -83,6 +87,7 @@ export function SignaturesSection({
   defaultRequireNationalId: boolean
 }) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -100,30 +105,51 @@ export function SignaturesSection({
       })
       if (result.error) {
         setError(result.error)
+        toast.error(result.error)
         setLoading(false)
         return
       }
+      toast.success(tToast("signatureSent"))
       setShowForm(false)
       router.refresh()
     } catch {
       setError("Unexpected error")
+      toast.error(tToast("genericError"))
       setLoading(false)
     }
   }
 
   async function handleMarkSent(id: string) {
-    await markSignatureAsSent(id)
-    router.refresh()
+    try {
+      const result = await markSignatureAsSent(id)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("signatureSent"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    }
   }
 
   async function handleCancel(id: string) {
-    await cancelSignatureRequest(id)
-    router.refresh()
+    try {
+      const result = await cancelSignatureRequest(id)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("signatureCancelled"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    }
   }
 
   async function handleDelete(id: string) {
-    await deleteSignatureRequest(id)
-    router.refresh()
+    try {
+      const result = await deleteSignatureRequest(id)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("deleted"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    }
   }
 
   return (

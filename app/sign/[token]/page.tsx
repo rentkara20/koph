@@ -1,15 +1,17 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
+import { getTranslations } from "next-intl/server"
+import { TriangleAlert } from "lucide-react"
 import { getSignatureByToken, recordSignatureOpened } from "@/lib/actions/signatures"
 import { getDeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { formatDate } from "@/lib/utils/format"
-import { Badge } from "@/components/ui/badge"
 import { SignatureForm } from "./_components/signature-form"
 import { DeliveryNoteView } from "./_components/delivery-note-view"
 import { DownloadButton } from "./_components/download-button"
-
-const PURPLE = "#512A83"
-const BLUE = "#60B5D1"
+import { SignHeader } from "./_components/sign-header"
+import { TrustBand } from "./_components/trust-band"
+import { TerminalState, type TerminalKind } from "./_components/terminal-state"
+import { Certificate } from "./_components/certificate"
 
 type StatusVariant = "outline" | "info" | "success" | "secondary"
 
@@ -24,26 +26,16 @@ const STATUS_VARIANT: Record<string, StatusVariant> = {
   cancelled: "secondary",
 }
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Not active",
-  sent: "Awaiting signature",
-  opened: "Awaiting signature",
-  otp_verified: "Awaiting signature",
-  signed: "Signed ✓",
-  rejected: "Declined",
-  expired: "Expired",
-  cancelled: "Cancelled",
-}
-
 export default async function SignPage({
   params,
 }: {
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const [data, deliveryNote] = await Promise.all([
+  const [data, deliveryNote, t] = await Promise.all([
     getSignatureByToken(token),
     getDeliveryNoteData(token),
+    getTranslations("signatures.signing"),
   ])
 
   if (!data) notFound()
@@ -57,257 +49,187 @@ export default async function SignPage({
     await recordSignatureOpened(token, ip, ua)
   }
 
-  const isTerminal = ["signed", "rejected", "expired", "cancelled"].includes(sig.status)
-  const canSign = !isTerminal && !isExpired && sig.status !== "draft"
+  const items = deliveryNote?.items ?? []
+  const request = deliveryNote?.request ?? null
+  const customer = deliveryNote?.customer ?? null
+
+  // ── Terminal / non-signable states ──────────────────────────────────────────
+  const terminalKind: TerminalKind | null = isExpired
+    ? "expired"
+    : sig.status === "signed" && !deliveryNote
+      ? "alreadySigned"
+      : sig.status === "rejected"
+        ? "declined"
+        : sig.status === "cancelled"
+          ? "cancelled"
+          : sig.status === "draft"
+            ? "notActive"
+            : null
+
+  if (terminalKind) {
+    return <TerminalState kind={terminalKind} />
+  }
+
   const isSigned = sig.status === "signed"
+  const canSign = !isSigned && !isExpired && sig.status !== "draft"
 
   const now = Date.now()
   const isExpiringSoon =
     !isExpired &&
-    !isTerminal &&
+    !isSigned &&
     sig.expiryEnabled &&
     sig.expiresAt !== null &&
     sig.expiresAt > now &&
     sig.expiresAt - now < 24 * 60 * 60 * 1000
 
-  const consentText =
-    activeConsent?.textEn ??
-    "I confirm that the information provided is accurate and I agree to sign this document electronically."
-
-  const items = deliveryNote?.items ?? []
-  const request = deliveryNote?.request ?? null
-  const customer = deliveryNote?.customer ?? null
+  const consentText = activeConsent?.textEn ?? t("consent")
+  const statusLabel = isSigned ? t("signed") : t("title")
 
   return (
-    <div style={{ minHeight: "100svh", background: "#f5f5f5" }}>
+    <div className="min-h-svh bg-muted/40">
+      <SignHeader
+        documentName={sig.documentName}
+        subtitle={customer?.name}
+        statusLabel={statusLabel}
+        statusVariant={STATUS_VARIANT[sig.status] ?? "outline"}
+      />
 
-      {/* ── Top header bar ── */}
-      <div
-        style={{
-          background: PURPLE,
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 600,
-            margin: "0 auto",
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-          }}
-        >
-          {/* Logo mark */}
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              background: "rgba(255,255,255,0.15)",
-              borderRadius: 8,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: 14,
-              fontWeight: 800,
-              color: "#fff",
-              flexShrink: 0,
-            }}
-          >
-            K
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>
-              KOPH · {sig.documentName}
-            </div>
-            {customer && (
-              <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, marginTop: 1 }}>
-                {customer.name}
-              </div>
-            )}
-          </div>
-          <Badge
-            variant={STATUS_VARIANT[sig.status] ?? "outline"}
-            className="shrink-0"
-          >
-            {STATUS_LABEL[sig.status] ?? sig.status}
-          </Badge>
-        </div>
-      </div>
+      <main className="mx-auto flex max-w-2xl flex-col gap-4 px-4 py-5">
+        <TrustBand requestedBy={customer?.name} />
 
-      <div style={{ maxWidth: 600, margin: "0 auto", padding: "16px", display: "flex", flexDirection: "column", gap: 14 }}>
-
-        {/* ── Error / status banners ── */}
-        {isExpired && (
-          <div style={{ background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#92400e" }}>
-            This signing link has expired. Contact the operations team.
-          </div>
-        )}
         {isExpiringSoon && (
-          <div style={{ background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#9a3412" }}>
-            ⚠️ This signing link expires soon. Please sign as soon as possible.
-          </div>
-        )}
-        {sig.status === "draft" && !isExpired && (
-          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>
-            This signing link is not active yet.
-          </div>
-        )}
-        {sig.status === "cancelled" && (
-          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>
-            This signature request has been cancelled.
-          </div>
-        )}
-        {sig.status === "rejected" && (
-          <div style={{ background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#6b7280" }}>
-            This document signing was declined.
+          <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <TriangleAlert className="size-4 shrink-0" aria-hidden />
+            <span>{t("expired")}</span>
           </div>
         )}
 
-        {/* ── SIGNED state: full delivery note + download ── */}
-        {isSigned && deliveryNote && (
+        {isSigned && deliveryNote ? (
           <>
-            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 10, padding: "12px 16px", fontSize: 13, color: "#166534", fontWeight: 600 }}>
-              ✓ تم التوقيع بنجاح — Document signed successfully
+            <div className="rounded-xl border border-kara-blue/20 bg-kara-blue-soft px-4 py-3 text-sm font-semibold text-kara-blue">
+              {t("signed")}
             </div>
-            <DeliveryNoteView data={deliveryNote} />
-            <div style={{ display: "flex", gap: 10 }}>
-              <DownloadButton token={token} />
+            <div className="overflow-x-auto rounded-xl border border-border bg-card p-3">
+              <DeliveryNoteView data={deliveryNote} />
             </div>
+            {deliveryNote.signature && (
+              <Certificate
+                signature={deliveryNote.signature}
+                verificationId={deliveryNote.verificationId}
+                documentName={sig.documentName}
+              />
+            )}
+            <DownloadButton token={token} />
           </>
-        )}
-
-        {/* ── PRE-SIGN: items review card ── */}
-        {!isSigned && (
+        ) : (
           <>
-            {/* Items card */}
-            <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", border: "1px solid #e2e8f0" }}>
-              {/* Card header */}
-              <div
-                style={{
-                  background: PURPLE,
-                  padding: "14px 18px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div>
-                  <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>
+            {/* Items review card */}
+            <section className="overflow-hidden rounded-xl border border-border bg-card">
+              <header className="flex items-center justify-between gap-3 bg-kara-purple px-5 py-3.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-primary-foreground">
                     {sig.documentName}
-                  </div>
+                  </p>
                   {request?.requestNumber && (
-                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, fontFamily: "monospace", marginTop: 2 }}>
+                    <p className="truncate font-mono text-xs text-primary-foreground/70">
                       {request.requestNumber}
-                    </div>
+                    </p>
                   )}
                 </div>
-                <div style={{ textAlign: "right" }}>
+                <div className="shrink-0 text-end">
                   {request?.quoteNumber && (
-                    <div style={{ color: "#fff", fontSize: 13, fontFamily: "monospace", fontWeight: 700 }}>
+                    <p className="font-mono text-sm font-bold text-primary-foreground">
                       #{request.quoteNumber}
-                    </div>
+                    </p>
                   )}
                   {request?.deliveryDate && (
-                    <div style={{ color: "rgba(255,255,255,0.7)", fontSize: 11, marginTop: 2 }}>
+                    <p className="text-xs text-primary-foreground/70">
                       {formatDate(request.deliveryDate)}
-                    </div>
+                    </p>
                   )}
                 </div>
-              </div>
+              </header>
 
-              {/* Items table */}
               {items.length > 0 ? (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ background: BLUE }}>
-                      <th style={{ padding: "8px 14px", textAlign: "left", color: "#fff", fontWeight: 700, fontSize: 12 }}>
-                        Item Specs
-                      </th>
-                      <th style={{ padding: "8px 10px", textAlign: "center", color: "#fff", fontWeight: 700, fontSize: 12, width: 48 }}>
-                        QTY
-                      </th>
-                      <th style={{ padding: "8px 14px", textAlign: "left", color: "#fff", fontWeight: 700, fontSize: 12, width: "28%" }}>
-                        Serial Number
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {items.map((item, idx) => (
-                      <tr
-                        key={item.id}
-                        style={{
-                          borderBottom: "1px solid #f0f0f0",
-                          background: idx % 2 ? "#fafafa" : "#fff",
-                        }}
-                      >
-                        <td style={{ padding: "10px 14px", verticalAlign: "top" }}>
-                          <div style={{ fontWeight: 600 }}>{item.description}</div>
-                          {(item.brand || item.model) && (
-                            <div style={{ fontSize: 11, color: "#888", marginTop: 2 }}>
-                              {[item.brand, item.model].filter(Boolean).join(" · ")}
-                            </div>
-                          )}
-                          {item.accessories && (
-                            <div style={{ fontSize: 11, color: "#aaa", marginTop: 1 }}>
-                              + {item.accessories}
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: "10px", textAlign: "center", fontWeight: 700, verticalAlign: "top" }}>
-                          {item.quantity}
-                        </td>
-                        <td style={{ padding: "10px 14px", fontFamily: "monospace", fontSize: 12, color: "#555", verticalAlign: "top" }}>
-                          {item.serialNumber ?? "—"}
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-kara-blue text-start text-xs font-semibold text-primary-foreground">
+                        <th className="px-4 py-2 text-start">Item Specs</th>
+                        <th className="w-12 px-2 py-2 text-center">QTY</th>
+                        <th className="w-[28%] px-4 py-2 text-start">Serial Number</th>
                       </tr>
-                    ))}
-                    {/* Total row */}
-                    <tr style={{ background: "#f5f5f5", borderTop: "2px solid #e2e8f0" }}>
-                      <td style={{ padding: "8px 14px", fontWeight: 700, fontSize: 13, textAlign: "right" }}>
-                        الإجمالي / Total:
-                      </td>
-                      <td style={{ padding: "8px 10px", textAlign: "center", fontWeight: 800, fontSize: 14, color: PURPLE }}>
-                        {items.reduce((s, i) => s + i.quantity, 0)}
-                      </td>
-                      <td />
-                    </tr>
-                  </tbody>
-                </table>
-              ) : (
-                <div style={{ padding: "20px", textAlign: "center", color: "#999", fontSize: 13 }}>
-                  No items listed
+                    </thead>
+                    <tbody>
+                      {items.map((item, idx) => (
+                        <tr
+                          key={item.id}
+                          className={`border-b border-border ${idx % 2 ? "bg-muted/30" : ""}`}
+                        >
+                          <td className="px-4 py-2.5 align-top">
+                            <p className="font-medium text-foreground">{item.description}</p>
+                            {(item.brand || item.model) && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {[item.brand, item.model].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
+                            {item.accessories && (
+                              <p className="mt-0.5 text-xs text-muted-foreground/80">
+                                + {item.accessories}
+                              </p>
+                            )}
+                          </td>
+                          <td className="px-2 py-2.5 text-center align-top font-bold text-foreground">
+                            {item.quantity}
+                          </td>
+                          <td className="px-4 py-2.5 align-top font-mono text-xs text-muted-foreground">
+                            {item.serialNumber ?? "—"}
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="border-t-2 border-border bg-muted/50">
+                        <td className="px-4 py-2 text-end text-sm font-bold text-foreground">
+                          Total
+                        </td>
+                        <td className="px-2 py-2 text-center text-base font-extrabold text-kara-purple">
+                          {items.reduce((s, i) => s + i.quantity, 0)}
+                        </td>
+                        <td />
+                      </tr>
+                    </tbody>
+                  </table>
                 </div>
+              ) : (
+                <p className="px-5 py-6 text-center text-sm text-muted-foreground">
+                  No items listed
+                </p>
               )}
-            </div>
+            </section>
 
-            {/* Document info row */}
-            {(request?.quoteNumber || customer?.name) && (
-              <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: "8px 24px", fontSize: 12 }}>
+            {/* Document meta */}
+            {(request?.quoteNumber || customer?.name || request?.deliveryDate) && (
+              <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-xs">
                 {customer?.name && (
                   <div>
-                    <span style={{ color: "#999" }}>Prepared for / لصالح: </span>
-                    <strong>{customer.name}</strong>
+                    <span className="text-muted-foreground">Prepared for: </span>
+                    <strong className="text-foreground">{customer.name}</strong>
                   </div>
                 )}
                 {request?.quoteNumber && (
                   <div>
-                    <span style={{ color: "#999" }}>Quote No. / رقم الطلب: </span>
-                    <strong style={{ fontFamily: "monospace" }}>{request.quoteNumber}</strong>
+                    <span className="text-muted-foreground">Quote No.: </span>
+                    <strong className="font-mono text-foreground">{request.quoteNumber}</strong>
                   </div>
                 )}
                 {request?.deliveryDate && (
                   <div>
-                    <span style={{ color: "#999" }}>Delivery: </span>
-                    <strong>{formatDate(request.deliveryDate)}</strong>
+                    <span className="text-muted-foreground">Delivery: </span>
+                    <strong className="text-foreground">{formatDate(request.deliveryDate)}</strong>
                   </div>
                 )}
               </div>
             )}
 
-            {/* Signature flow */}
             {canSign && (
               <SignatureForm
                 token={token}
@@ -318,8 +240,7 @@ export default async function SignPage({
             )}
           </>
         )}
-
-      </div>
+      </main>
     </div>
   )
 }

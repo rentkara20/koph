@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Plus, ChevronUp } from "lucide-react"
 import { addContract, updateContractStatus } from "@/lib/actions/partners"
 import type { RequestType } from "@/lib/db/schema"
@@ -45,6 +46,7 @@ export function ContractsSection({
 }) {
   const t = useTranslations("partners")
   const tCommon = useTranslations("common")
+  const tToast = useTranslations("toast")
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -55,18 +57,26 @@ export function ContractsSection({
     setError(""); setLoading(true)
     try {
       const result = await addContract(partnerId, new FormData(e.currentTarget))
-      if (result.error) { setError(result.error); setLoading(false); return }
+      if (result.error) { setError(result.error); toast.error(result.error); setLoading(false); return }
+      toast.success(tToast("created"))
       setShowForm(false); router.refresh()
     } catch {
       setError("An unexpected error occurred")
+      toast.error(tToast("genericError"))
     } finally {
       setLoading(false)
     }
   }
 
   async function handleStatusChange(contractId: string, status: "active" | "expired" | "cancelled") {
-    await updateContractStatus(contractId, partnerId, status)
-    router.refresh()
+    try {
+      const result = await updateContractStatus(contractId, partnerId, status)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("updated"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    }
   }
 
   return (

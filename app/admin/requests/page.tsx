@@ -23,14 +23,27 @@ const STATUS_OPTIONS = [
 export default async function RequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; search?: string }>
+  searchParams: Promise<{ status?: string; search?: string; page?: string }>
 }) {
-  const { status, search } = await searchParams
-  const [t, tCommon, requestList] = await Promise.all([
+  const { status, search, page } = await searchParams
+  const pageNum = Math.max(1, Number(page) || 1)
+  const [t, tCommon, result] = await Promise.all([
     getTranslations("requests"),
     getTranslations("common"),
-    getRequests({ status, search }),
+    getRequests({ status, search, page: pageNum }),
   ])
+  const requestList = result.rows
+
+  const buildPageHref = (p: number) => {
+    const sp = new URLSearchParams()
+    if (status) sp.set("status", status)
+    if (search) sp.set("search", search)
+    if (p > 1) sp.set("page", String(p))
+    const qs = sp.toString()
+    return qs ? `/admin/requests?${qs}` : "/admin/requests"
+  }
+  const from = result.total === 0 ? 0 : (result.page - 1) * result.pageSize + 1
+  const to = Math.min(result.page * result.pageSize, result.total)
 
   return (
     <div className="space-y-6">
@@ -45,16 +58,16 @@ export default async function RequestsPage({
       {/* Filter */}
       <form method="GET" className="flex flex-wrap items-center gap-3">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             name="search"
             defaultValue={search ?? ""}
-            placeholder="Search by request #, customer, quote…"
-            className="pl-8 w-64"
+            placeholder={t("searchPlaceholder")}
+            className="ps-8 w-64"
           />
         </div>
         <Select name="status" defaultValue={status ?? ""} className="w-48">
-          <option value="">{tCommon("filter")}: All</option>
+          <option value="">{tCommon("all")}</option>
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>
               {t(`status.${s}`)}
@@ -69,7 +82,7 @@ export default async function RequestsPage({
         </button>
         {(status || search) && (
           <Link href="/admin/requests" className={cn(buttonVariants({ variant: "ghost", size: "default" }))}>
-            Clear
+            {tCommon("clear")}
           </Link>
         )}
       </form>
@@ -84,22 +97,22 @@ export default async function RequestsPage({
           <table className="w-full text-sm">
             <thead className="border-b bg-muted/50">
               <tr>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
+                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
                   {t("requestNumber")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">
+                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden lg:table-cell">
                   {t("quoteNumber")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">
+                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">
                   {t("type")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
+                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
                   {t("customer")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
+                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
                   {tCommon("status")}
                 </th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden md:table-cell">
+                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">
                   {t("deliveryDate")}
                 </th>
               </tr>
@@ -134,6 +147,46 @@ export default async function RequestsPage({
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {result.total > 0 && (
+        <div className="flex items-center justify-between gap-3 text-sm">
+          <p className="text-muted-foreground">
+            {tCommon("showing", { from, to, total: result.total })}
+          </p>
+          {result.totalPages > 1 && (
+            <div className="flex items-center gap-2">
+              {result.page > 1 ? (
+                <Link
+                  href={buildPageHref(result.page - 1)}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                >
+                  {tCommon("previous")}
+                </Link>
+              ) : (
+                <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "pointer-events-none opacity-50")}>
+                  {tCommon("previous")}
+                </span>
+              )}
+              <span className="text-muted-foreground tabular-nums">
+                {tCommon("page")} {result.page} {tCommon("of")} {result.totalPages}
+              </span>
+              {result.page < result.totalPages ? (
+                <Link
+                  href={buildPageHref(result.page + 1)}
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                >
+                  {tCommon("next")}
+                </Link>
+              ) : (
+                <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "pointer-events-none opacity-50")}>
+                  {tCommon("next")}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

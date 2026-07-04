@@ -1,6 +1,6 @@
 "use server"
 
-import { and, count, desc, eq, inArray, sql, sum } from "drizzle-orm"
+import { and, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
@@ -10,8 +10,9 @@ import {
   paymentBatches,
   requests,
 } from "@/lib/db/schema"
-import { createId } from "@/lib/utils/ids"
-import { getSession } from "@/lib/auth/session"
+import { createId, generateSecureToken } from "@/lib/utils/ids"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { periodSchema, firstError } from "@/lib/validation/schemas"
 
 export type PaymentActionResult = { error?: string; id?: string }
 
@@ -68,6 +69,18 @@ export async function getBatchWithPayments(batchId: string) {
 
   if (!batch) return null
 
+  // Tolerant fetch — statement_token column may not exist on an un-migrated DB
+  let statementToken: string | null = null
+  try {
+    const [row] = await db
+      .select({ statementToken: paymentBatches.statementToken })
+      .from(paymentBatches)
+      .where(eq(paymentBatches.id, batchId))
+    statementToken = row?.statementToken ?? null
+  } catch {
+    statementToken = null
+  }
+
   const payments = await db
     .select({
       id: partnerPayments.id,
@@ -87,7 +100,7 @@ export async function getBatchWithPayments(batchId: string) {
     .where(eq(partnerPayments.batchId, batchId))
     .orderBy(desc(partnerPayments.createdAt))
 
-  return { batch, payments }
+  return { batch: { ...batch, statementToken }, payments }
 }
 
 // ─── Get partners + months with pending payments (for generate form) ──────────
@@ -100,7 +113,9 @@ export async function getPartnersWithPendingPayments() {
     .select({
       partnerId: partnerPayments.partnerId,
       partnerName: partners.name,
-      period: sql<string>`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch'))`,
+      // Business months are Riyadh time (UTC+3), not UTC — otherwise a
+      // sign-off before 3am on the 1st lands in the previous month's batch
+      period: sql<string>`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', '+3 hours'))`,
       totalAmount: sql<number>`COALESCE(SUM(${partnerPayments.totalAmount}), 0)`,
       paymentCount: count(partnerPayments.id),
     })
@@ -110,7 +125,7 @@ export async function getPartnersWithPendingPayments() {
     .groupBy(
       partnerPayments.partnerId,
       partners.name,
-      sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch'))`
+      sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', '+3 hours'))`
     )
     .orderBy(partners.name)
 }
@@ -121,15 +136,28 @@ export async function generateBatch(
   partnerId: string,
   period: string
 ): Promise<PaymentActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
 
-  const [existing] = await db
+  const parsedPeriod = periodSchema.safeParse(period)
+  if (!parsedPeriod.success) return { error: firstError(parsedPeriod.error) }
+  if (!partnerId) return { error: "Partner is required" }
+
+  // Only an OPEN batch blocks generation. Once a period's batch is paid,
+  // late sign-offs for that period must still be batchable — otherwise those
+  // payments are stranded forever.
+  const [openBatch] = await db
     .select()
     .from(paymentBatches)
-    .where(and(eq(paymentBatches.partnerId, partnerId), eq(paymentBatches.period, period)))
+    .where(
+      and(
+        eq(paymentBatches.partnerId, partnerId),
+        eq(paymentBatches.period, period),
+        notInArray(paymentBatches.status, ["paid"])
+      )
+    )
 
-  if (existing) return { error: "A batch already exists for this partner and period" }
+  if (openBatch) return { error: "An open batch already exists for this partner and period" }
 
   const payments = await db
     .select()
@@ -139,7 +167,7 @@ export async function generateBatch(
         eq(partnerPayments.partnerId, partnerId),
         eq(partnerPayments.status, "pending"),
         eq(
-          sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch'))`,
+          sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', '+3 hours'))`,
           period
         )
       )
@@ -151,18 +179,31 @@ export async function generateBatch(
   const totalAmount = payments.reduce((s, p) => s + p.totalAmount, 0)
   const batchId = createId()
 
-  await db.insert(paymentBatches).values({
-    id: batchId,
-    partnerId,
-    period,
-    totalAmount,
-    status: "draft",
+  await db.transaction(async (tx) => {
+    await tx.insert(paymentBatches).values({
+      id: batchId,
+      partnerId,
+      period,
+      totalAmount,
+      status: "draft",
+    })
+
+    await tx
+      .update(partnerPayments)
+      .set({ batchId, status: "batched", updatedAt: Date.now() })
+      .where(inArray(partnerPayments.id, payments.map((p) => p.id)))
   })
 
-  await db
-    .update(partnerPayments)
-    .set({ batchId, status: "batched", updatedAt: Date.now() })
-    .where(inArray(partnerPayments.id, payments.map((p) => p.id)))
+  // Set the statement token separately + tolerantly: the statement_token column
+  // may not exist yet on an un-migrated DB, and it must not block batch creation.
+  try {
+    await db
+      .update(paymentBatches)
+      .set({ statementToken: generateSecureToken() })
+      .where(eq(paymentBatches.id, batchId))
+  } catch {
+    // column not migrated yet — statement link simply unavailable until it is
+  }
 
   revalidatePath("/admin/payments")
   return { id: batchId }
@@ -171,7 +212,7 @@ export async function generateBatch(
 // ─── Batch status transitions ─────────────────────────────────────────────────
 
 export async function approveBatch(batchId: string): Promise<PaymentActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
 
   const [batch] = await db.select().from(paymentBatches).where(eq(paymentBatches.id, batchId))
@@ -189,7 +230,7 @@ export async function approveBatch(batchId: string): Promise<PaymentActionResult
 }
 
 export async function markBatchSentToFinance(batchId: string): Promise<PaymentActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
 
   const [batch] = await db.select().from(paymentBatches).where(eq(paymentBatches.id, batchId))
@@ -207,24 +248,112 @@ export async function markBatchSentToFinance(batchId: string): Promise<PaymentAc
 }
 
 export async function markBatchPaid(batchId: string): Promise<PaymentActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
 
   const [batch] = await db.select().from(paymentBatches).where(eq(paymentBatches.id, batchId))
   if (!batch) return { error: "Not found" }
   if (batch.status !== "sent_to_finance") return { error: "Only sent batches can be marked as paid" }
 
-  await db
-    .update(paymentBatches)
-    .set({ status: "paid", paidAt: Date.now() })
-    .where(eq(paymentBatches.id, batchId))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(paymentBatches)
+      .set({ status: "paid", paidAt: Date.now() })
+      .where(eq(paymentBatches.id, batchId))
 
-  await db
-    .update(partnerPayments)
-    .set({ status: "paid", updatedAt: Date.now() })
-    .where(eq(partnerPayments.batchId, batchId))
+    // Held line items are disputed — do not mark them paid; they roll to a later batch
+    await tx
+      .update(partnerPayments)
+      .set({ status: "paid", updatedAt: Date.now() })
+      .where(and(eq(partnerPayments.batchId, batchId), eq(partnerPayments.status, "batched")))
+  })
 
   revalidatePath(`/admin/payments/${batchId}`)
   revalidatePath("/admin/payments")
   return { id: batchId }
+}
+
+// ─── Line-item holds ──────────────────────────────────────────────────────────
+// A disputed payment is pulled OUT of its batch (back to on_hold, unbatched) so
+// the rest of the batch can be paid; the held item can be re-batched later.
+
+export async function holdPayment(paymentId: string): Promise<PaymentActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const [payment] = await db.select().from(partnerPayments).where(eq(partnerPayments.id, paymentId))
+  if (!payment) return { error: "Not found" }
+  if (payment.status === "paid") return { error: "Paid items cannot be held" }
+
+  await db
+    .update(partnerPayments)
+    .set({ status: "on_hold", batchId: null, updatedAt: Date.now() })
+    .where(eq(partnerPayments.id, paymentId))
+
+  if (payment.batchId) revalidatePath(`/admin/payments/${payment.batchId}`)
+  revalidatePath("/admin/payments")
+  return { id: paymentId }
+}
+
+export async function releasePayment(paymentId: string): Promise<PaymentActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const [payment] = await db.select().from(partnerPayments).where(eq(partnerPayments.id, paymentId))
+  if (!payment) return { error: "Not found" }
+  if (payment.status !== "on_hold") return { error: "Only held items can be released" }
+
+  // Back to pending so it gets picked up by the next batch generation for its period
+  await db
+    .update(partnerPayments)
+    .set({ status: "pending", updatedAt: Date.now() })
+    .where(eq(partnerPayments.id, paymentId))
+
+  revalidatePath("/admin/payments")
+  return { id: paymentId }
+}
+
+// ─── Public: partner statement by token ───────────────────────────────────────
+
+export async function getBatchByStatementToken(token: string) {
+  let batch
+  try {
+    ;[batch] = await db
+      .select({
+        id: paymentBatches.id,
+        period: paymentBatches.period,
+        totalAmount: paymentBatches.totalAmount,
+        status: paymentBatches.status,
+        generatedAt: paymentBatches.generatedAt,
+        paidAt: paymentBatches.paidAt,
+        partnerName: partners.name,
+      })
+      .from(paymentBatches)
+      .leftJoin(partners, eq(paymentBatches.partnerId, partners.id))
+      .where(eq(paymentBatches.statementToken, token))
+  } catch {
+    // statement_token column not migrated yet
+    return null
+  }
+
+  if (!batch) return null
+
+  const payments = await db
+    .select({
+      id: partnerPayments.id,
+      pricingModel: partnerPayments.pricingModel,
+      quantity: partnerPayments.quantity,
+      unitPrice: partnerPayments.unitPrice,
+      totalAmount: partnerPayments.totalAmount,
+      status: partnerPayments.status,
+      createdAt: partnerPayments.createdAt,
+      requestNumber: requests.requestNumber,
+    })
+    .from(partnerPayments)
+    .leftJoin(partnerTasks, eq(partnerPayments.partnerTaskId, partnerTasks.id))
+    .leftJoin(requests, eq(partnerTasks.requestId, requests.id))
+    .where(eq(partnerPayments.batchId, batch.id))
+    .orderBy(desc(partnerPayments.createdAt))
+
+  return { batch, payments }
 }

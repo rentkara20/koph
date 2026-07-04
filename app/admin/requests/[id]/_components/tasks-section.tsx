@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Plus, Copy, Check, RefreshCw, X, Trash2 } from "lucide-react"
 import { createTask, signOffTask, cancelTask, regenerateTaskLink, deleteTask } from "@/lib/actions/tasks"
 import { addServiceToTask, removeServiceFromTask } from "@/lib/actions/task-services"
@@ -123,6 +124,7 @@ function SignOffButton({
   unitPrice: number | null
 }) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [open, setOpen] = useState(false)
   const [qty, setQty] = useState("")
   const [loading, setLoading] = useState(false)
@@ -140,8 +142,19 @@ function SignOffButton({
 
   async function handleSignOff() {
     setLoading(true)
-    await signOffTask(taskId, needsQty && qty ? parseInt(qty) : undefined)
-    router.refresh()
+    try {
+      const result = await signOffTask(taskId, needsQty && qty ? parseInt(qty) : undefined)
+      if (result?.error) {
+        toast.error(result.error)
+        setLoading(false)
+        return
+      }
+      toast.success(tToast("taskSignedOff"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+      setLoading(false)
+    }
   }
 
   if (!open) {
@@ -282,6 +295,7 @@ export function TasksSection({
 }) {
   const t = useTranslations("tasks")
   const tCommon = useTranslations("common")
+  const tToast = useTranslations("toast")
   const router = useRouter()
   const [showForm, setShowForm] = useState(false)
   const [selectedPartnerId, setSelectedPartnerId] = useState("")
@@ -303,28 +317,47 @@ export function TasksSection({
         contactId: (fd.get("contactId") as string) || undefined,
         notes: (fd.get("notes") as string) || undefined,
       })
-      if (result.error) { setError(result.error); setLoading(false); return }
+      if (result.error) { setError(result.error); toast.error(result.error); setLoading(false); return }
+      toast.success(tToast("taskAssigned"))
       setShowForm(false)
       setSelectedPartnerId("")
       router.refresh()
     } catch {
-      setError("Unexpected error"); setLoading(false)
+      setError("Unexpected error"); toast.error(tToast("genericError")); setLoading(false)
     }
   }
 
   async function handleCancel(taskId: string) {
-    await cancelTask(taskId)
-    router.refresh()
+    try {
+      const result = await cancelTask(taskId)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("taskCancelled"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    }
   }
 
   async function handleDelete(taskId: string) {
-    await deleteTask(taskId)
-    router.refresh()
+    try {
+      const result = await deleteTask(taskId)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("deleted"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    }
   }
 
   async function handleRegenerate(taskId: string) {
-    await regenerateTaskLink(taskId)
-    router.refresh()
+    try {
+      const result = await regenerateTaskLink(taskId)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("linkRegenerated"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    }
   }
 
   return (

@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { ChevronDown } from "lucide-react"
 import { updateRequestStatus } from "@/lib/actions/requests"
 import {
@@ -33,14 +34,26 @@ export function RequestStatusActions({
   currentStatus: string
 }) {
   const t = useTranslations("requests")
+  const tToast = useTranslations("toast")
   const router = useRouter()
   const [loading, setLoading] = useState(false)
 
   async function handleChange(status: ManualStatus) {
     setLoading(true)
-    await updateRequestStatus(requestId, status)
-    router.refresh()
-    setLoading(false)
+    try {
+      const result = await updateRequestStatus(requestId, status)
+      if (result.error) {
+        toast.error(result.error)
+        setLoading(false)
+        return
+      }
+      toast.success(tToast("statusUpdated"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

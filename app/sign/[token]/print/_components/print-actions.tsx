@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect } from "react"
+import { Printer, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
 
 export function PrintActions() {
   useEffect(() => {
@@ -15,35 +17,14 @@ export function PrintActions() {
 
   return (
     <div className="print-actions-bar">
-      <button
-        onClick={() => window.print()}
-        style={{
-          background: "#512A83",
-          color: "#fff",
-          border: "none",
-          padding: "9px 20px",
-          borderRadius: 6,
-          fontSize: 13,
-          cursor: "pointer",
-          fontWeight: 600,
-        }}
-      >
-        🖨️ Print / Save as PDF
-      </button>
-      <button
-        onClick={() => window.close()}
-        style={{
-          background: "#e5e7eb",
-          color: "#333",
-          border: "none",
-          padding: "9px 16px",
-          borderRadius: 6,
-          fontSize: 13,
-          cursor: "pointer",
-        }}
-      >
+      <Button className="bg-kara-purple hover:bg-kara-purple/90" onClick={() => window.print()}>
+        <Printer className="size-4" aria-hidden />
+        Print / Save as PDF
+      </Button>
+      <Button variant="secondary" onClick={() => window.close()}>
+        <X className="size-4" aria-hidden />
         Close
-      </button>
+      </Button>
     </div>
   )
 }

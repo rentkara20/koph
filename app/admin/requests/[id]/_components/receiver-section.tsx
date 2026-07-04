@@ -2,6 +2,8 @@
 
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import Link from "next/link"
 import { UserCheck, ChevronDown, ExternalLink, X } from "lucide-react"
 import { setRequestReceiver } from "@/lib/actions/requests"
@@ -32,12 +34,19 @@ type Props = {
 export function ReceiverSection({ requestId, customerId, contacts, receiverContactId }: Props) {
   const [pending, startTransition] = useTransition()
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const current = contacts.find((c) => c.id === receiverContactId) ?? null
 
   function select(contactId: string | null) {
     startTransition(async () => {
-      await setRequestReceiver(requestId, contactId)
-      router.refresh()
+      try {
+        const result = await setRequestReceiver(requestId, contactId)
+        if (result.error) { toast.error(result.error); return }
+        toast.success(tToast("updated"))
+        router.refresh()
+      } catch {
+        toast.error(tToast("genericError"))
+      }
     })
   }
 

@@ -19,6 +19,7 @@ import { TasksSection } from "./_components/tasks-section"
 import { SignaturesSection } from "./_components/signatures-section"
 import { ItemsSection } from "./_components/items-section"
 import { ReceiverSection } from "./_components/receiver-section"
+import { NextStepBanner } from "./_components/next-step-banner"
 import { cn } from "@/lib/utils"
 
 export default async function RequestDetailPage({
@@ -53,7 +54,7 @@ export default async function RequestDetailPage({
             href="/admin/requests"
             className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
           >
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className="size-4 rtl:rotate-180" />
           </Link>
           <div>
             <div className="flex items-center gap-3">
@@ -65,7 +66,7 @@ export default async function RequestDetailPage({
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Created {formatDate(request.createdAt)}
+              {t("createdOn", { date: formatDate(request.createdAt) })}
             </p>
           </div>
         </div>
@@ -78,13 +79,23 @@ export default async function RequestDetailPage({
         </div>
       </div>
 
+      {/* Guided next-step prompt driven by current pipeline state */}
+      <NextStepBanner
+        status={request.status}
+        itemCount={items.length}
+        taskCount={tasks.length}
+        hasPendingSignoff={tasks.some((t) => t.status === "pending_signoff")}
+        hasSignedSignature={signatures.some((s) => s.status === "signed")}
+        hasAnySignature={signatures.length > 0}
+      />
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Main info */}
         <div className="lg:col-span-2 space-y-6">
           {/* Details card */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">Details</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t("details")}</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2 text-sm">
               {request.quoteNumber && (
@@ -114,7 +125,7 @@ export default async function RequestDetailPage({
               </div>
               {customer?.mobile && (
                 <div>
-                  <dt className="text-muted-foreground">Mobile</dt>
+                  <dt className="text-muted-foreground">{t("mobile")}</dt>
                   <dd className="font-medium mt-0.5">
                     <a href={`tel:${customer.mobile}`} className="hover:text-primary transition-colors">
                       {customer.mobile}
@@ -124,7 +135,7 @@ export default async function RequestDetailPage({
               )}
               {customer?.city && (
                 <div>
-                  <dt className="text-muted-foreground">City</dt>
+                  <dt className="text-muted-foreground">{t("city")}</dt>
                   <dd className="font-medium mt-0.5">{customer.city}</dd>
                 </div>
               )}
@@ -166,7 +177,7 @@ export default async function RequestDetailPage({
           {/* Receiver */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">Receiver</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{t("receiver")}</CardTitle>
             </CardHeader>
             <CardContent>
               <ReceiverSection
@@ -194,7 +205,7 @@ export default async function RequestDetailPage({
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Partner tasks ({tasks.length})
+                {t("partnerTasks")} ({tasks.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -213,7 +224,7 @@ export default async function RequestDetailPage({
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                Signature requests ({signatures.length})
+                {t("signatureRequests")} ({signatures.length})
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -276,8 +287,8 @@ export default async function RequestDetailPage({
               </div>
               <Separator />
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Require National ID</p>
-                <span>{request.requireNationalId ? "Yes" : "No"}</span>
+                <p className="text-xs text-muted-foreground mb-1">{t("requireNationalId")}</p>
+                <span>{request.requireNationalId ? tCommon("yes") : tCommon("no")}</span>
               </div>
             </CardContent>
           </Card>

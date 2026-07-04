@@ -15,7 +15,16 @@ import {
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
-import { getSession } from "@/lib/auth/session"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import {
+  createSignatureRequestSchema,
+  signOnSiteSchema,
+  submitSignatureSchema,
+  firstError,
+} from "@/lib/validation/schemas"
+
+// Statuses from which a signature request can never transition again
+const TERMINAL_SIGNATURE_STATUSES = ["signed", "rejected", "cancelled", "expired"]
 
 async function captureRequestMeta() {
   const h = await headers()
@@ -48,10 +57,11 @@ export async function createSignatureRequest(
     requireNationalId?: boolean
   }
 ): Promise<SignatureActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  if (!data.documentName?.trim()) return { error: "Document name is required" }
+  const parsed = createSignatureRequestSchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
 
   const [req] = await db.select().from(requests).where(eq(requests.id, requestId))
   if (!req) return { error: "Request not found" }
@@ -127,22 +137,24 @@ export async function getAllSignatureRequests() {
 // ─── Admin: mark as sent ──────────────────────────────────────────────────────
 
 export async function markSignatureAsSent(id: string): Promise<SignatureActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const [sig] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
   if (!sig) return { error: "Not found" }
   if (sig.status !== "draft") return { error: "Only draft requests can be marked as sent" }
 
-  await db
-    .update(signatureRequests)
-    .set({ status: "sent", updatedAt: Date.now() })
-    .where(eq(signatureRequests.id, id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(signatureRequests)
+      .set({ status: "sent", updatedAt: Date.now() })
+      .where(eq(signatureRequests.id, id))
 
-  await db.insert(signatureEvents).values({
-    id: createId(),
-    signatureRequestId: id,
-    eventType: "sent",
+    await tx.insert(signatureEvents).values({
+      id: createId(),
+      signatureRequestId: id,
+      eventType: "sent",
+    })
   })
 
   if (sig.requestId) {
@@ -162,14 +174,13 @@ export async function markSignatureAsSent(id: string): Promise<SignatureActionRe
 // ─── Admin: cancel signature request ─────────────────────────────────────────
 
 export async function cancelSignatureRequest(id: string): Promise<SignatureActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const [sig] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
   if (!sig) return { error: "Not found" }
 
-  const terminal = ["signed", "rejected", "expired", "cancelled"]
-  if (terminal.includes(sig.status)) return { error: "Cannot cancel a completed request" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) return { error: "Cannot cancel a completed request" }
 
   await db
     .update(signatureRequests)
@@ -274,18 +285,17 @@ export async function submitSignature(
 
   if (!sig) return { error: "Not found" }
 
-  const terminal = ["signed", "rejected", "cancelled", "expired"]
-  if (terminal.includes(sig.status)) return { error: "This request is no longer active" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) return { error: "This request is no longer active" }
   if (sig.status === "draft") return { error: "This link has not been activated yet" }
   if (sig.expiryEnabled && sig.expiresAt && sig.expiresAt < Date.now()) {
     return { error: "This signing link has expired" }
   }
 
-  if (!data.fullName?.trim()) return { error: "Full name is required" }
+  const parsed = submitSignatureSchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
   if (sig.requireNationalId && !data.nationalId?.trim()) {
     return { error: "National ID / Iqama is required" }
   }
-  if (!data.signatureData) return { error: "Signature is required" }
 
   const [consent] = await db
     .select()
@@ -332,33 +342,35 @@ export async function submitSignature(
     userAgent,
   ])
 
-  await db.insert(customerSignatures).values({
-    id,
-    signatureRequestId: sig.id,
-    fullName,
-    mobile: data.mobile?.trim() ?? "",
-    nationalId,
-    signatureData: data.signatureData,
-    consentVersion: consent?.version ?? null,
-    consentAcceptedAt: now,
-    signedAt: now,
-    signedAtTz: "Asia/Riyadh",
-    ipAddress,
-    userAgent,
-    auditDataHash,
-  })
+  await db.transaction(async (tx) => {
+    await tx.insert(customerSignatures).values({
+      id,
+      signatureRequestId: sig.id,
+      fullName,
+      mobile: data.mobile?.trim() ?? "",
+      nationalId,
+      signatureData: data.signatureData,
+      consentVersion: consent?.version ?? null,
+      consentAcceptedAt: now,
+      signedAt: now,
+      signedAtTz: "Asia/Riyadh",
+      ipAddress,
+      userAgent,
+      auditDataHash,
+    })
 
-  await db
-    .update(signatureRequests)
-    .set({ status: "signed", updatedAt: now })
-    .where(eq(signatureRequests.id, sig.id))
+    await tx
+      .update(signatureRequests)
+      .set({ status: "signed", updatedAt: now })
+      .where(eq(signatureRequests.id, sig.id))
 
-  await db.insert(signatureEvents).values({
-    id: createId(),
-    signatureRequestId: sig.id,
-    eventType: "signed",
-    ipAddress,
-    userAgent,
+    await tx.insert(signatureEvents).values({
+      id: createId(),
+      signatureRequestId: sig.id,
+      eventType: "signed",
+      ipAddress,
+      userAgent,
+    })
   })
 
   if (sig.requestId) {
@@ -420,10 +432,13 @@ export async function signOnSiteByTaskToken(
 
   if (!task) return { error: "Task not found" }
   if (!task.requestId) return { error: "Task has no linked request" }
+  if (task.taskTokenExpiresAt < Date.now()) return { error: "Link expired" }
+  if (!["in_progress", "pending_signoff"].includes(task.status)) {
+    return { error: "Task is not active for on-site signing" }
+  }
 
-  if (!data.fullName?.trim()) return { error: "Full name is required" }
-  if (!data.nationalId?.trim()) return { error: "National / Iqama ID is required" }
-  if (!data.signatureData) return { error: "Signature is required" }
+  const parsed = signOnSiteSchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
 
   const [req] = await db.select().from(requests).where(eq(requests.id, task.requestId))
   if (!req) return { error: "Request not found" }
@@ -449,7 +464,9 @@ export async function signOnSiteByTaskToken(
       .orderBy(desc(signatureRequests.createdAt))
       .limit(1)
 
-    if (existing && !["signed", "cancelled", "expired", "rejected"].includes(existing.status)) {
+    const isTimeExpired =
+      existing?.expiryEnabled && existing.expiresAt ? existing.expiresAt < Date.now() : false
+    if (existing && !TERMINAL_SIGNATURE_STATUSES.includes(existing.status) && !isTimeExpired) {
       sigReq = existing
     } else {
       // Auto-create
@@ -475,8 +492,7 @@ export async function signOnSiteByTaskToken(
 
   if (!sigReq) return { error: "Could not find or create signature request" }
 
-  const terminal = ["signed", "rejected", "cancelled", "expired"]
-  if (terminal.includes(sigReq.status)) return { error: "This document is already signed or cancelled" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sigReq.status)) return { error: "This document is already signed or cancelled" }
 
   // Ensure verificationId exists on the sig request
   let verificationId = sigReq.verificationId
@@ -507,30 +523,32 @@ export async function signOnSiteByTaskToken(
     userAgent,
   ])
 
-  await db.insert(customerSignatures).values({
-    id,
-    signatureRequestId: sigReq.id,
-    fullName,
-    mobile: "",
-    nationalId,
-    signatureData: data.signatureData,
-    consentAcceptedAt: now,
-    signedAt: now,
-    signedAtTz: "Asia/Riyadh",
-    ipAddress,
-    userAgent,
-    auditDataHash,
-  })
+  await db.transaction(async (tx) => {
+    await tx.insert(customerSignatures).values({
+      id,
+      signatureRequestId: sigReq.id,
+      fullName,
+      mobile: "",
+      nationalId,
+      signatureData: data.signatureData,
+      consentAcceptedAt: now,
+      signedAt: now,
+      signedAtTz: "Asia/Riyadh",
+      ipAddress,
+      userAgent,
+      auditDataHash,
+    })
 
-  await db
-    .update(signatureRequests)
-    .set({ status: "signed", updatedAt: now })
-    .where(eq(signatureRequests.id, sigReq.id))
+    await tx
+      .update(signatureRequests)
+      .set({ status: "signed", updatedAt: now })
+      .where(eq(signatureRequests.id, sigReq.id))
 
-  await db.insert(signatureEvents).values({
-    id: createId(),
-    signatureRequestId: sigReq.id,
-    eventType: "signed",
+    await tx.insert(signatureEvents).values({
+      id: createId(),
+      signatureRequestId: sigReq.id,
+      eventType: "signed",
+    })
   })
 
   await logActivity({
@@ -561,19 +579,21 @@ export async function rejectSignature(
 
   if (!sig) return { error: "Not found" }
 
-  const terminal = ["signed", "rejected", "cancelled", "expired"]
-  if (terminal.includes(sig.status)) return { error: "This request is no longer active" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) return { error: "This request is no longer active" }
+  if (sig.status === "draft") return { error: "This link has not been activated yet" }
 
-  await db
-    .update(signatureRequests)
-    .set({ status: "rejected", updatedAt: Date.now() })
-    .where(eq(signatureRequests.id, sig.id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(signatureRequests)
+      .set({ status: "rejected", updatedAt: Date.now() })
+      .where(eq(signatureRequests.id, sig.id))
 
-  await db.insert(signatureEvents).values({
-    id: createId(),
-    signatureRequestId: sig.id,
-    eventType: "rejected",
-    ipAddress: ipAddress ?? null,
+    await tx.insert(signatureEvents).values({
+      id: createId(),
+      signatureRequestId: sig.id,
+      eventType: "rejected",
+      ipAddress: ipAddress ?? null,
+    })
   })
 
   if (sig.requestId) {
@@ -591,11 +611,17 @@ export async function rejectSignature(
 }
 
 export async function deleteSignatureRequest(id: string): Promise<SignatureActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  const [sig] = await db.select({ requestId: signatureRequests.requestId }).from(signatureRequests).where(eq(signatureRequests.id, id))
+  const [sig] = await db
+    .select({ requestId: signatureRequests.requestId, status: signatureRequests.status })
+    .from(signatureRequests)
+    .where(eq(signatureRequests.id, id))
   if (!sig) return { error: "Not found" }
+
+  // Signed records are legal evidence (customer signature + audit hash) — never hard-delete
+  if (sig.status === "signed") return { error: "Signed requests cannot be deleted" }
 
   await db.delete(signatureRequests).where(eq(signatureRequests.id, id))
 

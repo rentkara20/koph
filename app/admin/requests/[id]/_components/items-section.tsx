@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Pencil, Trash2, Plus, Check, X } from "lucide-react"
 import { updateRequestItem, deleteRequestItem, addRequestItem } from "@/lib/actions/requests"
 import { Button } from "@/components/ui/button"
@@ -131,6 +133,7 @@ export function ItemsSection({
   initialItems: Item[]
 }) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [items, setItems] = useState<Item[]>(initialItems)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addingNew, setAddingNew] = useState(false)
@@ -148,7 +151,8 @@ export function ItemsSection({
       accessories: data.accessories ?? undefined,
       notes: data.notes ?? undefined,
     })
-    if (result.error) { setError(result.error); return }
+    if (result.error) { setError(result.error); toast.error(result.error); return }
+    toast.success(tToast("updated"))
     setItems((prev) => prev.map((i) => (i.id === data.id ? data : i)))
     setEditingId(null)
   }
@@ -156,9 +160,16 @@ export function ItemsSection({
   async function handleDelete(itemId: string) {
     if (!confirm("Delete this item?")) return
     setDeletingId(itemId)
-    await deleteRequestItem(itemId, requestId)
-    setItems((prev) => prev.filter((i) => i.id !== itemId))
-    setDeletingId(null)
+    try {
+      const result = await deleteRequestItem(itemId, requestId)
+      if (result?.error) { setError(result.error); toast.error(result.error); setDeletingId(null); return }
+      toast.success(tToast("deleted"))
+      setItems((prev) => prev.filter((i) => i.id !== itemId))
+    } catch {
+      toast.error(tToast("genericError"))
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   async function handleAddNew(data: Item) {
@@ -172,7 +183,8 @@ export function ItemsSection({
       accessories: data.accessories ?? undefined,
       notes: data.notes ?? undefined,
     })
-    if (result.error) { setError(result.error); return }
+    if (result.error) { setError(result.error); toast.error(result.error); return }
+    toast.success(tToast("created"))
     const newItem: Item = { ...data, id: result.id! }
     setItems((prev) => [...prev, newItem])
     setAddingNew(false)

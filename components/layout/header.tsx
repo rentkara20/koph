@@ -22,6 +22,7 @@ interface HeaderProps {
 
 export function Header({ userName, userRole }: HeaderProps) {
   const t = useTranslations("nav")
+  const tCommon = useTranslations("common")
   const router = useRouter()
   const [query, setQuery] = useState("")
   const initials = userName
@@ -52,7 +53,7 @@ export function Header({ userName, userRole }: HeaderProps) {
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search…"
+          placeholder={tCommon("search") + "…"}
           className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
       </form>
@@ -63,7 +64,7 @@ export function Header({ userName, userRole }: HeaderProps) {
         <DropdownMenu>
           <DropdownMenuTrigger className="inline-flex h-8 w-8 items-center justify-center rounded-full outline-none hover:ring-2 hover:ring-ring hover:ring-offset-1">
             <Avatar className="h-8 w-8">
-              <AvatarFallback className="text-xs">{initials}</AvatarFallback>
+              <AvatarFallback className="bg-primary text-xs text-primary-foreground">{initials}</AvatarFallback>
             </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">

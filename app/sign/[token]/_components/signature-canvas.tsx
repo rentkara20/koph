@@ -1,6 +1,8 @@
 "use client"
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
+import { Eraser, PenLine } from "lucide-react"
 
 export interface SignatureCanvasHandle {
   isEmpty(): boolean
@@ -8,8 +10,13 @@ export interface SignatureCanvasHandle {
   clear(): void
 }
 
-export const SignatureCanvas = forwardRef<SignatureCanvasHandle>(
-  function SignatureCanvas(_, ref) {
+/**
+ * Large, clearly bordered signature pad. Works with mouse, pen and touch via
+ * pointer events. Exposes an imperative handle so the form can read/clear it.
+ */
+export const SignatureCanvas = forwardRef<SignatureCanvasHandle, { invalid?: boolean }>(
+  function SignatureCanvas({ invalid }, ref) {
+    const t = useTranslations("signatures.signing")
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const isDrawingRef = useRef(false)
     const isEmptyRef = useRef(true)
@@ -28,7 +35,7 @@ export const SignatureCanvas = forwardRef<SignatureCanvasHandle>(
       const ctx = canvas.getContext("2d")
       if (!ctx) return
 
-      ctx.strokeStyle = "#0f172a"
+      ctx.strokeStyle = "#1e2730"
       ctx.lineWidth = 2.5
       ctx.lineCap = "round"
       ctx.lineJoin = "round"
@@ -90,23 +97,33 @@ export const SignatureCanvas = forwardRef<SignatureCanvasHandle>(
     }
 
     return (
-      <div className="space-y-1.5">
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+            <PenLine className="size-4 text-muted-foreground" aria-hidden />
+            {t("draw")}
+          </span>
+          {!isEmpty && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+            >
+              <Eraser className="size-3.5" aria-hidden />
+              {t("clear")}
+            </button>
+          )}
+        </div>
         <canvas
           ref={canvasRef}
-          width={600}
-          height={200}
-          className="w-full rounded-lg border-2 border-dashed cursor-crosshair bg-white"
-          style={{ height: "180px", touchAction: "none" }}
+          width={640}
+          height={220}
+          className={`h-44 w-full rounded-xl border-2 border-dashed bg-card transition-colors ${
+            invalid ? "border-destructive" : "border-border"
+          }`}
+          style={{ touchAction: "none", cursor: "crosshair" }}
+          aria-label={t("draw")}
         />
-        {!isEmpty && (
-          <button
-            type="button"
-            onClick={handleClear}
-            className="text-xs text-muted-foreground hover:text-destructive transition-colors"
-          >
-            Clear signature
-          </button>
-        )}
       </div>
     )
   }

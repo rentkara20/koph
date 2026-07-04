@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { servicesCatalog } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession } from "@/lib/auth/session"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type ServiceActionResult = { error?: string; id?: string }
 
@@ -31,7 +31,7 @@ export async function createService(data: {
   nameEn: string
   nameAr: string
 }): Promise<ServiceActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
   if (!data.nameEn?.trim()) return { error: "English name is required" }
   if (!data.nameAr?.trim()) return { error: "Arabic name is required" }
@@ -59,7 +59,7 @@ export async function updateService(
   id: string,
   data: { nameEn?: string; nameAr?: string }
 ): Promise<ServiceActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   await db
@@ -72,7 +72,7 @@ export async function updateService(
 }
 
 export async function toggleService(id: string): Promise<ServiceActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const [svc] = await db.select().from(servicesCatalog).where(eq(servicesCatalog.id, id))
@@ -91,7 +91,7 @@ export async function moveService(
   id: string,
   direction: "up" | "down"
 ): Promise<ServiceActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const all = await db.select().from(servicesCatalog).orderBy(asc(servicesCatalog.sortOrder))

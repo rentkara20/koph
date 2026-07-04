@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, count, desc, eq, gt, isNull, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
@@ -17,44 +17,37 @@ import {
 } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
-import { getSession } from "@/lib/auth/session"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import {
+  createTaskSchema,
+  partnerActionSchema,
+  failureReasonSchema,
+  firstError,
+} from "@/lib/validation/schemas"
+import {
+  type PartnerAction,
+  ACTION_STATUS,
+  canTransition,
+} from "@/lib/domain/task-status"
+import { deriveRequestStatus } from "@/lib/domain/request-status"
+import { computePayment, requiresQuantity, type PricingModel } from "@/lib/domain/pricing"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
 // ─── Auto request status sync ─────────────────────────────────────────────────
-
-const ACTIVE_STATUSES = ["pending", "accepted", "in_progress", "pending_signoff"] as const
-const MANUAL_STATUSES = ["on_hold", "cancelled", "rescheduled", "failed"] as const
+// Pure derivation lives in lib/domain/request-status.ts (unit-tested); this
+// wrapper handles the DB read/write around it.
 
 async function syncRequestStatus(requestId: string) {
   const [request] = await db.select().from(requests).where(eq(requests.id, requestId))
   if (!request) return
-
-  // Never auto-override manual ops statuses
-  if ((MANUAL_STATUSES as readonly string[]).includes(request.status)) return
 
   const tasks = await db
     .select()
     .from(partnerTasks)
     .where(eq(partnerTasks.requestId, requestId))
 
-  if (tasks.length === 0) return
-
-  const active = tasks.filter((t) => (ACTIVE_STATUSES as readonly string[]).includes(t.status))
-  const closed = tasks.filter((t) => t.status === "closed")
-  const inProgress = tasks.filter((t) =>
-    (["in_progress", "pending_signoff"] as string[]).includes(t.status)
-  )
-
-  let newStatus: string | null = null
-
-  if (tasks.length > 0 && request.status === "draft") {
-    newStatus = "assigned"
-  } else if (inProgress.length > 0 && request.status !== "in_progress") {
-    newStatus = "in_progress"
-  } else if (active.length === 0 && closed.length > 0 && request.status !== "completed") {
-    newStatus = "completed"
-  }
+  const newStatus = deriveRequestStatus(request.status, tasks.map((t) => t.status))
 
   if (newStatus) {
     await db
@@ -85,10 +78,11 @@ export async function createTask(
     notes?: string
   }
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  if (!data.partnerId) return { error: "Partner is required" }
+  const parsed = createTaskSchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
 
   const taskToken = generateToken()
   const taskTokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -164,37 +158,56 @@ export async function signOffTask(
   taskId: string,
   quantity?: number
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
 
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Task not found" }
   if (task.status !== "pending_signoff") return { error: "Task is not awaiting sign-off" }
 
-  await db
-    .update(partnerTasks)
-    .set({
-      status: "closed",
-      signoffQuantity: quantity ?? null,
-      closedBy: session.user.id,
-      closedAt: Date.now(),
-      updatedAt: Date.now(),
-    })
-    .where(eq(partnerTasks.id, taskId))
+  // Never generate payment for work under a cancelled/deleted request
+  const [parentRequest] = await db.select().from(requests).where(eq(requests.id, task.requestId))
+  if (!parentRequest || parentRequest.deletedAt) return { error: "Request no longer exists" }
+  if (["cancelled", "failed"].includes(parentRequest.status)) {
+    return { error: "Cannot sign off a task on a cancelled request" }
+  }
 
-  // Auto-create partner_payment when task has a contract
-  if (task.contractId) {
-    const [contract] = await db
-      .select()
-      .from(partnerContracts)
-      .where(eq(partnerContracts.id, task.contractId))
+  const contract = task.contractId
+    ? (
+        await db
+          .select()
+          .from(partnerContracts)
+          .where(eq(partnerContracts.id, task.contractId))
+      )[0]
+    : null
 
+  // For quantity-based pricing an omitted quantity would silently pay for 1
+  // unit — require an explicit number instead of guessing
+  if (contract && requiresQuantity(contract.pricingModel as PricingModel) && !quantity) {
+    return { error: "Quantity is required for this contract's pricing model" }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(partnerTasks)
+      .set({
+        status: "closed",
+        signoffQuantity: quantity ?? null,
+        closedBy: session.user.id,
+        closedAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .where(eq(partnerTasks.id, taskId))
+
+    // Auto-create partner_payment when task has a contract
     if (contract) {
-      const isFlat = contract.pricingModel === "per_order" || contract.pricingModel === "fixed"
-      const finalQty = isFlat ? 1 : (quantity ?? 1)
-      const totalAmount = finalQty * contract.unitPrice
+      const { quantity: finalQty, totalAmount } = computePayment(
+        contract.pricingModel as PricingModel,
+        contract.unitPrice,
+        quantity
+      )
 
-      await db.insert(partnerPayments).values({
+      await tx.insert(partnerPayments).values({
         id: createId(),
         partnerId: task.partnerId,
         partnerTaskId: task.id,
@@ -205,7 +218,7 @@ export async function signOffTask(
         status: "pending",
       })
     }
-  }
+  })
 
   await logActivity({
     entityType: "request",
@@ -223,11 +236,15 @@ export async function signOffTask(
 // ─── Admin: cancel task ───────────────────────────────────────────────────────
 
 export async function cancelTask(taskId: string): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Task not found" }
+  // A closed task already generated a partner payment — cancelling it would
+  // leave that payment flowing into the next batch for cancelled work
+  if (task.status === "closed") return { error: "Closed tasks cannot be cancelled" }
+  if (task.status === "cancelled") return { error: "Task is already cancelled" }
 
   await db
     .update(partnerTasks)
@@ -250,7 +267,7 @@ export async function cancelTask(taskId: string): Promise<ActionResult> {
 // ─── Admin: regenerate task link ──────────────────────────────────────────────
 
 export async function regenerateTaskLink(taskId: string): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
@@ -322,22 +339,8 @@ export async function getTaskPhotos(taskId: string) {
 }
 
 // ─── Public: update task via magic link ───────────────────────────────────────
-
-type PartnerAction = "accept" | "reject" | "start" | "mark_done" | "mark_failed"
-
-const ALLOWED_TRANSITIONS: Record<string, string[]> = {
-  pending: ["accepted", "rejected"],
-  accepted: ["in_progress"],
-  in_progress: ["pending_signoff", "failed"],
-}
-
-const ACTION_STATUS: Record<PartnerAction, string> = {
-  accept: "accepted",
-  reject: "rejected",
-  start: "in_progress",
-  mark_done: "pending_signoff",
-  mark_failed: "failed",
-}
+// State machine (ALLOWED_TRANSITIONS/ACTION_STATUS/canTransition) lives in
+// lib/domain/task-status.ts and is unit-tested.
 
 export async function updateTaskByToken(
   token: string,
@@ -352,9 +355,29 @@ export async function updateTaskByToken(
   if (!task) return { error: "Task not found" }
   if (task.taskTokenExpiresAt < Date.now()) return { error: "Link expired" }
 
+  const actionParsed = partnerActionSchema.safeParse(action)
+  if (!actionParsed.success) return { error: "Invalid action" }
+  if (action === "mark_failed" && data?.failureReason) {
+    if (!failureReasonSchema.safeParse(data.failureReason).success) {
+      return { error: "Invalid failure reason" }
+    }
+  }
+
   const newStatus = ACTION_STATUS[action]
-  if (!ALLOWED_TRANSITIONS[task.status]?.includes(newStatus)) {
+  if (!canTransition(task.status, action)) {
     return { error: "Invalid action for current task status" }
+  }
+
+  // Proof-of-delivery: require at least one photo before a partner can mark a
+  // delivery done. Failures are exempt (photo may be impossible on-site).
+  if (newStatus === "pending_signoff") {
+    const [{ value: photoCount }] = await db
+      .select({ value: count() })
+      .from(attachments)
+      .where(and(eq(attachments.entityId, task.id), eq(attachments.entityType, "partner_task")))
+    if (photoCount === 0) {
+      return { error: "PHOTO_REQUIRED" }
+    }
   }
 
   const updates: Partial<typeof partnerTasks.$inferInsert> = {
@@ -407,7 +430,10 @@ export async function getPartnersWithContracts() {
       partnerContracts,
       and(
         eq(partnerContracts.partnerId, partners.id),
-        eq(partnerContracts.status, "active")
+        eq(partnerContracts.status, "active"),
+        // status "active" alone isn't enough — nothing auto-expires contracts,
+        // so also exclude ones whose end date already passed
+        or(isNull(partnerContracts.endDate), gt(partnerContracts.endDate, Date.now()))
       )
     )
     .where(and(isNull(partners.deletedAt), eq(partners.status, "active")))
@@ -428,11 +454,16 @@ export async function getPartnersWithContracts() {
 }
 
 export async function deleteTask(taskId: string): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  const [task] = await db.select({ requestId: partnerTasks.requestId }).from(partnerTasks).where(eq(partnerTasks.id, taskId))
+  const [task] = await db
+    .select({ requestId: partnerTasks.requestId, status: partnerTasks.status })
+    .from(partnerTasks)
+    .where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Not found" }
+  // Closed tasks have payment records referencing them — deleting would orphan the payment
+  if (task.status === "closed") return { error: "Closed tasks cannot be deleted" }
 
   await db.delete(partnerTasks).where(eq(partnerTasks.id, taskId))
 

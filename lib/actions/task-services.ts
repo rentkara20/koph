@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { partnerTasks, servicesCatalog, taskServices } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession } from "@/lib/auth/session"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type TaskServiceResult = { error?: string; id?: string; isCompleted?: boolean }
 
@@ -63,7 +63,7 @@ export async function addServiceToTask(
   taskId: string,
   serviceId: string
 ): Promise<TaskServiceResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const [existing] = await db
@@ -89,7 +89,7 @@ export async function addServiceToTask(
 export async function removeServiceFromTask(
   taskServiceId: string
 ): Promise<TaskServiceResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const [ts] = await db

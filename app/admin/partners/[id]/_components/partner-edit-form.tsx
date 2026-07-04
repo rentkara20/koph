@@ -3,6 +3,7 @@
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import Link from "next/link"
 import { updatePartner } from "@/lib/actions/partners"
 import type { Partner } from "@/lib/db/schema"
@@ -15,6 +16,7 @@ import { cn } from "@/lib/utils"
 
 export function PartnerEditForm({ partner }: { partner: Partner }) {
   const tCommon = useTranslations("common")
+  const tToast = useTranslations("toast")
   const router = useRouter()
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -25,10 +27,11 @@ export function PartnerEditForm({ partner }: { partner: Partner }) {
     setError(""); setSaved(false); setLoading(true)
     try {
       const result = await updatePartner(partner.id, new FormData(e.currentTarget))
-      if (result.error) { setError(result.error); setLoading(false); return }
+      if (result.error) { setError(result.error); toast.error(result.error); setLoading(false); return }
+      toast.success(tToast("updated"))
       setSaved(true); setLoading(false); router.refresh()
     } catch {
-      setError("An unexpected error occurred"); setLoading(false)
+      setError("An unexpected error occurred"); toast.error(tToast("genericError")); setLoading(false)
     }
   }
 

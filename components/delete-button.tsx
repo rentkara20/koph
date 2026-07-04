@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -13,6 +15,7 @@ interface DeleteButtonProps {
 
 export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteButtonProps) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [confirming, setConfirming] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -24,10 +27,12 @@ export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteB
       const result = await onDelete()
       if (result.error) {
         setError(result.error)
+        toast.error(result.error)
         setLoading(false)
         setConfirming(false)
         return
       }
+      toast.success(tToast("deleted"))
       if (redirectTo) {
         router.push(redirectTo)
       } else {
@@ -35,6 +40,7 @@ export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteB
       }
     } catch {
       setError("An unexpected error occurred")
+      toast.error(tToast("genericError"))
       setLoading(false)
       setConfirming(false)
     }

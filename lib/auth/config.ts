@@ -40,6 +40,17 @@ export const auth = betterAuth({
       maxAge: 60 * 5,            // cache for 5 min (reduces DB hits)
     },
   },
+  // Brute-force protection: better-auth's built-in limiter, strictest on sign-in.
+  // Note: in-memory storage — per-instance on serverless, still blocks rapid
+  // single-source password guessing which is the realistic attack here.
+  rateLimit: {
+    enabled: true,
+    window: 60,
+    max: 30,
+    customRules: {
+      "/sign-in/email": { window: 60, max: 5 },
+    },
+  },
   trustedOrigins: [process.env.BETTER_AUTH_URL ?? "http://localhost:3000"],
 })
 

@@ -2,6 +2,17 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* ─── HeroUI v3 ──────────────────────────────────────────────────────────────
+ * Selective imports — avoids re-importing tailwindcss/tw-animate-css.
+ * Layer order: theme < base < components < utilities (last wins).
+ * ─────────────────────────────────────────────────────────────────────────── */
+@layer theme, base, components, utilities;
+@import "@heroui/styles/base" layer(base);
+@import "@heroui/styles/components/index.css" layer(components);
+@import "@heroui/styles/themes/default";
+@import "@heroui/styles/utilities";
+@import "@heroui/styles/variants";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -39,6 +50,10 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-kara-purple: var(--kara-purple);
+  --color-kara-blue: var(--kara-blue);
+  --color-kara-blue-soft: var(--kara-blue-soft);
+  --color-kara-purple-soft: var(--kara-purple-soft);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -49,25 +64,61 @@
 }
 
 :root {
+  /* ─── KARA brand ────────────────────────────────────────────────────────────
+   * Purple #512A83 / Blue #60B5D1 — the identity, not decoration. Wired into
+   * primary, focus ring, and sidebar active below so every surface carries it.
+   * ─────────────────────────────────────────────────────────────────────────── */
   --brand: #512A83;
+  --brand-foreground: oklch(0.985 0 0);
+  --kara-purple: oklch(0.386 0.132 305);
+  --kara-purple-hover: oklch(0.34 0.13 305);
+  --kara-blue: oklch(0.72 0.088 227);
+  --kara-blue-soft: oklch(0.95 0.03 227);
+  --kara-purple-soft: oklch(0.955 0.02 305);
+
+  /* ─── HeroUI bridge ─────────────────────────────────────────────────────────
+   * Maps HeroUI semantic tokens → koph/shadcn design tokens.
+   * These are unlayered so they win over HeroUI's @layer theme definitions.
+   *
+   * Known conflict: HeroUI uses --muted for text (muted gray), shadcn uses it
+   * for surfaces (near-white). HeroUI's text-muted will appear light; use
+   * text-muted-foreground from shadcn for muted text in koph components.
+   * ─────────────────────────────────────────────────────────────────────────── */
+  --surface: var(--card);
+  --surface-foreground: var(--card-foreground);
+  --surface-secondary: var(--secondary);
+  --surface-secondary-foreground: var(--secondary-foreground);
+  --surface-tertiary: var(--muted);
+  --surface-tertiary-foreground: var(--muted-foreground);
+  --overlay: var(--popover);
+  --overlay-foreground: var(--popover-foreground);
+  --default: var(--secondary);
+  --default-foreground: var(--secondary-foreground);
+  --danger: var(--destructive);
+  --danger-foreground: oklch(0.985 0 0);
+  --focus: var(--ring);
+  --separator: var(--border);
+  --link: var(--primary);
+  --segment: var(--muted);
+  --segment-foreground: var(--muted-foreground);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
+  --primary: oklch(0.386 0.132 305);
   --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.97 0 0);
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --accent: oklch(0.955 0.02 305);
+  --accent-foreground: oklch(0.386 0.132 305);
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --ring: oklch(0.386 0.132 305);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -76,34 +127,40 @@
   --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary: oklch(0.386 0.132 305);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-accent: oklch(0.955 0.02 305);
+  --sidebar-accent-foreground: oklch(0.386 0.132 305);
   --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar-ring: oklch(0.386 0.132 305);
 }
 
 .dark {
   --brand: #6D3BAF;
+  --brand-foreground: oklch(0.985 0 0);
+  --kara-purple: oklch(0.62 0.16 305);
+  --kara-purple-hover: oklch(0.68 0.16 305);
+  --kara-blue: oklch(0.72 0.088 227);
+  --kara-blue-soft: oklch(0.3 0.05 227);
+  --kara-purple-soft: oklch(0.3 0.06 305);
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+  --primary: oklch(0.62 0.16 305);
+  --primary-foreground: oklch(0.985 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
+  --accent: oklch(0.3 0.06 305);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: oklch(0.62 0.16 305);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -111,12 +168,12 @@
   --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.62 0.16 305);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: oklch(0.3 0.06 305);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-ring: oklch(0.62 0.16 305);
 }
 
 @layer base {
@@ -132,6 +189,9 @@
   }
   html {
     @apply font-sans;
+  }
+  .font-arabic {
+    font-family: var(--font-cairo), "Tajawal", system-ui, sans-serif;
   }
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {

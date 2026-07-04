@@ -11,6 +11,20 @@ export async function requireSession() {
   return session
 }
 
+export type Role = "admin" | "finance" | "viewer" | "partner"
+
+/**
+ * Session guard for server actions: returns the session only when the user
+ * holds one of the given roles, otherwise null. Actions should translate a
+ * null result into their error envelope instead of throwing.
+ */
+export async function getSessionWithRole(...roles: Role[]) {
+  const session = await getSession()
+  if (!session) return null
+  if (!roles.includes(session.user.role as Role)) return null
+  return session
+}
+
 export async function requireRole(
   ...roles: Array<"admin" | "finance" | "viewer" | "partner">
 ) {

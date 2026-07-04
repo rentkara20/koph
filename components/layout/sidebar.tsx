@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
@@ -13,7 +14,6 @@ import {
   Coins,
   BarChart3,
   Settings,
-  Building2,
 } from "lucide-react"
 
 const navItems = [
@@ -32,11 +32,26 @@ export function Sidebar() {
   const t = useTranslations("nav")
 
   return (
-    <aside className="flex h-full w-56 flex-col border-e bg-background">
+    <aside className="flex h-full w-56 flex-col border-e bg-sidebar">
       {/* Logo */}
-      <div className="flex h-14 items-center gap-2 border-b px-4">
-        <Building2 className="h-5 w-5 text-foreground" />
-        <span className="font-semibold tracking-tight">KOPH</span>
+      <div className="flex h-14 items-center gap-2.5 border-b px-4">
+        <Image
+          src="/kara-logo.png"
+          alt="KARA"
+          width={92}
+          height={40}
+          className="h-8 w-auto dark:hidden"
+          priority
+        />
+        <Image
+          src="/kara-logo-light.png"
+          alt="KARA"
+          width={92}
+          height={40}
+          className="hidden h-8 w-auto dark:block"
+          priority
+        />
+        <span className="text-xs font-medium text-muted-foreground border-s ps-2.5">KOPH</span>
       </div>
 
       {/* Nav */}

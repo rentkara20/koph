@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -270,7 +270,10 @@ export const partnerTasks = sqliteTable("partner_task", {
   closedAt: integer("closed_at"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-})
+}, (t) => [
+  index("partner_task_request_idx").on(t.requestId),
+  index("partner_task_partner_status_idx").on(t.partnerId, t.status),
+])
 
 // ─── Services catalog ───────────────────────────────────────────────────────
 
@@ -353,7 +356,7 @@ export const signatureRequests = sqliteTable("signature_request", {
     .default("draft"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-})
+}, (t) => [index("signature_request_request_idx").on(t.requestId)])
 
 // ─── Signature events (open tracking) ───────────────────────────────────────
 
@@ -430,7 +433,7 @@ export const activityLogs = sqliteTable("activity_log", {
     .default("user"),
   ipAddress: text("ip_address"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
-})
+}, (t) => [index("activity_log_entity_idx").on(t.entityType, t.entityId)])
 
 // ─── Payment batches ─────────────────────────────────────────────────────────
 
@@ -446,6 +449,8 @@ export const paymentBatches = sqliteTable("payment_batch", {
   })
     .notNull()
     .default("draft"),
+  // Public statement link the partner opens (no account) to review line items
+  statementToken: text("statement_token").unique(),
   generatedAt: integer("generated_at").notNull().$defaultFn(now),
   approvedBy: text("approved_by").references(() => users.id),
   approvedAt: integer("approved_at"),
@@ -480,7 +485,10 @@ export const partnerPayments = sqliteTable("partner_payment", {
   notes: text("notes"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-})
+}, (t) => [
+  index("partner_payment_partner_status_idx").on(t.partnerId, t.status),
+  index("partner_payment_batch_idx").on(t.batchId),
+])
 
 // ─── Type exports ─────────────────────────────────────────────────────────────
 

@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import { ChevronUp, ChevronDown, Pencil, Check, X } from "lucide-react"
 import {
   createService,
@@ -25,6 +27,7 @@ type Service = {
 
 export function ServicesManager({ services }: { services: Service[] }) {
   const router = useRouter()
+  const tToast = useTranslations("toast")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editEn, setEditEn] = useState("")
   const [editAr, setEditAr] = useState("")
@@ -34,15 +37,22 @@ export function ServicesManager({ services }: { services: Service[] }) {
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState("")
 
-  async function run(key: string, fn: () => Promise<{ error?: string }>) {
+  async function run(key: string, fn: () => Promise<{ error?: string }>, successKey?: string) {
     setLoading(key)
-    const result = await fn()
-    setLoading(null)
-    if (result.error) {
-      setError(result.error)
-    } else {
-      setError("")
-      router.refresh()
+    try {
+      const result = await fn()
+      setLoading(null)
+      if (result.error) {
+        setError(result.error)
+        toast.error(result.error)
+      } else {
+        setError("")
+        if (successKey) toast.success(tToast(successKey))
+        router.refresh()
+      }
+    } catch {
+      setLoading(null)
+      toast.error(tToast("genericError"))
     }
   }
 
@@ -53,13 +63,13 @@ export function ServicesManager({ services }: { services: Service[] }) {
   }
 
   async function saveEdit(id: string) {
-    await run(`edit-${id}`, () => updateService(id, { nameEn: editEn, nameAr: editAr }))
+    await run(`edit-${id}`, () => updateService(id, { nameEn: editEn, nameAr: editAr }), "updated")
     setEditingId(null)
   }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
-    await run("add", () => createService({ nameEn: addEn, nameAr: addAr }))
+    await run("add", () => createService({ nameEn: addEn, nameAr: addAr }), "created")
     setAddEn("")
     setAddAr("")
     setShowAdd(false)

@@ -5,12 +5,12 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { customers } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession } from "@/lib/auth/session"
+import { getSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type ActionResult = { error?: string; id?: string }
 
 export async function createCustomer(formData: FormData): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const name = (formData.get("name") as string)?.trim()
@@ -35,7 +35,7 @@ export async function createCustomer(formData: FormData): Promise<ActionResult> 
 }
 
 export async function updateCustomer(id: string, formData: FormData): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const name = (formData.get("name") as string)?.trim()
@@ -101,7 +101,7 @@ export async function getCustomer(id: string) {
 }
 
 export async function deleteCustomer(id: string): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   await db.update(customers).set({ deletedAt: Date.now() }).where(eq(customers.id, id))
