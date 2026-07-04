@@ -7,7 +7,6 @@ import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { formatDate } from "@/lib/utils/format"
 import { buildWhatsappUrl, customerGreetingMessage } from "@/lib/utils/whatsapp"
-import { Badge } from "@/components/ui/badge"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { TaskActions } from "./_components/task-actions"
 import { PhotoUpload } from "./_components/photo-upload"
@@ -15,17 +14,6 @@ import { TaskChecklist } from "./_components/task-checklist"
 import { SignatureStatus } from "./_components/signature-status"
 import { OnSiteSigningFlow } from "./_components/on-site-signing"
 import { Phone, MapPin, Mail, MessageCircle } from "lucide-react"
-
-const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  pending: "outline",
-  accepted: "info",
-  in_progress: "warning",
-  pending_signoff: "warning",
-  closed: "success",
-  rejected: "destructive",
-  failed: "destructive",
-  cancelled: "secondary",
-}
 
 export default async function TaskPage({
   params,
@@ -68,17 +56,16 @@ export default async function TaskPage({
 
   return (
     <div className="min-h-svh bg-muted/30">
-      {/* Header */}
-      <div className="bg-background border-b sticky top-0 z-10">
+      {/* Header — KARA purple, app-style */}
+      <div className="bg-kara-purple text-white sticky top-0 z-20 shadow-[0_2px_8px_rgba(81,43,131,0.25)]">
         <div className="flex items-center gap-2.5 px-4 py-3 max-w-md mx-auto">
-          <Image src="/kara-logo.png" alt="KARA" width={74} height={32} className="h-7 w-auto dark:hidden" priority />
-          <Image src="/kara-logo-light.png" alt="KARA" width={74} height={32} className="hidden h-7 w-auto dark:block" priority />
-          <span className="font-mono text-xs text-muted-foreground">{request.requestNumber}</span>
+          <Image src="/kara-logo-light.png" alt="KARA" width={74} height={32} className="h-7 w-auto" priority />
+          <span className="font-mono text-xs text-white/70">{request.requestNumber}</span>
           <div className="ms-auto flex items-center gap-2">
-            <Badge variant={TASK_STATUS_VARIANT[task.status] ?? "outline"}>
+            <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-medium text-white">
               {tStatus(task.status)}
-            </Badge>
-            <LocaleToggle />
+            </span>
+            <LocaleToggle onDark />
           </div>
         </div>
       </div>
@@ -119,7 +106,7 @@ export default async function TaskPage({
 
         {/* Request info card */}
         <div className="rounded-xl bg-background border p-4 space-y-3">
-          <h2 className="font-semibold">{requestType?.nameEn ?? tPortal("yourTask")}</h2>
+          <h2 className="font-semibold text-kara-purple">{requestType?.nameEn ?? tPortal("yourTask")}</h2>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
@@ -183,7 +170,7 @@ export default async function TaskPage({
         {customerContacts.length > 0 && (
           <div className="rounded-xl bg-background border overflow-hidden">
             <div className="px-4 py-3 border-b bg-muted/50">
-              <p className="text-sm font-medium">Contact persons</p>
+              <p className="text-sm font-semibold text-kara-purple">Contact persons</p>
               <p className="text-xs text-muted-foreground mt-0.5">People to reach at the delivery location</p>
             </div>
             <ul className="divide-y">
@@ -279,7 +266,7 @@ export default async function TaskPage({
         {items.length > 0 && (
           <div className="rounded-xl bg-background border overflow-hidden">
             <div className="px-4 py-3 border-b bg-muted/50">
-              <p className="text-sm font-medium">{tPortal("items")} ({items.length})</p>
+              <p className="text-sm font-semibold text-kara-purple">{tPortal("items")} ({items.length})</p>
             </div>
             <ul className="divide-y">
               {items.map((item) => (
@@ -326,7 +313,7 @@ export default async function TaskPage({
         {(photos.length > 0 || task.status === "in_progress") && (
           <div className="rounded-xl bg-background border overflow-hidden">
             <div className="px-4 py-3 border-b bg-muted/50">
-              <p className="text-sm font-medium">
+              <p className="text-sm font-semibold text-kara-purple">
                 {t("photos")}{photos.length > 0 ? ` (${photos.length})` : ""}
               </p>
             </div>

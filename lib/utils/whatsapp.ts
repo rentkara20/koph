@@ -56,9 +56,10 @@ export function customerGreetingMessage(opts: {
 }): string {
   const lines = [
     `مرحباً${opts.customerName ? " " + opts.customerName : ""}،`,
-    `معك ${opts.courierName}، ومعي شحنة من شركة كارا (طلب رقم ${opts.requestNumber}).`,
+    `معك ${opts.courierName} من شركة حلول كارا للتأجير.`,
+    `طلبك رقم ${opts.requestNumber} جاهز للتسليم.`,
     `المحتويات: ${opts.itemsSummary}.`,
-    `متى الموعد المناسب لاستلامها؟`,
+    `برجاء تأكيد الموقع والموعد المناسب للاستلام.`,
   ]
   if (opts.signLink) {
     lines.push(``, `للتوقيع على الاستلام:`, opts.signLink)

@@ -58,7 +58,12 @@ export function TaskActions({ token, status }: { token: string; status: string }
         return
       }
       toast.success(tPortal(SUCCESS_KEY[action]))
+      setShowFailForm(false)
+      setConfirmReject(false)
       router.refresh()
+      // router.refresh() keeps client state, so the loading flag must be
+      // cleared explicitly — otherwise the next button (e.g. Start) renders disabled.
+      setLoading(null)
     } catch {
       toast.error(tToast("genericError"))
       setLoading(null)

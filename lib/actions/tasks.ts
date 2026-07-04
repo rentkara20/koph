@@ -438,6 +438,7 @@ export async function updateTaskByToken(
   })
 
   await syncRequestStatus(task.requestId)
+  revalidatePath(`/task/${token}`)
   return { id: task.id }
 }
 
