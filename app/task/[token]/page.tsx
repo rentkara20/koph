@@ -58,6 +58,8 @@ export default async function TaskPage({
 
   const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
   const canAct = !isTerminal && !isExpired
+  // Signing is only possible once the partner has accepted AND started the task.
+  const canSign = canAct && task.status === "in_progress"
 
   // Short items summary for the customer WhatsApp greeting.
   const itemsSummary = items
@@ -68,7 +70,7 @@ export default async function TaskPage({
     <div className="min-h-svh bg-muted/30">
       {/* Header */}
       <div className="bg-background border-b sticky top-0 z-10">
-        <div className="flex items-center gap-2.5 px-4 py-3 max-w-lg mx-auto">
+        <div className="flex items-center gap-2.5 px-4 py-3 max-w-md mx-auto">
           <Image src="/kara-logo.png" alt="KARA" width={74} height={32} className="h-7 w-auto dark:hidden" priority />
           <Image src="/kara-logo-light.png" alt="KARA" width={74} height={32} className="hidden h-7 w-auto dark:block" priority />
           <span className="font-mono text-xs text-muted-foreground">{request.requestNumber}</span>
@@ -81,7 +83,7 @@ export default async function TaskPage({
         </div>
       </div>
 
-      <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-md mx-auto px-4 py-5 space-y-4">
         {/* Expired / terminal banners */}
         {isExpired && !isTerminal && (
           <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800">
@@ -362,8 +364,8 @@ export default async function TaskPage({
           </div>
         )}
 
-        {/* Signature status */}
-        {sigData && (
+        {/* Signature status — always show once signed; otherwise only after work has started */}
+        {sigData && (sigData.sigReq.status === "signed" || canSign) && (
           <SignatureStatus
             status={sigData.sigReq.status}
             signedAt={sigData.sig?.signedAt ?? null}
@@ -376,8 +378,8 @@ export default async function TaskPage({
           />
         )}
 
-        {/* On-site signing — only when task is active and not yet signed */}
-        {canAct && (!sigData || !["signed"].includes(sigData.sigReq.status)) && (
+        {/* On-site signing — only once the task is in progress and not yet signed */}
+        {canSign && (!sigData || !["signed"].includes(sigData.sigReq.status)) && (
           <OnSiteSigningFlow
             taskToken={token}
             customerName={customer?.name ?? null}
@@ -385,9 +387,25 @@ export default async function TaskPage({
           />
         )}
 
-        {/* Action buttons */}
-        {canAct && <TaskActions token={token} status={task.status} />}
+        {/* Hint: signing unlocks after accepting + starting */}
+        {canAct && !canSign && (task.status === "pending" || task.status === "accepted") && (
+          <p className="rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3 text-center text-xs text-muted-foreground">
+            {task.status === "pending" ? tPortal("acceptToStart") : tPortal("startToSign")}
+          </p>
+        )}
       </div>
+
+      {/* Sticky action bar — app-style, thumb-reachable */}
+      {canAct && (
+        <div className="sticky bottom-0 z-10 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          <div
+            className="mx-auto max-w-md px-4 py-3"
+            style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+          >
+            <TaskActions token={token} status={task.status} />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

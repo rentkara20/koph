@@ -369,7 +369,9 @@
     "expired": "This link has expired. Please contact the KARA office for a new one.",
     "allDone": "All done — thank you!",
     "step": "Step",
-    "of": "of"
+    "of": "of",
+    "acceptToStart": "Accept the task to begin the delivery.",
+    "startToSign": "Press Start, then you can collect the customer's signature."
   },
   "trust": {
     "secureLink": "Secure link",
