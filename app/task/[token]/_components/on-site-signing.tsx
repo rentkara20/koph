@@ -2,7 +2,8 @@
 
 import { useRef, useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
-import { CheckCircle2, ChevronLeft, RotateCcw } from "lucide-react"
+import { useTranslations } from "next-intl"
+import { CheckCircle2, ChevronRight, PenLine, X } from "lucide-react"
 import { signOnSiteByTaskToken } from "@/lib/actions/signatures"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,34 +17,32 @@ type Props = {
   customerMobile: string | null
 }
 
-export function OnSiteSigningFlow({ taskToken, customerName, customerMobile }: Props) {
+export function OnSiteSigningFlow({ taskToken, customerName }: Props) {
+  const t = useTranslations("signatures.signing")
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [step, setStep] = useState<Step>("form")
   const [fullName, setFullName] = useState("")
   const [nationalId, setNationalId] = useState("")
-  const [signatureData, setSignatureData] = useState<string | null>(null)
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
 
   function handleStart() {
     setFullName(customerName ?? "")
     setNationalId("")
-    setSignatureData(null)
     setError("")
     setStep("form")
     setOpen(true)
   }
 
   function handleFormNext() {
-    if (!fullName.trim()) { setError("Full name is required"); return }
-    if (!nationalId.trim()) { setError("National / Iqama ID is required"); return }
+    if (!fullName.trim()) { setError(t("fullName")); return }
+    if (!nationalId.trim()) { setError(t("nationalId")); return }
     setError("")
     setStep("pad")
   }
 
   async function handleConfirm(data: string) {
-    setSignatureData(data)
     setSaving(true)
     setError("")
     const result = await signOnSiteByTaskToken(taskToken, {
@@ -57,77 +56,81 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile }: P
     router.refresh()
   }
 
+  // Trigger — prominent purple call-to-action (collection-app style)
   if (!open) {
     return (
       <button
         onClick={handleStart}
-        className="w-full rounded-xl border-2 border-dashed border-muted-foreground/30 px-4 py-5 text-center hover:border-primary/40 hover:bg-muted/30 transition-colors"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-kara-purple px-4 py-3.5 text-base font-semibold text-white shadow-[0_2px_8px_rgba(81,43,131,0.25)] transition-colors hover:bg-kara-purple-hover active:opacity-90"
       >
-        <p className="text-sm font-medium">Start customer signing</p>
-        <p className="text-xs text-muted-foreground mt-0.5">Collect signature on this device</p>
+        <PenLine className="size-5" />
+        {t("tapToSign")}
       </button>
     )
   }
 
   return (
-    <div className="rounded-xl bg-background border overflow-hidden">
-      {/* Step: Info form */}
+    <div className="rounded-xl border border-border bg-background overflow-hidden">
+      {/* Step: customer details */}
       {step === "form" && (
-        <div className="p-4 space-y-4">
+        <div className="space-y-4 p-4">
           <div className="flex items-center gap-2">
             <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
-              <ChevronLeft className="size-4" />
+              <X className="size-4" />
             </button>
-            <p className="font-medium text-sm">Customer details</p>
+            <p className="text-sm font-semibold text-kara-purple">{t("customerDetails")}</p>
           </div>
-          <p className="text-xs text-muted-foreground">Ask the customer to confirm their details. You can edit if needed.</p>
+          <p className="text-xs text-muted-foreground">{t("detailsHint")}</p>
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Full name <span className="text-destructive">*</span></Label>
+              <Label className="text-xs">{t("fullName")} <span className="text-destructive">*</span></Label>
               <Input
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                placeholder="Customer full name"
+                placeholder={t("namePlaceholder")}
                 autoFocus
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">National / Iqama ID <span className="text-destructive">*</span></Label>
+              <Label className="text-xs">{t("nationalId")} <span className="text-destructive">*</span></Label>
               <Input
                 value={nationalId}
                 onChange={(e) => setNationalId(e.target.value)}
-                placeholder="ID number"
+                placeholder={t("idPlaceholder")}
                 inputMode="numeric"
+                className="font-mono"
               />
             </div>
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
-          <Button className="w-full" onClick={handleFormNext}>
-            Open signature pad →
+          <Button
+            className="h-12 w-full bg-kara-purple text-base font-semibold hover:bg-kara-purple-hover"
+            onClick={handleFormNext}
+          >
+            {t("openPad")}
+            <ChevronRight className="size-4 rtl:rotate-180" />
           </Button>
         </div>
       )}
 
-      {/* Step: Signature pad (full-screen overlay) */}
+      {/* Step: full-screen signature pad */}
       {step === "pad" && (
         <SignaturePad
           saving={saving}
           error={error}
-          onBack={() => setStep("form")}
+          onCancel={() => setStep("form")}
           onConfirm={handleConfirm}
         />
       )}
 
-      {/* Step: Done */}
+      {/* Step: done */}
       {step === "done" && (
-        <div className="p-6 flex flex-col items-center gap-3 text-center">
-          <CheckCircle2 className="size-10 text-green-600" />
-          <p className="font-semibold">Signed successfully</p>
-          <p className="text-sm text-muted-foreground">
-            The delivery document has been signed by <strong>{fullName}</strong>.
-          </p>
+        <div className="flex flex-col items-center gap-3 p-6 text-center">
+          <CheckCircle2 className="size-10 text-emerald-600" />
+          <p className="font-semibold">{t("signedSuccess")}</p>
+          <p className="text-sm text-muted-foreground">{t("signedByName", { name: fullName })}</p>
           <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
-            Close
+            {t("close")}
           </Button>
         </div>
       )}
@@ -135,141 +138,176 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile }: P
   )
 }
 
-// ─── Full-screen canvas signature pad ────────────────────────────────────────
+// ─── Full-screen canvas signature pad (pointer events, mobile-first) ─────────
 
 function SignaturePad({
   saving,
   error,
-  onBack,
+  onCancel,
   onConfirm,
 }: {
   saving: boolean
   error: string
-  onBack: () => void
+  onCancel: () => void
   onConfirm: (dataUrl: string) => void
 }) {
+  const t = useTranslations("signatures.signing")
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
   const [hasStrokes, setHasStrokes] = useState(false)
 
-  // Size canvas to fill the viewport
+  // Lock body scroll while the overlay is open.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => { document.body.style.overflow = prev }
+  }, [])
+
+  const applyStyle = useCallback((ctx: CanvasRenderingContext2D) => {
+    ctx.strokeStyle = "#1E2630"
+    ctx.lineWidth = 3
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+  }, [])
+
+  // Size the canvas to its rendered box.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const resize = () => {
-      const ctx = canvas.getContext("2d")!
-      const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight - 120 // reserve space for bottom bar
-      ctx.putImageData(img, 0, 0)
-      ctx.strokeStyle = "#111"
-      ctx.lineWidth = 2.5
-      ctx.lineCap = "round"
-      ctx.lineJoin = "round"
+      const rect = canvas.getBoundingClientRect()
+      canvas.width = rect.width
+      canvas.height = rect.height
+      const ctx = canvas.getContext("2d")
+      if (ctx) applyStyle(ctx)
     }
     resize()
     window.addEventListener("resize", resize)
     return () => window.removeEventListener("resize", resize)
-  }, [])
+  }, [applyStyle])
 
-  function getPos(e: React.TouchEvent | React.MouseEvent) {
-    const canvas = canvasRef.current!
-    const rect = canvas.getBoundingClientRect()
-    if ("touches" in e) {
-      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top }
-    }
-    return { x: (e as React.MouseEvent).clientX - rect.left, y: (e as React.MouseEvent).clientY - rect.top }
+  function pos(e: React.PointerEvent) {
+    const rect = canvasRef.current!.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }
 
-  const startDraw = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+  const onDown = useCallback((e: React.PointerEvent) => {
+    const canvas = canvasRef.current!
+    canvas.setPointerCapture(e.pointerId)
     drawing.current = true
-    const ctx = canvasRef.current!.getContext("2d")!
-    const { x, y } = getPos(e)
+    const ctx = canvas.getContext("2d")!
+    applyStyle(ctx)
+    const rect = canvas.getBoundingClientRect()
     ctx.beginPath()
-    ctx.moveTo(x, y)
-  }, [])
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+  }, [applyStyle])
 
-  const draw = useCallback((e: React.TouchEvent | React.MouseEvent) => {
+  const onMove = useCallback((e: React.PointerEvent) => {
     if (!drawing.current) return
-    e.preventDefault()
     const ctx = canvasRef.current!.getContext("2d")!
-    ctx.strokeStyle = "#111"
-    ctx.lineWidth = 2.5
-    ctx.lineCap = "round"
-    ctx.lineJoin = "round"
-    const { x, y } = getPos(e)
-    ctx.lineTo(x, y)
+    const p = pos(e)
+    ctx.lineTo(p.x, p.y)
     ctx.stroke()
     setHasStrokes(true)
   }, [])
 
-  const endDraw = useCallback(() => { drawing.current = false }, [])
+  const onUp = useCallback(() => { drawing.current = false }, [])
 
-  function clearPad() {
+  function clear() {
     const canvas = canvasRef.current!
     canvas.getContext("2d")!.clearRect(0, 0, canvas.width, canvas.height)
     setHasStrokes(false)
   }
 
+  // Crop to the drawn strokes' bounding box so the stored signature isn't a
+  // huge mostly-empty image.
   function confirm() {
     if (!hasStrokes) return
-    const dataUrl = canvasRef.current!.toDataURL("image/png")
-    onConfirm(dataUrl)
+    const src = canvasRef.current!
+    const ctx = src.getContext("2d")!
+    const data = ctx.getImageData(0, 0, src.width, src.height).data
+    let x1 = src.width, y1 = src.height, x2 = 0, y2 = 0, found = false
+    for (let y = 0; y < src.height; y++) {
+      for (let x = 0; x < src.width; x++) {
+        if (data[(y * src.width + x) * 4 + 3] > 20) {
+          found = true
+          if (x < x1) x1 = x
+          if (y < y1) y1 = y
+          if (x > x2) x2 = x
+          if (y > y2) y2 = y
+        }
+      }
+    }
+    const pad = 24
+    const cx = found ? Math.max(0, x1 - pad) : 0
+    const cy = found ? Math.max(0, y1 - pad) : 0
+    const cw = found ? Math.min(src.width, x2 + pad) - cx : src.width
+    const ch = found ? Math.min(src.height, y2 + pad) - cy : src.height
+    const out = document.createElement("canvas")
+    out.width = cw
+    out.height = ch
+    out.getContext("2d")!.drawImage(src, cx, cy, cw, ch, 0, 0, cw, ch)
+    onConfirm(out.toDataURL("image/png"))
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-white flex flex-col">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      {/* Purple header */}
+      <div className="flex shrink-0 items-center justify-between bg-kara-purple px-4 py-3.5 text-white">
         <button
-          onClick={onBack}
+          onClick={onCancel}
           disabled={saving}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="rounded-lg bg-white/15 px-3.5 py-1.5 text-sm font-semibold"
         >
-          <ChevronLeft className="size-4" />
-          Back
+          {t("cancel")}
         </button>
-        <p className="text-sm font-medium">Sign here</p>
+        <p className="text-sm font-bold">{t("title")}</p>
         <button
-          onClick={clearPad}
+          onClick={clear}
           disabled={saving}
-          className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="rounded-lg bg-white/15 px-3.5 py-1.5 text-sm font-semibold"
         >
-          <RotateCcw className="size-3.5" />
-          Clear
+          {t("clear")}
         </button>
       </div>
 
-      {/* Signature hint */}
-      {!hasStrokes && (
-        <div className="absolute inset-0 top-[53px] bottom-[72px] flex items-center justify-center pointer-events-none">
-          <p className="text-muted-foreground/40 text-lg select-none">Sign here</p>
-        </div>
-      )}
+      {/* Hint */}
+      <p className="shrink-0 border-b border-dashed border-border py-2 text-center text-xs text-muted-foreground">
+        {t("padHint")}
+      </p>
 
       {/* Canvas */}
-      <canvas
-        ref={canvasRef}
-        className="flex-1 touch-none cursor-crosshair"
-        onMouseDown={startDraw}
-        onMouseMove={draw}
-        onMouseUp={endDraw}
-        onMouseLeave={endDraw}
-        onTouchStart={startDraw}
-        onTouchMove={draw}
-        onTouchEnd={endDraw}
-      />
+      <div className="relative flex-1">
+        {!hasStrokes && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <PenLine className="size-8 text-muted-foreground/25" />
+          </div>
+        )}
+        <canvas
+          ref={canvasRef}
+          className="h-full w-full touch-none"
+          style={{ touchAction: "none" }}
+          onPointerDown={onDown}
+          onPointerMove={onMove}
+          onPointerUp={onUp}
+          onPointerLeave={onUp}
+          onPointerCancel={onUp}
+        />
+      </div>
 
-      {/* Bottom bar */}
-      <div className="px-4 py-4 border-t bg-white space-y-2">
-        {error && <p className="text-xs text-destructive text-center">{error}</p>}
-        <Button
-          className="w-full"
-          disabled={!hasStrokes || saving}
+      {/* Confirm */}
+      <div
+        className="shrink-0 space-y-2 border-t border-border p-3"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        {error && <p className="text-center text-xs text-destructive">{error}</p>}
+        <button
           onClick={confirm}
+          disabled={!hasStrokes || saving}
+          className="w-full rounded-xl bg-kara-purple py-4 text-[17px] font-bold text-white transition-opacity disabled:opacity-40"
         >
-          {saving ? "Saving…" : "Confirm signature"}
-        </Button>
+          {saving ? "…" : `✓ ${t("confirmSign")}`}
+        </button>
       </div>
     </div>
   )

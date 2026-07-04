@@ -216,7 +216,20 @@
       "good": "سليم",
       "damaged": "تالف",
       "missing": "مفقود",
-      "receivedQty": "المستلم"
+      "receivedQty": "المستلم",
+      "tapToSign": "اضغط لتوقيع العميل",
+      "editSign": "تعديل التوقيع",
+      "padHint": "وقّع بإصبعك في المنطقة أدناه",
+      "confirmSign": "تأكيد التوقيع",
+      "cancel": "إلغاء",
+      "customerDetails": "بيانات العميل",
+      "detailsHint": "أكّد بيانات العميل ثم خذ التوقيع.",
+      "signedSuccess": "تم التوقيع بنجاح",
+      "signedByName": "وقّع: {name}",
+      "close": "إغلاق",
+      "openPad": "افتح لوحة التوقيع",
+      "idPlaceholder": "رقم الهوية",
+      "namePlaceholder": "اسم العميل الكامل"
     }
   },
   "payments": {

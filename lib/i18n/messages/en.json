@@ -216,7 +216,20 @@
       "good": "Good",
       "damaged": "Damaged",
       "missing": "Missing",
-      "receivedQty": "Received"
+      "receivedQty": "Received",
+      "tapToSign": "Tap to sign",
+      "editSign": "Edit signature",
+      "padHint": "Sign with your finger in the area below",
+      "confirmSign": "Confirm signature",
+      "cancel": "Cancel",
+      "customerDetails": "Customer details",
+      "detailsHint": "Confirm the customer's details, then collect the signature.",
+      "signedSuccess": "Signed successfully",
+      "signedByName": "Signed by {name}",
+      "close": "Close",
+      "openPad": "Open signature pad",
+      "idPlaceholder": "ID number",
+      "namePlaceholder": "Customer full name"
     }
   },
   "payments": {
