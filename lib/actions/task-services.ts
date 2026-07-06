@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { partnerTasks, servicesCatalog, taskServices } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type TaskServiceResult = { error?: string; id?: string; isCompleted?: boolean }
 
@@ -30,7 +30,7 @@ export async function getServicesForTask(taskId: string) {
 // ─── Get services for all tasks of a request (grouped by taskId) ──────────────
 
 export async function getTaskServicesForRequest(requestId: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return {} as Record<string, Awaited<ReturnType<typeof getServicesForTask>>>
 
   const rows = await db

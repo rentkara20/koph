@@ -16,6 +16,9 @@ const STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS signature_request_request_idx ON signature_request (request_id)`,
   `CREATE INDEX IF NOT EXISTS partner_payment_partner_status_idx ON partner_payment (partner_id, status)`,
   `CREATE INDEX IF NOT EXISTS partner_payment_batch_idx ON partner_payment (batch_id)`,
+  `CREATE INDEX IF NOT EXISTS request_customer_idx ON request (customer_id)`,
+  `CREATE INDEX IF NOT EXISTS request_status_idx ON request (status)`,
+  `CREATE INDEX IF NOT EXISTS customer_contact_customer_idx ON customer_contact (customer_id)`,
 ]
 
 export async function POST(): Promise<Response> {

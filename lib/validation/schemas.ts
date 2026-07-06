@@ -7,11 +7,15 @@ const nonEmpty = (max = 500) => z.string().trim().min(1).max(max)
 
 // A signature is a base64 data URL from a canvas. Cap the size to reject
 // oversized/garbage payloads (~2MB of base64).
+// Raster-only (png/jpeg/webp) base64 — rejects SVG and other subtypes that
+// could carry script when re-rendered by PDF/export tooling.
+const SIGNATURE_DATA_URL = /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/
+
 export const signatureDataSchema = z
   .string()
   .min(1, "Signature is required")
   .max(2_800_000, "Signature image is too large")
-  .refine((v) => v.startsWith("data:image/"), "Invalid signature format")
+  .refine((v) => SIGNATURE_DATA_URL.test(v), "Invalid signature format")
 
 export const itemConditionSchema = z.object({
   requestItemId: nonEmpty(60),

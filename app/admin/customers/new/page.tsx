@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 export default function NewCustomerPage() {
   const t = useTranslations("customers")
@@ -30,7 +31,7 @@ export default function NewCustomerPage() {
       const formData = new FormData(e.currentTarget)
       const result = await createCustomer(formData)
       if (result.error) {
-        setError(result.error)
+        setError(translateActionError(result.error))
         setLoading(false)
         return
       }

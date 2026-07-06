@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { holdPayment, releasePayment } from "@/lib/actions/payments"
 import { Button } from "@/components/ui/button"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 // Per-line hold/release: a disputed item is pulled out of the batch (on_hold)
 // so the rest can be paid, then released back to pending for a later batch.
@@ -36,7 +37,7 @@ export function PaymentLineActions({
     try {
       const res = await fn()
       if (res.error) {
-        toast.error(res.error)
+        toast.error(translateActionError(res.error))
         setLoading(false)
         return
       }

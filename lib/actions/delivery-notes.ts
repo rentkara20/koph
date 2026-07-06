@@ -88,7 +88,8 @@ async function loadSignatureParty(signatureRequestId: string): Promise<Signature
       .where(eq(customerSignatures.signatureRequestId, signatureRequestId))
     userAgent = af?.userAgent ?? null
     auditDataHash = af?.auditDataHash ?? null
-  } catch {
+  } catch (error) {
+    console.error("delivery-notes: swallowed fallback error", error)
     // columns not yet migrated — ignore
   }
 

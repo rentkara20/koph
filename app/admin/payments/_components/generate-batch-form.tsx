@@ -9,6 +9,7 @@ import { generateBatch } from "@/lib/actions/payments"
 import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type PendingRow = {
   partnerId: string
@@ -39,8 +40,8 @@ export function GenerateBatchForm({ pending }: { pending: PendingRow[] }) {
       setLoading(false)
 
       if (result.error) {
-        setError(result.error)
-        toast.error(result.error)
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
         return
       }
 

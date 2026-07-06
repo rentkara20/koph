@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
-import { getTranslations } from "next-intl/server"
+import { getLocale, getTranslations } from "next-intl/server"
 import { TriangleAlert } from "lucide-react"
 import { getSignatureByToken, recordSignatureOpened } from "@/lib/actions/signatures"
 import { getDeliveryNoteData } from "@/lib/actions/delivery-notes"
@@ -82,7 +82,9 @@ export default async function SignPage({
     sig.expiresAt > now &&
     sig.expiresAt - now < 24 * 60 * 60 * 1000
 
-  const consentText = activeConsent?.textEn ?? t("consent")
+  const locale = await getLocale()
+  const consentText =
+    (locale === "ar" ? activeConsent?.textAr : activeConsent?.textEn) ?? t("consent")
   const statusLabel = isSigned ? t("signed") : t("title")
 
   return (
@@ -100,7 +102,7 @@ export default async function SignPage({
         {isExpiringSoon && (
           <div className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
             <TriangleAlert className="size-4 shrink-0" aria-hidden />
-            <span>{t("expired")}</span>
+            <span>{t("expiringSoon")}</span>
           </div>
         )}
 
@@ -131,7 +133,7 @@ export default async function SignPage({
                     {t("deliveryNote")}
                   </p>
                   {request?.requestNumber && (
-                    <p className="truncate font-mono text-xs text-primary-foreground/70">
+                    <p className="truncate font-mono text-xs text-primary-foreground/85">
                       {request.requestNumber}
                     </p>
                   )}
@@ -143,7 +145,7 @@ export default async function SignPage({
                     </p>
                   )}
                   {request?.deliveryDate && (
-                    <p className="text-xs text-primary-foreground/70">
+                    <p className="text-xs text-primary-foreground/85">
                       {formatDate(request.deliveryDate)}
                     </p>
                   )}
@@ -155,9 +157,9 @@ export default async function SignPage({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="bg-kara-blue text-start text-xs font-semibold text-primary-foreground">
-                        <th className="px-4 py-2 text-start">Item Specs</th>
-                        <th className="w-12 px-2 py-2 text-center">QTY</th>
-                        <th className="w-[28%] px-4 py-2 text-start">Serial Number</th>
+                        <th className="px-4 py-2 text-start">{t("itemSpecs")}</th>
+                        <th className="w-12 px-2 py-2 text-center">{t("qty")}</th>
+                        <th className="w-[28%] px-4 py-2 text-start">{t("serialNumber")}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -189,7 +191,7 @@ export default async function SignPage({
                       ))}
                       <tr className="border-t-2 border-border bg-muted/50">
                         <td className="px-4 py-2 text-end text-sm font-bold text-foreground">
-                          Total
+                          {t("total")}
                         </td>
                         <td className="px-2 py-2 text-center text-base font-extrabold text-kara-purple">
                           {items.reduce((s, i) => s + i.quantity, 0)}
@@ -201,7 +203,7 @@ export default async function SignPage({
                 </div>
               ) : (
                 <p className="px-5 py-6 text-center text-sm text-muted-foreground">
-                  No items listed
+                  {t("noItems")}
                 </p>
               )}
             </section>
@@ -211,19 +213,19 @@ export default async function SignPage({
               <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-xs">
                 {customer?.name && (
                   <div>
-                    <span className="text-muted-foreground">Prepared for: </span>
+                    <span className="text-muted-foreground">{t("preparedFor")}: </span>
                     <strong className="text-foreground">{customer.name}</strong>
                   </div>
                 )}
                 {request?.quoteNumber && (
                   <div>
-                    <span className="text-muted-foreground">Quote No.: </span>
-                    <strong className="font-mono text-foreground">{request.quoteNumber}</strong>
+                    <span className="text-muted-foreground">{t("quoteNo")}: </span>
+                    <strong className="font-mono text-foreground" dir="ltr">{request.quoteNumber}</strong>
                   </div>
                 )}
                 {request?.deliveryDate && (
                   <div>
-                    <span className="text-muted-foreground">Delivery: </span>
+                    <span className="text-muted-foreground">{t("delivery")}: </span>
                     <strong className="text-foreground">{formatDate(request.deliveryDate)}</strong>
                   </div>
                 )}

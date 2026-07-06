@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { suppliers } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { createSupplierSchema, firstError } from "@/lib/validation/schemas"
 
 export type ActionResult = { error?: string; id?: string }
@@ -75,7 +75,7 @@ export async function updateSupplier(id: string, formData: FormData): Promise<Ac
 }
 
 export async function getSuppliers(search?: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   if (search?.trim()) {
@@ -102,7 +102,7 @@ export async function getSuppliers(search?: string) {
 }
 
 export async function getSupplier(id: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const [supplier] = await db

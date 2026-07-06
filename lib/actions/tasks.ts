@@ -18,7 +18,7 @@ import {
 import { createId, generateToken } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
 import { notify } from "@/lib/utils/notify"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import {
   createTaskSchema,
   partnerActionSchema,
@@ -32,6 +32,7 @@ import {
 } from "@/lib/domain/task-status"
 import { deriveRequestStatus } from "@/lib/domain/request-status"
 import { computePayment, requiresQuantity, type PricingModel } from "@/lib/domain/pricing"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
@@ -136,7 +137,8 @@ export async function createTask(
         entityId: id,
       })
     }
-  } catch {
+  } catch (error) {
+    console.error("tasks: swallowed fallback error", error)
     // Notification failures must not block task assignment.
   }
 
@@ -148,7 +150,7 @@ export async function createTask(
 // ─── Admin: get tasks for a request ──────────────────────────────────────────
 
 export async function getTasksForRequest(requestId: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -378,6 +380,9 @@ export async function updateTaskByToken(
   action: PartnerAction,
   data?: { failureReason?: string; failureNotes?: string }
 ): Promise<ActionResult> {
+  if (!checkRateLimit(`task-update:${token}`, 20)) {
+    return { error: "Too many attempts. Please wait a minute and try again." }
+  }
   const [task] = await db
     .select()
     .from(partnerTasks)
@@ -445,7 +450,7 @@ export async function updateTaskByToken(
 // ─── Admin: get all active contracts by partner (for assign form) ─────────────
 
 export async function getPartnersWithContracts() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   const rows = await db

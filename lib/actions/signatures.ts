@@ -1,5 +1,6 @@
 "use server"
 
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 import { desc, eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
@@ -19,7 +20,7 @@ import {
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
 import { notify, notifyAdmins } from "@/lib/utils/notify"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import {
   createSignatureRequestSchema,
   signOnSiteSchema,
@@ -103,7 +104,7 @@ export async function createSignatureRequest(
 // ─── Admin: get signature requests for a request ──────────────────────────────
 
 export async function getSignatureRequestsForRequest(requestId: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -116,7 +117,7 @@ export async function getSignatureRequestsForRequest(requestId: string) {
 // ─── Admin: get all signature requests (for list page) ───────────────────────
 
 export async function getAllSignatureRequests() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -288,6 +289,9 @@ export async function submitSignature(
     }[]
   }
 ): Promise<SignatureActionResult> {
+  if (!checkRateLimit(`sig-submit:${token}`, 10)) {
+    return { error: "Too many attempts. Please wait a minute and try again." }
+  }
   const [sig] = await db
     .select()
     .from(signatureRequests)
@@ -420,7 +424,8 @@ export async function submitSignature(
       requestNumber,
       signerName: fullName,
     })
-  } catch {
+  } catch (error) {
+    console.error("signatures: swallowed fallback error", error)
     // swallow — signing already succeeded and is the user-visible outcome
   }
 
@@ -603,6 +608,9 @@ export async function signOnSiteByTaskToken(
   taskToken: string,
   data: { fullName: string; nationalId: string; signatureData: string }
 ): Promise<SignatureActionResult> {
+  if (!checkRateLimit(`sig-onsite:${taskToken}`, 10)) {
+    return { error: "Too many attempts. Please wait a minute and try again." }
+  }
   const [task] = await db
     .select()
     .from(partnerTasks)
@@ -750,6 +758,9 @@ export async function rejectSignature(
   token: string,
   ipAddress?: string
 ): Promise<SignatureActionResult> {
+  if (!checkRateLimit(`sig-reject:${token}`, 10)) {
+    return { error: "Too many attempts. Please wait a minute and try again." }
+  }
   const [sig] = await db
     .select()
     .from(signatureRequests)

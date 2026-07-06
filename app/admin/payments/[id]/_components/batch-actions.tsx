@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { Download } from "lucide-react"
 import { approveBatch, markBatchSentToFinance, markBatchPaid } from "@/lib/actions/payments"
 import { Button } from "@/components/ui/button"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type Payment = {
   requestNumber: string | null
@@ -40,8 +41,8 @@ export function BatchActions({ batchId, status, partnerName, period, payments }:
       const result = await action()
       setLoading(false)
       if (result.error) {
-        setError(result.error)
-        toast.error(result.error)
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
       } else {
         toast.success(tToast(successKey))
         router.refresh()

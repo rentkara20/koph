@@ -241,7 +241,18 @@
       "openPad": "Open signature pad",
       "idPlaceholder": "ID number",
       "namePlaceholder": "Customer full name",
-      "deliveryNote": "Delivery Note"
+      "deliveryNote": "Delivery Note",
+      "itemSpecs": "Item Specs",
+      "qty": "QTY",
+      "serialNumber": "Serial Number",
+      "total": "Total",
+      "noItems": "No items listed",
+      "preparedFor": "Prepared for",
+      "quoteNo": "Quote No.",
+      "delivery": "Delivery",
+      "typedSignToggle": "Can't draw? Type your name to sign",
+      "typedSignLabel": "Type your full name as signature",
+      "expiringSoon": "This link expires within 24 hours"
     }
   },
   "payments": {
@@ -409,7 +420,9 @@
     "sendViaWhatsapp": "Send via WhatsApp",
     "openSignLink": "Open signing link",
     "addPhotos": "Add photos",
-    "addMorePhotos": "Add more ({count}/{max})"
+    "addMorePhotos": "Add more ({count}/{max})",
+    "maxPhotos": "Maximum {max} photos allowed",
+    "dismiss": "Dismiss"
   },
   "trust": {
     "secureLink": "Secure link",
@@ -427,7 +440,8 @@
     "taskAssigned": "New task for request {requestNumber} assigned to you",
     "customerSigned": "{customerName} signed the delivery note for {requestNumber}",
     "authorizedSignoffPending": "Authorised sign-off pending for {requestNumber}",
-    "fullySigned": "Delivery note for {requestNumber} is fully signed"
+    "fullySigned": "Delivery note for {requestNumber} is fully signed",
+    "titleWithUnread": "Notifications, {count} unread"
   },
   "suppliers": {
     "title": "Suppliers",

@@ -25,6 +25,15 @@ export async function getSessionWithRole(...roles: Role[]) {
   return session
 }
 
+/**
+ * Session guard for internal staff reads (admin dashboard data). Excludes the
+ * `partner` role so partner accounts cannot enumerate customers, requests,
+ * signatures, or payments beyond their own token-scoped task pages.
+ */
+export async function getStaffSession() {
+  return getSessionWithRole("admin", "finance", "viewer")
+}
+
 export async function requireRole(
   ...roles: Array<"admin" | "finance" | "viewer" | "partner">
 ) {

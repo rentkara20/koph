@@ -1,5 +1,5 @@
 import Image from "next/image"
-import { getTranslations } from "next-intl/server"
+import { getLocale, getTranslations } from "next-intl/server"
 import { ShieldCheck } from "lucide-react"
 import { getBatchByStatementToken } from "@/lib/actions/payments"
 import { Badge } from "@/components/ui/badge"
@@ -13,8 +13,12 @@ const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "suc
   paid: "success",
 }
 
-function money(n: number): string {
-  return `SAR ${n.toFixed(2)}`
+function makeMoney(locale: string) {
+  const fmt = new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-SA", {
+    style: "currency",
+    currency: "SAR",
+  })
+  return (n: number) => fmt.format(n)
 }
 
 export default async function StatementPage({
@@ -23,6 +27,8 @@ export default async function StatementPage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
+  const locale = await getLocale()
+  const money = makeMoney(locale)
   const [data, t, tPay, tModels, tStatus] = await Promise.all([
     getBatchByStatementToken(token),
     getTranslations("statement"),

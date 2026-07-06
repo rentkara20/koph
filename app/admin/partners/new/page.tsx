@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 export default function NewPartnerPage() {
   const t = useTranslations("partners")
@@ -27,7 +28,7 @@ export default function NewPartnerPage() {
     setLoading(true)
     try {
       const result = await createPartner(new FormData(e.currentTarget))
-      if (result.error) { setError(result.error); setLoading(false); return }
+      if (result.error) { setError(translateActionError(result.error)); setLoading(false); return }
       router.push(`/admin/partners/${result.id}`)
     } catch {
       setError("An unexpected error occurred")

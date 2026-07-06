@@ -7,7 +7,7 @@ import { activityLogs, customerContacts, customers, orderUnits, partnerTasks, re
 import { createId, generateTrackingCode } from "@/lib/utils/ids"
 import { generateRequestNumber } from "@/lib/utils/request-number"
 import { logActivity } from "@/lib/utils/activity"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { createRequestSchema, itemInputSchema, firstError } from "@/lib/validation/schemas"
 
 export type ActionResult = { error?: string; id?: string }
@@ -135,7 +135,7 @@ export async function getRequests(filters?: {
   page?: number
 }): Promise<RequestListPage> {
   const empty: RequestListPage = { rows: [], total: 0, page: 1, pageSize: REQUESTS_PAGE_SIZE, totalPages: 0 }
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return empty
 
   const page = Math.max(1, filters?.page ?? 1)
@@ -204,7 +204,7 @@ export async function getRequests(filters?: {
 }
 
 export async function getRequest(id: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const [request] = await db
@@ -410,7 +410,7 @@ export async function setRequestReceiver(
   requestId: string,
   contactId: string | null
 ): Promise<ActionResult> {
-  const session = await getSession()
+  const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   try {
@@ -426,7 +426,8 @@ export async function setRequestReceiver(
       i18nKey: "activity.receiverSet",
       performedBy: session.user.id,
     })
-  } catch {
+  } catch (error) {
+    console.error("requests: swallowed fallback error", error)
     return { error: "Failed to update receiver" }
   }
 
@@ -465,7 +466,8 @@ export async function setRequestLogistics(
       i18nKey: "activity.logisticsUpdated",
       performedBy: session.user.id,
     })
-  } catch {
+  } catch (error) {
+    console.error("requests: swallowed fallback error", error)
     return { error: "Failed to update logistics" }
   }
 
@@ -480,7 +482,8 @@ export async function getRequestContacts(customerId: string) {
       .from(customerContacts)
       .where(eq(customerContacts.customerId, customerId))
       .orderBy(customerContacts.createdAt)
-  } catch {
+  } catch (error) {
+    console.error("requests: swallowed fallback error", error)
     return []
   }
 }

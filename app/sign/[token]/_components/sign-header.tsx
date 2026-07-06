@@ -50,7 +50,7 @@ export function SignHeader({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{documentName}</p>
           {subtitle && (
-            <p className="truncate text-xs text-primary-foreground/70">{subtitle}</p>
+            <p className="truncate text-xs text-primary-foreground/85">{subtitle}</p>
           )}
         </div>
         <Badge variant={statusVariant} className="shrink-0">

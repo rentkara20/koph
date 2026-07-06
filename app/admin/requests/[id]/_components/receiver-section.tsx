@@ -1,5 +1,6 @@
 "use client"
 
+import { translateActionError } from "@/lib/i18n/action-errors"
 import { useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
@@ -41,7 +42,7 @@ export function ReceiverSection({ requestId, customerId, contacts, receiverConta
     startTransition(async () => {
       try {
         const result = await setRequestReceiver(requestId, contactId)
-        if (result.error) { toast.error(result.error); return }
+        if (result.error) { toast.error(translateActionError(result.error)); return }
         toast.success(tToast("updated"))
         router.refresh()
       } catch {

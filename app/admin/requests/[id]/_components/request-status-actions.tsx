@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type ManualStatus = "on_hold" | "cancelled" | "rescheduled" | "failed"
 
@@ -43,7 +44,7 @@ export function RequestStatusActions({
     try {
       const result = await updateRequestStatus(requestId, status)
       if (result.error) {
-        toast.error(result.error)
+        toast.error(translateActionError(result.error))
         setLoading(false)
         return
       }

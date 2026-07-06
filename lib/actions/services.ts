@@ -5,12 +5,12 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { servicesCatalog } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type ServiceActionResult = { error?: string; id?: string }
 
 export async function getServices() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db

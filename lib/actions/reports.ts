@@ -3,12 +3,12 @@
 import { count, desc, eq, sql, sum } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { partners, partnerPayments, partnerTasks, paymentBatches, requests } from "@/lib/db/schema"
-import { getSession } from "@/lib/auth/session"
+import { getStaffSession } from "@/lib/auth/session"
 
 // ─── Requests by status ───────────────────────────────────────────────────────
 
 export async function getRequestsByStatus() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -21,7 +21,7 @@ export async function getRequestsByStatus() {
 // ─── Partner task performance ─────────────────────────────────────────────────
 
 export async function getPartnerPerformance() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   const rows = await db
@@ -62,7 +62,7 @@ export async function getPartnerPerformance() {
 // ─── Payment summary by month ─────────────────────────────────────────────────
 
 export async function getPaymentSummaryByMonth() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -80,7 +80,7 @@ export async function getPaymentSummaryByMonth() {
 // ─── Pending payments summary ─────────────────────────────────────────────────
 
 export async function getPendingPaymentsSummary() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return { pendingCount: 0, pendingTotal: 0 }
 
   const [row] = await db

@@ -3,10 +3,10 @@
 import { eq, and, isNull, count, lt, desc, inArray } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { requests, partnerTasks, partners, customers, signatureRequests } from "@/lib/db/schema"
-import { getSession } from "@/lib/auth/session"
+import { getStaffSession } from "@/lib/auth/session"
 
 export async function getDashboardStats() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const today = new Date()
@@ -65,7 +65,7 @@ export async function getDashboardStats() {
 // Actionable work queue for the dashboard — the "what needs me now" list that
 // replaces the stat-cards-only landing screen.
 export async function getWorkQueue() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const today = new Date()

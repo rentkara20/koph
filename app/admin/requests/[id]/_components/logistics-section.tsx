@@ -8,6 +8,7 @@ import { setRequestLogistics } from "@/lib/actions/requests"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type Props = {
   requestId: string
@@ -43,7 +44,7 @@ export function LogisticsSection({ requestId, origin, destination, scheduledAt }
           scheduledAt: scheduledValue ? new Date(scheduledValue).getTime() : null,
         })
         if (result.error) {
-          toast.error(result.error)
+          toast.error(translateActionError(result.error))
           return
         }
         toast.success(tToast("logisticsSaved"))

@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type Service = {
   id: string
@@ -43,8 +44,8 @@ export function ServicesManager({ services }: { services: Service[] }) {
       const result = await fn()
       setLoading(null)
       if (result.error) {
-        setError(result.error)
-        toast.error(result.error)
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
       } else {
         setError("")
         if (successKey) toast.success(tToast(successKey))

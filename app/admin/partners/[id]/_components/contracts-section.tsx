@@ -14,6 +14,7 @@ import { Select } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type ContractRow = {
   id: string
@@ -57,7 +58,7 @@ export function ContractsSection({
     setError(""); setLoading(true)
     try {
       const result = await addContract(partnerId, new FormData(e.currentTarget))
-      if (result.error) { setError(result.error); toast.error(result.error); setLoading(false); return }
+      if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setLoading(false); return }
       toast.success(tToast("created"))
       setShowForm(false); router.refresh()
     } catch {
@@ -71,7 +72,7 @@ export function ContractsSection({
   async function handleStatusChange(contractId: string, status: "active" | "expired" | "cancelled") {
     try {
       const result = await updateContractStatus(contractId, partnerId, status)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("updated"))
       router.refresh()
     } catch {

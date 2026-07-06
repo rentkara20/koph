@@ -17,6 +17,7 @@ import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type LineRow = {
   key: number
@@ -118,8 +119,8 @@ export function OrderEditForm({
       })
 
       if (result.error) {
-        setError(result.error)
-        toast.error(result.error)
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
         setLoading(false)
         return
       }

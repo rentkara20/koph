@@ -36,7 +36,7 @@ export function LocaleToggle({ className, onDark = false }: { className?: string
                 ? "bg-white text-kara-purple"
                 : "bg-primary text-primary-foreground"
               : onDark
-                ? "text-white/70 hover:bg-white/10"
+                ? "text-white/85 hover:bg-white/10"
                 : "text-muted-foreground hover:bg-accent"
           )}
         >

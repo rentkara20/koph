@@ -114,7 +114,7 @@ export const customerContacts = sqliteTable("customer_contact", {
     .default(false),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-})
+}, (t) => [index("customer_contact_customer_idx").on(t.customerId)])
 
 // ─── Requests ───────────────────────────────────────────────────────────────
 
@@ -163,7 +163,10 @@ export const requests = sqliteTable("request", {
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
   deletedAt: integer("deleted_at"),
-})
+}, (t) => [
+  index("request_customer_idx").on(t.customerId),
+  index("request_status_idx").on(t.status),
+])
 
 // ─── Request items ──────────────────────────────────────────────────────────
 

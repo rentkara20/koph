@@ -3,12 +3,13 @@
 import { useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { CircleAlert, Loader2 } from "lucide-react"
+import { Check, CircleAlert, Loader2 } from "lucide-react"
 import { submitSignature } from "@/lib/actions/signatures"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SignatureCanvas, type SignatureCanvasHandle } from "./signature-canvas"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type SignItem = {
   id: string
@@ -83,7 +84,7 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
     setLoading(false)
 
     if (result.error) {
-      toast.error(result.error)
+      toast.error(translateActionError(result.error))
       return
     }
 
@@ -185,11 +186,13 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
                           key={c}
                           type="button"
                           data-on={active}
+                          aria-pressed={active}
                           onClick={() =>
                             setConditions((prev) => ({ ...prev, [item.id]: c }))
                           }
-                          className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors data-[on=true]:border-transparent data-[on=true]:text-white ${tone}`}
+                          className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors data-[on=true]:border-transparent data-[on=true]:font-bold data-[on=true]:text-white ${tone}`}
                         >
+                          {active && <Check className="size-3" aria-hidden />}
                           {t(c)}
                         </button>
                       )
@@ -209,12 +212,16 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
 
         {/* Consent */}
         <div className="rounded-lg border border-border bg-muted/40 p-4">
-          <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{consentText}</p>
+          <p id="consent-text" className="mb-3 text-xs leading-relaxed text-muted-foreground">
+            {consentText}
+          </p>
           <label className="flex cursor-pointer items-start gap-2.5 text-sm font-medium text-foreground">
             <input
               type="checkbox"
               checked={consentAccepted}
               onChange={(e) => setConsentAccepted(e.target.checked)}
+              aria-describedby="consent-text"
+              aria-invalid={!consentAccepted}
               className="mt-0.5 size-4 accent-kara-purple"
             />
             {t("consentAccept")}
@@ -222,7 +229,7 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
         </div>
 
         {!consentAccepted && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <p aria-live="polite" className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <CircleAlert className="size-3.5" aria-hidden />
             {t("consentAccept")}
           </p>

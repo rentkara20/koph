@@ -30,7 +30,7 @@ export function PhotoUpload({
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return
     if (photos.length >= MAX_PHOTOS) {
-      setError(`Maximum ${MAX_PHOTOS} photos allowed.`)
+      setError(t("maxPhotos", { max: MAX_PHOTOS }))
       return
     }
 
@@ -53,7 +53,8 @@ export function PhotoUpload({
         { id: blob.url, fileUrl: blob.url, fileName: file.name },
       ])
     } catch (err) {
-      setError((err as Error).message ?? t("uploadFailed"))
+      console.error("photo upload failed", err)
+      setError(t("uploadFailed"))
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ""
@@ -65,8 +66,8 @@ export function PhotoUpload({
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 flex items-center justify-between gap-2">
           <span>{error}</span>
-          <button onClick={() => setError("")}>
-            <X className="size-3.5" />
+          <button onClick={() => setError("")} aria-label={t("dismiss")}>
+            <X className="size-3.5" aria-hidden />
           </button>
         </div>
       )}
@@ -106,8 +107,8 @@ export function PhotoUpload({
           >
             {uploading ? (
               <>
-                <Loader2 className="size-4 animate-spin" />
-                Uploading…
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+                {t("uploading")}
               </>
             ) : (
               <>

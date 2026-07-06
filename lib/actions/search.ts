@@ -3,10 +3,10 @@
 import { and, isNull, like, or } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { customers, partners, requests } from "@/lib/db/schema"
-import { getSession } from "@/lib/auth/session"
+import { getStaffSession } from "@/lib/auth/session"
 
 export async function globalSearch(query: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const q = query?.trim()

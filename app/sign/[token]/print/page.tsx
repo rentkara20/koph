@@ -1,7 +1,10 @@
 import { notFound } from "next/navigation"
 import { getDeliveryNoteData } from "@/lib/actions/delivery-notes"
+import { getSignatureByToken } from "@/lib/actions/signatures"
 import { DeliveryNoteView } from "../_components/delivery-note-view"
 import { PrintActions } from "./_components/print-actions"
+
+const BLOCKED_STATUSES = new Set(["draft", "rejected", "cancelled", "expired"])
 
 export default async function PrintPage({
   params,
@@ -9,9 +12,18 @@ export default async function PrintPage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const data = await getDeliveryNoteData(token)
+  const [tokenData, data] = await Promise.all([
+    getSignatureByToken(token),
+    getDeliveryNoteData(token),
+  ])
 
-  if (!data) notFound()
+  if (!tokenData || !data) notFound()
+
+  // Mirror the terminal-state gating on /sign/[token]: an expired, draft,
+  // rejected, or cancelled token must not render PII via the print route.
+  if (tokenData.isExpired || BLOCKED_STATUSES.has(tokenData.sig.status)) {
+    notFound()
+  }
 
   return (
     <>

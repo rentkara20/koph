@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 export function PartnerEditForm({ partner }: { partner: Partner }) {
   const tCommon = useTranslations("common")
@@ -27,7 +28,7 @@ export function PartnerEditForm({ partner }: { partner: Partner }) {
     setError(""); setSaved(false); setLoading(true)
     try {
       const result = await updatePartner(partner.id, new FormData(e.currentTarget))
-      if (result.error) { setError(result.error); toast.error(result.error); setLoading(false); return }
+      if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setLoading(false); return }
       toast.success(tToast("updated"))
       setSaved(true); setLoading(false); router.refresh()
     } catch {

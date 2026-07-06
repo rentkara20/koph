@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
 import { deleteSignatureRequest } from "@/lib/actions/signatures"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 export function SignatureDeleteButton({ id }: { id: string }) {
   const router = useRouter()
@@ -17,7 +18,7 @@ export function SignatureDeleteButton({ id }: { id: string }) {
     setLoading(true)
     try {
       const result = await deleteSignatureRequest(id)
-      if (result.error) { toast.error(result.error); setLoading(false); return }
+      if (result.error) { toast.error(translateActionError(result.error)); setLoading(false); return }
       toast.success(tToast("deleted"))
       router.refresh()
     } catch {

@@ -11,15 +11,16 @@ import {
   requests,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken } from "@/lib/utils/ids"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { periodSchema, firstError } from "@/lib/validation/schemas"
+import { checkRateLimit } from "@/lib/utils/rate-limit"
 
 export type PaymentActionResult = { error?: string; id?: string }
 
 // ─── Get all payment batches ──────────────────────────────────────────────────
 
 export async function getPaymentBatches() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -46,7 +47,7 @@ export async function getPaymentBatches() {
 // ─── Get batch with its payments ──────────────────────────────────────────────
 
 export async function getBatchWithPayments(batchId: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const [batch] = await db
@@ -77,7 +78,8 @@ export async function getBatchWithPayments(batchId: string) {
       .from(paymentBatches)
       .where(eq(paymentBatches.id, batchId))
     statementToken = row?.statementToken ?? null
-  } catch {
+  } catch (error) {
+    console.error("payments: swallowed fallback error", error)
     statementToken = null
   }
 
@@ -106,7 +108,7 @@ export async function getBatchWithPayments(batchId: string) {
 // ─── Get partners + months with pending payments (for generate form) ──────────
 
 export async function getPartnersWithPendingPayments() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -201,7 +203,8 @@ export async function generateBatch(
       .update(paymentBatches)
       .set({ statementToken: generateSecureToken() })
       .where(eq(paymentBatches.id, batchId))
-  } catch {
+  } catch (error) {
+    console.error("payments: swallowed fallback error", error)
     // column not migrated yet — statement link simply unavailable until it is
   }
 
@@ -316,6 +319,7 @@ export async function releasePayment(paymentId: string): Promise<PaymentActionRe
 // ─── Public: partner statement by token ───────────────────────────────────────
 
 export async function getBatchByStatementToken(token: string) {
+  if (!checkRateLimit(`statement:${token}`, 30)) return null
   let batch
   try {
     ;[batch] = await db
@@ -331,7 +335,8 @@ export async function getBatchByStatementToken(token: string) {
       .from(paymentBatches)
       .leftJoin(partners, eq(paymentBatches.partnerId, partners.id))
       .where(eq(paymentBatches.statementToken, token))
-  } catch {
+  } catch (error) {
+    console.error("payments: swallowed fallback error", error)
     // statement_token column not migrated yet
     return null
   }

@@ -60,7 +60,7 @@ export default async function TaskPage({
       <div className="bg-kara-purple text-white sticky top-0 z-20 shadow-[0_2px_8px_rgba(81,43,131,0.25)]">
         <div className="flex items-center gap-2.5 px-4 py-3 max-w-md mx-auto">
           <Image src="/kara-logo-light.png" alt="KARA" width={74} height={32} className="h-7 w-auto" priority />
-          <span className="font-mono text-xs text-white/70">{request.requestNumber}</span>
+          <span className="font-mono text-xs text-white/85">{request.requestNumber}</span>
           <div className="ms-auto flex items-center gap-2">
             <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-medium text-white">
               {tStatus(task.status)}

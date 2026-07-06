@@ -15,6 +15,7 @@ import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type LineRow = {
   id: number
@@ -98,7 +99,7 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
       })
 
       if (result.error) {
-        setError(result.error)
+        setError(translateActionError(result.error))
         setLoading(false)
         return
       }

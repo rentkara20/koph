@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type ItemRow = {
   id: number
@@ -179,7 +180,7 @@ export function RequestForm({
       })
 
       if (result.error) {
-        setError(result.error)
+        setError(translateActionError(result.error))
         setLoading(false)
         return
       }

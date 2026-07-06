@@ -49,8 +49,12 @@ export function Header({ userName, userRole }: HeaderProps) {
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <form onSubmit={handleSearch} className="flex items-center gap-1.5 flex-1 max-w-xs">
-        <Search className="size-3.5 text-muted-foreground shrink-0" />
+        <Search className="size-3.5 text-muted-foreground shrink-0" aria-hidden />
+        <label htmlFor="admin-search" className="sr-only">
+          {tCommon("search")}
+        </label>
         <input
+          id="admin-search"
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 export function CustomerEditForm({ customer }: { customer: Customer }) {
   const t = useTranslations("customers")
@@ -33,8 +34,8 @@ export function CustomerEditForm({ customer }: { customer: Customer }) {
       const formData = new FormData(e.currentTarget)
       const result = await updateCustomer(customer.id, formData)
       if (result.error) {
-        setError(result.error)
-        toast.error(result.error)
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
         setLoading(false)
         return
       }

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { partners, partnerContracts, requestTypes } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type ActionResult = { error?: string; id?: string }
 
@@ -61,7 +61,7 @@ export async function updatePartner(id: string, formData: FormData): Promise<Act
 }
 
 export async function getPartners() {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   return db
@@ -73,7 +73,7 @@ export async function getPartners() {
 }
 
 export async function getPartner(id: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const [partner] = await db

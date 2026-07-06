@@ -66,10 +66,10 @@ export function NotificationBell() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        aria-label={t("title")}
+        aria-label={unread > 0 ? t("titleWithUnread", { count: unread }) : t("title")}
         className="relative inline-flex h-8 w-8 items-center justify-center rounded-full outline-none text-muted-foreground hover:bg-accent hover:text-foreground"
       >
-        <Bell className="size-4" />
+        <Bell className="size-4" aria-hidden />
         {unread > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground">
             {unread > 9 ? "9+" : unread}

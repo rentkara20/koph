@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type Contact = {
   id: string
@@ -142,7 +143,7 @@ export function ContactsSection({
     setError("")
     try {
       const result = await createCustomerContact(customerId, data)
-      if (result.error) { setError(result.error); toast.error(result.error); return }
+      if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); return }
       toast.success(tToast("created"))
       setAddingNew(false)
       router.refresh()
@@ -159,7 +160,7 @@ export function ContactsSection({
     setError("")
     try {
       const result = await updateCustomerContact(id, customerId, data)
-      if (result.error) { setError(result.error); toast.error(result.error); return }
+      if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); return }
       toast.success(tToast("updated"))
       setContacts((prev) =>
         prev.map((c) =>
@@ -193,7 +194,7 @@ export function ContactsSection({
     setDeletingId(id)
     try {
       const result = await deleteCustomerContact(id, customerId)
-      if (result?.error) { setError(result.error); toast.error(result.error); setDeletingId(null); return }
+      if (result?.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setDeletingId(null); return }
       toast.success(tToast("deleted"))
       setContacts((prev) => prev.filter((c) => c.id !== id))
     } catch {

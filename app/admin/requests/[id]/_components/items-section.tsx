@@ -9,6 +9,7 @@ import { updateRequestItem, deleteRequestItem, addRequestItem } from "@/lib/acti
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type Item = {
   id: string
@@ -151,7 +152,7 @@ export function ItemsSection({
       accessories: data.accessories ?? undefined,
       notes: data.notes ?? undefined,
     })
-    if (result.error) { setError(result.error); toast.error(result.error); return }
+    if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); return }
     toast.success(tToast("updated"))
     setItems((prev) => prev.map((i) => (i.id === data.id ? data : i)))
     setEditingId(null)
@@ -162,7 +163,7 @@ export function ItemsSection({
     setDeletingId(itemId)
     try {
       const result = await deleteRequestItem(itemId, requestId)
-      if (result?.error) { setError(result.error); toast.error(result.error); setDeletingId(null); return }
+      if (result?.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setDeletingId(null); return }
       toast.success(tToast("deleted"))
       setItems((prev) => prev.filter((i) => i.id !== itemId))
     } catch {
@@ -183,7 +184,7 @@ export function ItemsSection({
       accessories: data.accessories ?? undefined,
       notes: data.notes ?? undefined,
     })
-    if (result.error) { setError(result.error); toast.error(result.error); return }
+    if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); return }
     toast.success(tToast("created"))
     const newItem: Item = { ...data, id: result.id! }
     setItems((prev) => [...prev, newItem])

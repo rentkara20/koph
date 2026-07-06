@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { customers } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type ActionResult = { error?: string; id?: string }
 
@@ -62,7 +62,7 @@ export async function updateCustomer(id: string, formData: FormData): Promise<Ac
 }
 
 export async function getCustomers(search?: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   if (search?.trim()) {
@@ -89,7 +89,7 @@ export async function getCustomers(search?: string) {
 }
 
 export async function getCustomer(id: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const [customer] = await db

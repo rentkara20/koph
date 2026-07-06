@@ -8,6 +8,7 @@ import { signOnSiteByTaskToken } from "@/lib/actions/signatures"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type Step = "form" | "pad" | "done"
 
@@ -51,7 +52,7 @@ export function OnSiteSigningFlow({ taskToken, customerName }: Props) {
       signatureData: data,
     })
     setSaving(false)
-    if (result.error) { setError(result.error); setStep("pad"); return }
+    if (result.error) { setError(translateActionError(result.error)); setStep("pad"); return }
     setStep("done")
     router.refresh()
   }

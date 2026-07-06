@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 type StatusVariant = "outline" | "info" | "success" | "secondary"
 
@@ -103,7 +104,7 @@ export function SignaturesSection({
     setRequestingId(id)
     try {
       const result = await requestAuthorizedSignoff(id)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("saved"))
       router.refresh()
     } catch {
@@ -124,8 +125,8 @@ export function SignaturesSection({
         requireNationalId: fd.get("requireNationalId") === "on",
       })
       if (result.error) {
-        setError(result.error)
-        toast.error(result.error)
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
         setLoading(false)
         return
       }
@@ -142,7 +143,7 @@ export function SignaturesSection({
   async function handleMarkSent(id: string) {
     try {
       const result = await markSignatureAsSent(id)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("signatureSent"))
       router.refresh()
     } catch {
@@ -153,7 +154,7 @@ export function SignaturesSection({
   async function handleCancel(id: string) {
     try {
       const result = await cancelSignatureRequest(id)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("signatureCancelled"))
       router.refresh()
     } catch {
@@ -164,7 +165,7 @@ export function SignaturesSection({
   async function handleDelete(id: string) {
     try {
       const result = await deleteSignatureRequest(id)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("deleted"))
       router.refresh()
     } catch {

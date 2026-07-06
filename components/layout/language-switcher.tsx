@@ -15,7 +15,14 @@ export function LanguageSwitcher() {
   }
 
   return (
-    <Button variant="ghost" size="sm" onClick={toggle} className="text-xs font-medium">
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={toggle}
+      className="text-xs font-medium"
+      aria-label={locale === "en" ? "التبديل إلى العربية" : "Switch to English"}
+      lang={locale === "en" ? "ar" : "en"}
+    >
       {locale === "en" ? "العربية" : "English"}
     </Button>
   )

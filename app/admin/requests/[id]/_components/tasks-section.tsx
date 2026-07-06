@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   pending: "outline",
@@ -148,7 +149,7 @@ function SignOffButton({
     try {
       const result = await signOffTask(taskId, needsQty && qty ? parseInt(qty) : undefined)
       if (result?.error) {
-        toast.error(result.error)
+        toast.error(translateActionError(result.error))
         setLoading(false)
         return
       }
@@ -323,7 +324,7 @@ export function TasksSection({
         executionMode: ((fd.get("executionMode") as string) || "manual") as "manual" | "api_courier",
         notes: (fd.get("notes") as string) || undefined,
       })
-      if (result.error) { setError(result.error); toast.error(result.error); setLoading(false); return }
+      if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setLoading(false); return }
       toast.success(tToast("taskAssigned"))
       setShowForm(false)
       setSelectedPartnerId("")
@@ -336,7 +337,7 @@ export function TasksSection({
   async function handleCancel(taskId: string) {
     try {
       const result = await cancelTask(taskId)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("taskCancelled"))
       router.refresh()
     } catch {
@@ -347,7 +348,7 @@ export function TasksSection({
   async function handleDelete(taskId: string) {
     try {
       const result = await deleteTask(taskId)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("deleted"))
       router.refresh()
     } catch {
@@ -358,7 +359,7 @@ export function TasksSection({
   async function handleRegenerate(taskId: string) {
     try {
       const result = await regenerateTaskLink(taskId)
-      if (result.error) { toast.error(result.error); return }
+      if (result.error) { toast.error(translateActionError(result.error)); return }
       toast.success(tToast("linkRegenerated"))
       router.refresh()
     } catch {

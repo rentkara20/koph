@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { translateActionError } from "@/lib/i18n/action-errors"
 
 interface DeleteButtonProps {
   onDelete: () => Promise<{ error?: string }>
@@ -26,8 +27,8 @@ export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteB
     try {
       const result = await onDelete()
       if (result.error) {
-        setError(result.error)
-        toast.error(result.error)
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
         setLoading(false)
         setConfirming(false)
         return

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { customers, orderLines, orderUnits, orders, suppliers } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSession, getSessionWithRole } from "@/lib/auth/session"
+import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import {
   createOrderSchema,
   firstError,
@@ -115,24 +115,6 @@ export async function updateOrder(
     return (acc ?? 0) + lt
   }, null)
 
-  await db
-    .update(orders)
-    .set({
-      orderNumber: d.orderNumber,
-      customerId: d.customerId,
-      contactPerson: d.contactPerson || null,
-      contactMobile: d.contactMobile || null,
-      contactEmail: d.contactEmail || null,
-      quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
-      rentalPeriodMonths: d.rentalPeriodMonths ?? null,
-      additionalPeriodMonths: d.additionalPeriodMonths ?? null,
-      total,
-      status: d.status,
-      notes: d.notes || null,
-      updatedAt: Date.now(),
-    })
-    .where(eq(orders.id, id))
-
   // Reconcile lines: update kept, insert new, delete removed. FK cascade is NOT
   // enforced at runtime (no PRAGMA foreign_keys), so unit cleanup is explicit.
   const existingLines = await db
@@ -153,17 +135,57 @@ export async function updateOrder(
     if (committed.length > 0) {
       return { error: "Cannot remove an item whose devices are already assigned to a request" }
     }
-    // Explicitly delete the (in_stock only) units, then the lines.
-    await db.delete(orderUnits).where(inArray(orderUnits.orderLineId, toDelete))
-    await db.delete(orderLines).where(inArray(orderLines.id, toDelete))
   }
 
-  for (let i = 0; i < d.lines.length; i++) {
-    const l = d.lines[i]
-    if (l.id && existingIds.has(l.id)) {
-      await db
-        .update(orderLines)
-        .set({
+  // All writes are atomic: a mid-reconcile failure must not leave the order
+  // header updated with half of its lines saved.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(orders)
+      .set({
+        orderNumber: d.orderNumber,
+        customerId: d.customerId,
+        contactPerson: d.contactPerson || null,
+        contactMobile: d.contactMobile || null,
+        contactEmail: d.contactEmail || null,
+        quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
+        rentalPeriodMonths: d.rentalPeriodMonths ?? null,
+        additionalPeriodMonths: d.additionalPeriodMonths ?? null,
+        total,
+        status: d.status,
+        notes: d.notes || null,
+        updatedAt: Date.now(),
+      })
+      .where(eq(orders.id, id))
+
+    if (toDelete.length > 0) {
+      // Explicitly delete the (in_stock only) units, then the lines.
+      await tx.delete(orderUnits).where(inArray(orderUnits.orderLineId, toDelete))
+      await tx.delete(orderLines).where(inArray(orderLines.id, toDelete))
+    }
+
+    const toInsert: (typeof orderLines.$inferInsert)[] = []
+    for (let i = 0; i < d.lines.length; i++) {
+      const l = d.lines[i]
+      if (l.id && existingIds.has(l.id)) {
+        await tx
+          .update(orderLines)
+          .set({
+            description: l.description,
+            brand: l.brand || null,
+            model: l.model || null,
+            quantity: l.quantity,
+            rentalMonths: l.rentalMonths ?? null,
+            unitPriceMonthly: l.unitPriceMonthly ?? null,
+            lineTotal: lineTotals[i],
+            notes: l.notes || null,
+            updatedAt: Date.now(),
+          })
+          .where(eq(orderLines.id, l.id))
+      } else {
+        toInsert.push({
+          id: createId(),
+          orderId: id,
           description: l.description,
           brand: l.brand || null,
           model: l.model || null,
@@ -172,24 +194,11 @@ export async function updateOrder(
           unitPriceMonthly: l.unitPriceMonthly ?? null,
           lineTotal: lineTotals[i],
           notes: l.notes || null,
-          updatedAt: Date.now(),
         })
-        .where(eq(orderLines.id, l.id))
-    } else {
-      await db.insert(orderLines).values({
-        id: createId(),
-        orderId: id,
-        description: l.description,
-        brand: l.brand || null,
-        model: l.model || null,
-        quantity: l.quantity,
-        rentalMonths: l.rentalMonths ?? null,
-        unitPriceMonthly: l.unitPriceMonthly ?? null,
-        lineTotal: lineTotals[i],
-        notes: l.notes || null,
-      })
+      }
     }
-  }
+    if (toInsert.length > 0) await tx.insert(orderLines).values(toInsert)
+  })
 
   revalidatePath("/admin/orders")
   revalidatePath(`/admin/orders/${id}`)
@@ -236,37 +245,43 @@ export async function saveOrderUnits(
     existing.filter((u) => u.status !== "in_stock").map((u) => u.id)
   )
   const toDelete = [...existingIds].filter((uid) => !keptIds.has(uid) && !protectedIds.has(uid))
-  if (toDelete.length > 0) {
-    await db.delete(orderUnits).where(inArray(orderUnits.id, toDelete))
-  }
 
-  for (const u of d.units) {
-    if (u.id && existingIds.has(u.id)) {
-      await db
-        .update(orderUnits)
-        .set({
+  // Atomic reconcile: a mid-loop failure must not leave units half-saved.
+  await db.transaction(async (tx) => {
+    if (toDelete.length > 0) {
+      await tx.delete(orderUnits).where(inArray(orderUnits.id, toDelete))
+    }
+
+    const toInsert: (typeof orderUnits.$inferInsert)[] = []
+    for (const u of d.units) {
+      if (u.id && existingIds.has(u.id)) {
+        await tx
+          .update(orderUnits)
+          .set({
+            orderLineId: u.orderLineId,
+            serialNumber: u.serialNumber || null,
+            supplierId: u.supplierId || null,
+            purchaseCost: u.purchaseCost ?? null,
+            status: u.status ?? "in_stock",
+            notes: u.notes || null,
+            updatedAt: Date.now(),
+          })
+          .where(eq(orderUnits.id, u.id))
+      } else {
+        toInsert.push({
+          id: createId(),
+          orderId,
           orderLineId: u.orderLineId,
           serialNumber: u.serialNumber || null,
           supplierId: u.supplierId || null,
           purchaseCost: u.purchaseCost ?? null,
           status: u.status ?? "in_stock",
           notes: u.notes || null,
-          updatedAt: Date.now(),
         })
-        .where(eq(orderUnits.id, u.id))
-    } else {
-      await db.insert(orderUnits).values({
-        id: createId(),
-        orderId,
-        orderLineId: u.orderLineId,
-        serialNumber: u.serialNumber || null,
-        supplierId: u.supplierId || null,
-        purchaseCost: u.purchaseCost ?? null,
-        status: u.status ?? "in_stock",
-        notes: u.notes || null,
-      })
+      }
     }
-  }
+    if (toInsert.length > 0) await tx.insert(orderUnits).values(toInsert)
+  })
 
   revalidatePath(`/admin/orders/${orderId}`)
   return { id: orderId }
@@ -275,7 +290,7 @@ export async function saveOrderUnits(
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 export async function getOrders(search?: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return []
 
   const base = db
@@ -302,7 +317,7 @@ export async function getOrders(search?: string) {
 }
 
 export async function getOrder(id: string) {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return null
 
   const [order] = await db
@@ -358,7 +373,7 @@ export type OrderLookup = {
 export async function getOrderUnitsByNumber(orderNumber: string): Promise<
   { error?: string; order?: OrderLookup }
 > {
-  const session = await getSession()
+  const session = await getStaffSession()
   if (!session) return { error: "Unauthorized" }
 
   const trimmed = orderNumber.trim()

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { customerContacts } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { getSessionWithRole } from "@/lib/auth/session"
+import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 
 export type ContactInput = {
   name: string
@@ -20,14 +20,19 @@ export type ContactInput = {
 }
 
 export async function getCustomerContacts(customerId: string) {
+  const session = await getStaffSession()
+  if (!session) return []
+
   try {
     return await db
       .select()
       .from(customerContacts)
       .where(eq(customerContacts.customerId, customerId))
       .orderBy(customerContacts.createdAt)
-  } catch {
-    // Table not yet created — return empty until migration runs at /api/migrate-contacts
+  } catch (error) {
+    // Expected only while the table is not yet migrated; log so real DB
+    // failures (connection, timeout) don't get silently swallowed.
+    console.error("getCustomerContacts failed", error)
     return []
   }
 }

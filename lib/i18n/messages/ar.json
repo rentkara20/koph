@@ -241,7 +241,18 @@
       "openPad": "افتح لوحة التوقيع",
       "idPlaceholder": "رقم الهوية",
       "namePlaceholder": "اسم العميل الكامل",
-      "deliveryNote": "سند تسليم"
+      "deliveryNote": "سند تسليم",
+      "itemSpecs": "مواصفات الصنف",
+      "qty": "الكمية",
+      "serialNumber": "الرقم التسلسلي",
+      "total": "الإجمالي",
+      "noItems": "لا توجد أصناف",
+      "preparedFor": "مُعدّ لـ",
+      "quoteNo": "رقم عرض السعر",
+      "delivery": "التسليم",
+      "typedSignToggle": "لا تستطيع الرسم؟ اكتب اسمك للتوقيع",
+      "typedSignLabel": "اكتب اسمك الكامل كتوقيع",
+      "expiringSoon": "تنتهي صلاحية هذا الرابط خلال ٢٤ ساعة"
     }
   },
   "payments": {
@@ -409,7 +420,9 @@
     "sendViaWhatsapp": "إرسال عبر واتساب",
     "openSignLink": "فتح رابط التوقيع",
     "addPhotos": "إضافة صور",
-    "addMorePhotos": "إضافة المزيد ({count}/{max})"
+    "addMorePhotos": "إضافة المزيد ({count}/{max})",
+    "maxPhotos": "الحد الأقصى {max} صور",
+    "dismiss": "إغلاق"
   },
   "trust": {
     "secureLink": "رابط آمن",
@@ -427,7 +440,8 @@
     "taskAssigned": "طلب جديد رقم {requestNumber} تم تعيينه لك",
     "customerSigned": "{customerName} وقّع سند التسليم للطلب {requestNumber}",
     "authorizedSignoffPending": "بانتظار توقيع المفوّض للطلب {requestNumber}",
-    "fullySigned": "تم توقيع سند التسليم للطلب {requestNumber} بالكامل"
+    "fullySigned": "تم توقيع سند التسليم للطلب {requestNumber} بالكامل",
+    "titleWithUnread": "الإشعارات، {count} غير مقروءة"
   },
   "suppliers": {
     "title": "التجار",
