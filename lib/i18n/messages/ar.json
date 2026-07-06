@@ -9,7 +9,9 @@
     "reports": "التقارير",
     "settings": "الإعدادات",
     "tasks": "مهامي",
-    "logout": "تسجيل الخروج"
+    "logout": "تسجيل الخروج",
+    "orders": "الطلبيات",
+    "suppliers": "التجار"
   },
   "common": {
     "save": "حفظ",
@@ -103,7 +105,16 @@
     "scheduledAt": "الموعد المحدد",
     "save": "حفظ",
     "notSet": "غير محدد",
-    "authorizedSignatory": "مفوّض بالتوقيع"
+    "authorizedSignatory": "مفوّض بالتوقيع",
+    "importFromOrder": "استيراد من طلبية",
+    "importHint": "أدخل رقم الطلبية لسحب أجهزتها إلى هذا الطلب.",
+    "fetchOrder": "جلب",
+    "orderNotFound": "الطلبية غير موجودة",
+    "orderCustomer": "العميل",
+    "availableUnits": "متاح",
+    "noAvailableUnits": "لا توجد أجهزة متاحة في هذه الطلبية.",
+    "addSelected": "إضافة المحدد",
+    "fromOrder": "من طلبية"
   },
   "tasks": {
     "title": "المهام",
@@ -417,5 +428,66 @@
     "customerSigned": "{customerName} وقّع سند التسليم للطلب {requestNumber}",
     "authorizedSignoffPending": "بانتظار توقيع المفوّض للطلب {requestNumber}",
     "fullySigned": "تم توقيع سند التسليم للطلب {requestNumber} بالكامل"
+  },
+  "suppliers": {
+    "title": "التجار",
+    "new": "تاجر جديد",
+    "name": "الاسم",
+    "contactPerson": "مسؤول التواصل",
+    "mobile": "الجوال",
+    "email": "البريد الإلكتروني",
+    "city": "المدينة",
+    "address": "العنوان"
+  },
+  "orders": {
+    "title": "الطلبيات",
+    "new": "طلبية جديدة",
+    "searchPlaceholder": "ابحث برقم الطلبية أو العميل…",
+    "orderNumber": "رقم الطلبية",
+    "customer": "العميل",
+    "contactPerson": "مسؤول التواصل",
+    "contactMobile": "جوال التواصل",
+    "contactEmail": "بريد التواصل",
+    "quoteDate": "تاريخ العرض",
+    "rentalPeriodMonths": "مدة الإيجار (شهور)",
+    "additionalPeriodMonths": "المدة الإضافية (شهور)",
+    "total": "الإجمالي",
+    "orderDetails": "تفاصيل الطلبية",
+    "lines": "الأصناف",
+    "linesHint": "الأجهزة المطلوبة من عرض السعر.",
+    "line": "صنف",
+    "addLine": "إضافة صنف",
+    "deviceSpec": "الجهاز / المواصفات",
+    "brand": "العلامة",
+    "model": "الموديل",
+    "quantity": "الكمية",
+    "rentalMonths": "شهور الإيجار",
+    "unitPriceMonthly": "السعر الشهري",
+    "units": "الأجهزة (الأرقام التسلسلية)",
+    "unitsDescription": "صف لكل جهاز: الرقم التسلسلي والمورّد والتكلفة. الأجهزة المتوفرة فقط يمكن سحبها إلى طلب.",
+    "unitsHint": "أضف كل جهاز برقمه التسلسلي والمورّد.",
+    "addUnit": "إضافة جهاز",
+    "saveUnits": "حفظ الأجهزة",
+    "noUnits": "لا توجد أجهزة مضافة بعد.",
+    "addLineFirst": "أضف صنفاً واحداً على الأقل قبل إضافة الأجهزة.",
+    "device": "الصنف",
+    "serialNumber": "الرقم التسلسلي",
+    "supplier": "المورّد",
+    "purchaseCost": "تكلفة الشراء",
+    "unitLocked": "مُخصّص لطلب — لا يمكن حذفه هنا.",
+    "status": {
+      "draft": "مسودة",
+      "confirmed": "مؤكدة",
+      "partially_fulfilled": "منفّذة جزئياً",
+      "fulfilled": "منفّذة",
+      "cancelled": "ملغاة"
+    },
+    "unitStatus": {
+      "in_stock": "متوفر",
+      "assigned": "مخصّص",
+      "delivered": "مُسلّم",
+      "returned": "مُرتجع",
+      "damaged": "تالف"
+    }
   }
 }

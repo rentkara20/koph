@@ -4,8 +4,9 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import Link from "next/link"
-import { Plus, Trash2 } from "lucide-react"
+import { Plus, Trash2, PackageSearch } from "lucide-react"
 import { createRequest } from "@/lib/actions/requests"
+import { getOrderUnitsByNumber, type OrderLookup } from "@/lib/actions/orders"
 import type { RequestType, Customer } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,6 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -25,6 +27,7 @@ type ItemRow = {
   quantity: number
   accessories: string
   notes: string
+  orderUnitId?: string
 }
 
 let nextItemId = 1
@@ -56,6 +59,77 @@ export function RequestForm({
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<ItemRow[]>([emptyItem()])
 
+  // Controlled so importing an order can pre-fill them.
+  const [customerId, setCustomerId] = useState("")
+  const [quoteNumber, setQuoteNumber] = useState("")
+
+  // Import-from-order state
+  const [orderNumberInput, setOrderNumberInput] = useState("")
+  const [lookupLoading, setLookupLoading] = useState(false)
+  const [lookupError, setLookupError] = useState("")
+  const [lookup, setLookup] = useState<OrderLookup | null>(null)
+  const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
+
+  async function handleLookup() {
+    const num = orderNumberInput.trim()
+    if (!num) return
+    setLookupError("")
+    setLookupLoading(true)
+    try {
+      const res = await getOrderUnitsByNumber(num)
+      if (res.error || !res.order) {
+        setLookup(null)
+        setLookupError(res.error ?? t("orderNotFound"))
+        setLookupLoading(false)
+        return
+      }
+      setLookup(res.order)
+      setSelectedUnits(new Set(res.order.units.map((u) => u.unitId)))
+      // Order number IS the quote number; pre-fill customer + quote for traceability.
+      if (!customerId) setCustomerId(res.order.customerId)
+      if (!quoteNumber.trim()) setQuoteNumber(res.order.orderNumber)
+    } catch {
+      setLookupError(t("orderNotFound"))
+    } finally {
+      setLookupLoading(false)
+    }
+  }
+
+  function toggleUnit(unitId: string) {
+    setSelectedUnits((prev) => {
+      const next = new Set(prev)
+      if (next.has(unitId)) next.delete(unitId)
+      else next.add(unitId)
+      return next
+    })
+  }
+
+  function addSelectedUnits() {
+    if (!lookup) return
+    const chosen = lookup.units.filter((u) => selectedUnits.has(u.unitId))
+    if (chosen.length === 0) return
+    const newItems: ItemRow[] = chosen.map((u) => ({
+      id: nextItemId++,
+      description: u.description,
+      brand: u.brand ?? "",
+      model: u.model ?? "",
+      serialNumber: u.serialNumber ?? "",
+      quantity: 1,
+      accessories: "",
+      notes: "",
+      orderUnitId: u.unitId,
+    }))
+    // Drop the initial blank row when present, then append imported units.
+    setItems((prev) => {
+      const kept = prev.filter((i) => i.description.trim() || i.orderUnitId)
+      return [...kept, ...newItems]
+    })
+    // Remove consumed units from the picker so they cannot be added twice.
+    const remaining = lookup.units.filter((u) => !selectedUnits.has(u.unitId))
+    setLookup({ ...lookup, units: remaining })
+    setSelectedUnits(new Set(remaining.map((u) => u.unitId)))
+  }
+
   function addItem() {
     setItems((prev) => [...prev, emptyItem()])
   }
@@ -83,8 +157,8 @@ export function RequestForm({
 
       const result = await createRequest({
         typeId: fd.get("typeId") as string,
-        customerId: fd.get("customerId") as string,
-        quoteNumber: fd.get("quoteNumber") as string,
+        customerId: customerId,
+        quoteNumber: quoteNumber,
         salesRef: (fd.get("salesRef") as string) || undefined,
         poNumber: (fd.get("poNumber") as string) || undefined,
         deliveryDate: (fd.get("deliveryDate") as string) || undefined,
@@ -100,6 +174,7 @@ export function RequestForm({
           quantity: i.quantity,
           accessories: i.accessories || undefined,
           notes: i.notes || undefined,
+          orderUnitId: i.orderUnitId,
         })),
       })
 
@@ -117,6 +192,89 @@ export function RequestForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Import from order — pull device units by order number */}
+      <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <PackageSearch className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">{t("importFromOrder")}</h3>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("importHint")}</p>
+        <div className="flex gap-2">
+          <Input
+            value={orderNumberInput}
+            onChange={(e) => setOrderNumberInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                handleLookup()
+              }
+            }}
+            placeholder="e.g. 10669"
+            className="font-mono max-w-xs"
+          />
+          <Button type="button" variant="outline" onClick={handleLookup} disabled={lookupLoading}>
+            {lookupLoading ? tCommon("loading") : t("fetchOrder")}
+          </Button>
+        </div>
+
+        {lookupError && <p className="text-sm text-destructive">{lookupError}</p>}
+
+        {lookup && (
+          <div className="space-y-3 rounded-md border bg-background p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-muted-foreground">
+                {t("orderCustomer")}:{" "}
+                <span className="font-medium text-foreground">{lookup.customerName ?? "—"}</span>
+              </p>
+              <span className="text-xs text-muted-foreground">
+                {lookup.units.length} {t("availableUnits")}
+              </span>
+            </div>
+
+            {lookup.units.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t("noAvailableUnits")}</p>
+            ) : (
+              <>
+                <ul className="space-y-1.5 max-h-64 overflow-y-auto">
+                  {lookup.units.map((u) => (
+                    <li key={u.unitId}>
+                      <label className="flex items-start gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted/50 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 rounded border-input"
+                          checked={selectedUnits.has(u.unitId)}
+                          onChange={() => toggleUnit(u.unitId)}
+                        />
+                        <span className="text-sm">
+                          <span className="font-medium">{u.description}</span>
+                          {u.serialNumber && (
+                            <span className="ms-2 font-mono text-xs text-muted-foreground">
+                              S/N {u.serialNumber}
+                            </span>
+                          )}
+                          {u.supplierName && (
+                            <span className="ms-2 text-xs text-muted-foreground">· {u.supplierName}</span>
+                          )}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={addSelectedUnits}
+                  disabled={selectedUnits.size === 0}
+                >
+                  <Plus className="size-3.5" />
+                  {t("addSelected")} ({selectedUnits.size})
+                </Button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Quote number — from sales team, optional */}
       <div className="space-y-1.5">
         <Label htmlFor="quoteNumber">
@@ -126,9 +284,10 @@ export function RequestForm({
         <Input
           id="quoteNumber"
           name="quoteNumber"
-          placeholder="e.g. QT-2026-001"
+          value={quoteNumber}
+          onChange={(e) => setQuoteNumber(e.target.value)}
+          placeholder="e.g. 10669"
           className="font-mono"
-          autoFocus
         />
       </div>
 
@@ -152,7 +311,13 @@ export function RequestForm({
           <Label htmlFor="customerId">
             {t("customer")} <span className="text-destructive">*</span>
           </Label>
-          <Select id="customerId" name="customerId" required>
+          <Select
+            id="customerId"
+            name="customerId"
+            required
+            value={customerId}
+            onChange={(e) => setCustomerId(e.target.value)}
+          >
             <option value="">— Select customer —</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
@@ -237,8 +402,13 @@ export function RequestForm({
         {items.map((item, idx) => (
           <div key={item.id} className="rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 Item {idx + 1}
+                {item.orderUnitId && (
+                  <Badge variant="info" className="text-[10px]">
+                    {t("fromOrder")}
+                  </Badge>
+                )}
               </span>
               {items.length > 1 && (
                 <button

@@ -9,7 +9,9 @@
     "reports": "Reports",
     "settings": "Settings",
     "tasks": "My Tasks",
-    "logout": "Log out"
+    "logout": "Log out",
+    "orders": "Orders",
+    "suppliers": "Suppliers"
   },
   "common": {
     "save": "Save",
@@ -103,7 +105,16 @@
     "scheduledAt": "Scheduled time",
     "save": "Save",
     "notSet": "Not set",
-    "authorizedSignatory": "Authorised to sign"
+    "authorizedSignatory": "Authorised to sign",
+    "importFromOrder": "Import from order",
+    "importHint": "Enter an order number to pull its devices into this request.",
+    "fetchOrder": "Fetch",
+    "orderNotFound": "Order not found",
+    "orderCustomer": "Customer",
+    "availableUnits": "available",
+    "noAvailableUnits": "No available devices in this order.",
+    "addSelected": "Add selected",
+    "fromOrder": "from order"
   },
   "tasks": {
     "title": "Tasks",
@@ -417,5 +428,66 @@
     "customerSigned": "{customerName} signed the delivery note for {requestNumber}",
     "authorizedSignoffPending": "Authorised sign-off pending for {requestNumber}",
     "fullySigned": "Delivery note for {requestNumber} is fully signed"
+  },
+  "suppliers": {
+    "title": "Suppliers",
+    "new": "New supplier",
+    "name": "Name",
+    "contactPerson": "Contact person",
+    "mobile": "Mobile",
+    "email": "Email",
+    "city": "City",
+    "address": "Address"
+  },
+  "orders": {
+    "title": "Orders",
+    "new": "New order",
+    "searchPlaceholder": "Search by order number or customer…",
+    "orderNumber": "Order number",
+    "customer": "Customer",
+    "contactPerson": "Contact person",
+    "contactMobile": "Contact mobile",
+    "contactEmail": "Contact email",
+    "quoteDate": "Quote date",
+    "rentalPeriodMonths": "Rental period (months)",
+    "additionalPeriodMonths": "Additional period (months)",
+    "total": "Total",
+    "orderDetails": "Order details",
+    "lines": "Items",
+    "linesHint": "The devices ordered, from the quotation.",
+    "line": "Item",
+    "addLine": "Add item",
+    "deviceSpec": "Device / specs",
+    "brand": "Brand",
+    "model": "Model",
+    "quantity": "Quantity",
+    "rentalMonths": "Rental months",
+    "unitPriceMonthly": "Monthly price",
+    "units": "Devices (serials)",
+    "unitsDescription": "One row per physical device: serial number, supplier and cost. Only in-stock devices can be pulled into a request.",
+    "unitsHint": "Add each physical device with its serial number and supplier.",
+    "addUnit": "Add device",
+    "saveUnits": "Save devices",
+    "noUnits": "No devices added yet.",
+    "addLineFirst": "Add at least one item before adding devices.",
+    "device": "Item",
+    "serialNumber": "Serial number",
+    "supplier": "Supplier",
+    "purchaseCost": "Purchase cost",
+    "unitLocked": "Assigned to a request — cannot be removed here.",
+    "status": {
+      "draft": "Draft",
+      "confirmed": "Confirmed",
+      "partially_fulfilled": "Partially fulfilled",
+      "fulfilled": "Fulfilled",
+      "cancelled": "Cancelled"
+    },
+    "unitStatus": {
+      "in_stock": "In stock",
+      "assigned": "Assigned",
+      "delivered": "Delivered",
+      "returned": "Returned",
+      "damaged": "Damaged"
+    }
   }
 }

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, inArray, isNull, like, or } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, like, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { customers, orderLines, orderUnits, orders, suppliers } from "@/lib/db/schema"
@@ -133,8 +133,8 @@ export async function updateOrder(
     })
     .where(eq(orders.id, id))
 
-  // Reconcile lines: update kept, insert new, delete removed. Deleting a line
-  // cascades its units (and nulls any request_item.orderUnitId that referenced them).
+  // Reconcile lines: update kept, insert new, delete removed. FK cascade is NOT
+  // enforced at runtime (no PRAGMA foreign_keys), so unit cleanup is explicit.
   const existingLines = await db
     .select({ id: orderLines.id })
     .from(orderLines)
@@ -144,6 +144,17 @@ export async function updateOrder(
 
   const toDelete = [...existingIds].filter((lid) => !keptIds.has(lid))
   if (toDelete.length > 0) {
+    // Refuse to drop a line whose devices are already committed to a request —
+    // deleting them would orphan request history. Only in_stock units are removable.
+    const committed = await db
+      .select({ id: orderUnits.id })
+      .from(orderUnits)
+      .where(and(inArray(orderUnits.orderLineId, toDelete), ne(orderUnits.status, "in_stock")))
+    if (committed.length > 0) {
+      return { error: "Cannot remove an item whose devices are already assigned to a request" }
+    }
+    // Explicitly delete the (in_stock only) units, then the lines.
+    await db.delete(orderUnits).where(inArray(orderUnits.orderLineId, toDelete))
     await db.delete(orderLines).where(inArray(orderLines.id, toDelete))
   }
 
