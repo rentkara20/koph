@@ -179,6 +179,11 @@ export const requestItems = sqliteTable("request_item", {
   quantity: integer("quantity").notNull().default(1),
   accessories: text("accessories"),
   notes: text("notes"),
+  // When this item was pulled from an order, links to the physical device unit.
+  // Kept as set-null so deleting an order/unit never destroys request history.
+  orderUnitId: text("order_unit_id").references(() => orderUnits.id, {
+    onDelete: "set null",
+  }),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 })
@@ -578,3 +583,124 @@ export type SignatureItemCondition = typeof signatureItemConditions.$inferSelect
 export type NewSignatureItemCondition = typeof signatureItemConditions.$inferInsert
 export type Notification = typeof notifications.$inferSelect
 export type NewNotification = typeof notifications.$inferInsert
+
+// ─── Suppliers (vendors we purchase devices from) ────────────────────────────
+
+export const suppliers = sqliteTable("supplier", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  contactPerson: text("contact_person"),
+  mobile: text("mobile"),
+  email: text("email"),
+  city: text("city"),
+  address: text("address"),
+  notes: text("notes"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  deletedAt: integer("deleted_at"),
+})
+
+// ─── Orders (client orders derived from an accepted quotation) ───────────────
+// Distinct from Request: an Order is the commercial source-of-truth (from the
+// quote). One Order can feed many Requests over time via partial unit pulls.
+
+export const orders = sqliteTable(
+  "order",
+  {
+    id: text("id").primaryKey(),
+    // Same number as the sales quotation, e.g. "10669". Unique per order.
+    orderNumber: text("order_number").notNull().unique(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    contactPerson: text("contact_person"),
+    contactMobile: text("contact_mobile"),
+    contactEmail: text("contact_email"),
+    quoteDate: integer("quote_date"),
+    // Commercial terms captured from the quote (stored, not billed in v1).
+    rentalPeriodMonths: integer("rental_period_months"),
+    additionalPeriodMonths: integer("additional_period_months"),
+    total: real("total"),
+    status: text("status", {
+      enum: ["draft", "confirmed", "partially_fulfilled", "fulfilled", "cancelled"],
+    })
+      .notNull()
+      .default("draft"),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+    deletedAt: integer("deleted_at"),
+  },
+  (t) => [index("order_customer_idx").on(t.customerId)]
+)
+
+// ─── Order lines (one row per ordered spec + quantity) ───────────────────────
+
+export const orderLines = sqliteTable(
+  "order_line",
+  {
+    id: text("id").primaryKey(),
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    description: text("description").notNull(),
+    brand: text("brand"),
+    model: text("model"),
+    quantity: integer("quantity").notNull().default(1),
+    rentalMonths: integer("rental_months"),
+    unitPriceMonthly: real("unit_price_monthly"),
+    lineTotal: real("line_total"),
+    notes: text("notes"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("order_line_order_idx").on(t.orderId)]
+)
+
+// ─── Order units (one row per physical device: serial + supplier + cost) ─────
+// This is the asset-instance layer. Serials are optional at creation (devices
+// may not have arrived yet). Designed to grow into a standalone Devices view.
+
+export const orderUnits = sqliteTable(
+  "order_unit",
+  {
+    id: text("id").primaryKey(),
+    orderLineId: text("order_line_id")
+      .notNull()
+      .references(() => orderLines.id, { onDelete: "cascade" }),
+    // Denormalised for easy per-order queries without a join through lines.
+    orderId: text("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    serialNumber: text("serial_number"),
+    supplierId: text("supplier_id").references(() => suppliers.id, {
+      onDelete: "set null",
+    }),
+    purchaseCost: real("purchase_cost"),
+    status: text("status", {
+      enum: ["in_stock", "assigned", "delivered", "returned", "damaged"],
+    })
+      .notNull()
+      .default("in_stock"),
+    notes: text("notes"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("order_unit_order_idx").on(t.orderId),
+    index("order_unit_line_idx").on(t.orderLineId),
+    index("order_unit_status_idx").on(t.status),
+    index("order_unit_serial_idx").on(t.serialNumber),
+  ]
+)
+
+export type Supplier = typeof suppliers.$inferSelect
+export type NewSupplier = typeof suppliers.$inferInsert
+export type Order = typeof orders.$inferSelect
+export type NewOrder = typeof orders.$inferInsert
+export type OrderLine = typeof orderLines.$inferSelect
+export type NewOrderLine = typeof orderLines.$inferInsert
+export type OrderUnit = typeof orderUnits.$inferSelect
+export type NewOrderUnit = typeof orderUnits.$inferInsert

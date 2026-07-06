@@ -4,12 +4,13 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, Copy, Check, Send, X, FileText, Trash2 } from "lucide-react"
+import { Plus, Copy, Check, Send, X, FileText, Trash2, ShieldCheck } from "lucide-react"
 import {
   createSignatureRequest,
   markSignatureAsSent,
   cancelSignatureRequest,
   deleteSignatureRequest,
+  requestAuthorizedSignoff,
 } from "@/lib/actions/signatures"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,6 +50,8 @@ type SigRow = {
   secureToken: string
   requireNationalId: boolean
   createdAt: number
+  signatoryRole: string
+  parentSignatureRequestId: string | null
 }
 
 function CopySignLink({ token }: { token: string }) {
@@ -81,10 +84,12 @@ export function SignaturesSection({
   requestId,
   signatures,
   defaultRequireNationalId,
+  hasAuthorizedContact,
 }: {
   requestId: string
   signatures: SigRow[]
   defaultRequireNationalId: boolean
+  hasAuthorizedContact: boolean
 }) {
   const router = useRouter()
   const tToast = useTranslations("toast")
@@ -92,6 +97,21 @@ export function SignaturesSection({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [requestingId, setRequestingId] = useState<string | null>(null)
+
+  async function handleRequestAuthorized(id: string) {
+    setRequestingId(id)
+    try {
+      const result = await requestAuthorizedSignoff(id)
+      if (result.error) { toast.error(result.error); return }
+      toast.success(tToast("saved"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+    } finally {
+      setRequestingId(null)
+    }
+  }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -160,11 +180,25 @@ export function SignaturesSection({
         <div className="space-y-3">
           {signatures.map((sig) => {
             const isActive = ACTIVE_STATUSES.includes(sig.status)
+            const isAuthorizedRow = sig.signatoryRole === "authorized"
+            const hasStage2 = signatures.some((s) => s.parentSignatureRequestId === sig.id)
+            // Offer authorised sign-off on a signed receiver request when the
+            // customer has a flagged signatory and no stage-2 exists yet.
+            const canRequestAuthorized =
+              !isAuthorizedRow && sig.status === "signed" && hasAuthorizedContact && !hasStage2
             return (
               <div key={sig.id} className="rounded-lg border p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium text-sm">{sig.documentName}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-sm">{sig.documentName}</p>
+                      {isAuthorizedRow && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-kara-purple/10 px-1.5 py-0.5 text-[10px] font-semibold text-kara-purple">
+                          <ShieldCheck className="size-3" />
+                          Authorised signatory
+                        </span>
+                      )}
+                    </div>
                     {sig.requireNationalId && (
                       <p className="text-xs text-muted-foreground mt-0.5">Requires National ID</p>
                     )}
@@ -187,6 +221,17 @@ export function SignaturesSection({
                       <FileText className="size-3" />
                       Delivery note
                     </a>
+                  )}
+
+                  {canRequestAuthorized && (
+                    <button
+                      onClick={() => handleRequestAuthorized(sig.id)}
+                      disabled={requestingId === sig.id}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-kara-purple hover:opacity-80 transition-opacity disabled:opacity-50"
+                    >
+                      <ShieldCheck className="size-3" />
+                      {requestingId === sig.id ? "…" : "Request authorised sign-off"}
+                    </button>
                   )}
 
                   {sig.status === "draft" && (

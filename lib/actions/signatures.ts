@@ -324,19 +324,16 @@ export async function submitSignature(
   const [customerRow] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, sig.customerId))
   let requestNumber = ""
   let quoteNumber = ""
-  let receiverContactId: string | null = null
   if (sig.requestId) {
     const [reqRow] = await db
       .select({
         requestNumber: requests.requestNumber,
         quoteNumber: requests.quoteNumber,
-        receiverContactId: requests.receiverContactId,
       })
       .from(requests)
       .where(eq(requests.id, sig.requestId))
     requestNumber = reqRow?.requestNumber ?? ""
     quoteNumber = reqRow?.quoteNumber ?? ""
-    receiverContactId = reqRow?.receiverContactId ?? null
   }
 
   const { ipAddress, userAgent } = await captureRequestMeta()
@@ -421,7 +418,6 @@ export async function submitSignature(
     await handlePostSignature({
       sig,
       requestNumber,
-      receiverContactId,
       signerName: fullName,
     })
   } catch {
@@ -434,12 +430,11 @@ export async function submitSignature(
 type PostSignatureCtx = {
   sig: typeof signatureRequests.$inferSelect
   requestNumber: string
-  receiverContactId: string | null
   signerName: string
 }
 
 async function handlePostSignature(ctx: PostSignatureCtx) {
-  const { sig, requestNumber, receiverContactId, signerName } = ctx
+  const { sig, requestNumber, signerName } = ctx
 
   // 1) Notify the assigned partner (if they have a portal login) + all admins.
   if (sig.requestId) {
@@ -494,65 +489,81 @@ async function handlePostSignature(ctx: PostSignatureCtx) {
     return
   }
 
-  // Receiver just signed — decide whether an authorised signatory must follow.
-  const signerContactId = sig.signatoryContactId ?? receiverContactId
-  let signerIsAuthorized = false
-  if (signerContactId) {
-    const [signer] = await db
-      .select({ isAuthorizedSignatory: customerContacts.isAuthorizedSignatory })
-      .from(customerContacts)
-      .where(eq(customerContacts.id, signerContactId))
-    signerIsAuthorized = signer?.isAuthorizedSignatory ?? false
-  }
-  if (signerIsAuthorized) return
+  // Stage-2 (authorised sign-off) is now admin-triggered via
+  // requestAuthorizedSignoff — never created automatically here.
+}
 
-  // Find an authorised signatory for this customer other than the signer.
-  const authorized = await db
-    .select({ id: customerContacts.id, name: customerContacts.name, mobile: customerContacts.mobile })
+// ─── Admin: request authorised sign-off (stage-2) ────────────────────────────
+
+export async function requestAuthorizedSignoff(
+  receiverSignatureId: string
+): Promise<SignatureActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const [receiver] = await db
+    .select()
+    .from(signatureRequests)
+    .where(eq(signatureRequests.id, receiverSignatureId))
+  if (!receiver) return { error: "Signature request not found" }
+  if (receiver.status !== "signed") return { error: "The receiver must sign first" }
+
+  // If a stage-2 request already exists, return its link instead of duplicating.
+  const [existing] = await db
+    .select()
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.parentSignatureRequestId, receiver.id),
+        eq(signatureRequests.signatoryRole, "authorized")
+      )
+    )
+  if (existing) return { id: existing.id, token: existing.secureToken }
+
+  // Find the flagged authorised signatory for this customer.
+  const [authorizedContact] = await db
+    .select({ id: customerContacts.id })
     .from(customerContacts)
     .where(
       and(
-        eq(customerContacts.customerId, sig.customerId),
+        eq(customerContacts.customerId, receiver.customerId),
         eq(customerContacts.isAuthorizedSignatory, true)
       )
     )
-  const target = authorized.find((c) => c.id !== signerContactId)
-  if (!target) return
+  if (!authorizedContact) {
+    return { error: "No authorised signatory is flagged for this customer" }
+  }
 
-  // Create the stage-2 signature request for the authorised signatory.
-  const stage2Id = createId()
+  const id = createId()
+  const secureToken = generateSecureToken()
   await db.insert(signatureRequests).values({
-    id: stage2Id,
-    requestId: sig.requestId,
-    partnerTaskId: sig.partnerTaskId,
-    initiatedBy: "system",
-    customerId: sig.customerId,
+    id,
+    requestId: receiver.requestId,
+    partnerTaskId: receiver.partnerTaskId,
+    initiatedBy: "admin",
+    initiatorId: session.user.id,
+    customerId: receiver.customerId,
     signatoryRole: "authorized",
-    parentSignatureRequestId: sig.id,
-    signatoryContactId: target.id,
-    documentName: sig.documentName,
-    secureToken: generateSecureToken(),
-    requireNationalId: sig.requireNationalId,
+    parentSignatureRequestId: receiver.id,
+    signatoryContactId: authorizedContact.id,
+    documentName: receiver.documentName,
+    secureToken,
+    requireNationalId: receiver.requireNationalId,
     status: "sent",
   })
 
-  if (sig.requestId) {
+  if (receiver.requestId) {
     await logActivity({
       entityType: "signature_request",
-      entityId: stage2Id,
+      entityId: id,
       action: "authorized_signoff_requested",
       i18nKey: "activity.authorizedSignoffRequested",
-      performedAs: "system",
+      performedBy: session.user.id,
     })
-    await notifyAdmins({
-      type: "authorized_signoff_pending",
-      i18nKey: "notifications.authorizedSignoffPending",
-      i18nData: { requestNumber },
-      linkUrl: `/admin/requests/${sig.requestId}`,
-      entityType: "signature_request",
-      entityId: stage2Id,
-    })
+    revalidatePath(`/admin/requests/${receiver.requestId}`)
   }
+
+  return { id, token: secureToken }
 }
 
 // ─── Partner: get signature status for a task token ──────────────────────────

@@ -249,6 +249,7 @@ export default async function RequestDetailPage({
                 requestId={request.id}
                 signatures={signatures}
                 defaultRequireNationalId={request.requireNationalId}
+                hasAuthorizedContact={contacts.some((c) => c.isAuthorizedSignatory)}
               />
             </CardContent>
           </Card>

@@ -1,9 +1,9 @@
 "use server"
 
-import { and, count, desc, eq, isNull, like, notInArray, or } from "drizzle-orm"
+import { and, count, desc, eq, inArray, isNull, like, notInArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { activityLogs, customerContacts, customers, partnerTasks, requestItems, requests, requestTypes, signatureRequests } from "@/lib/db/schema"
+import { activityLogs, customerContacts, customers, orderUnits, partnerTasks, requestItems, requests, requestTypes, signatureRequests } from "@/lib/db/schema"
 import { createId, generateTrackingCode } from "@/lib/utils/ids"
 import { generateRequestNumber } from "@/lib/utils/request-number"
 import { logActivity } from "@/lib/utils/activity"
@@ -20,6 +20,7 @@ type ItemInput = {
   quantity: number
   accessories?: string
   notes?: string
+  orderUnitId?: string
 }
 
 export type CreateRequestInput = {
@@ -78,8 +79,20 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
         quantity: item.quantity,
         accessories: item.accessories || null,
         notes: item.notes || null,
+        orderUnitId: item.orderUnitId || null,
       }))
     )
+
+    // Mark pulled order units as assigned so they are not double-booked.
+    const pulledUnitIds = data.items
+      .map((item) => item.orderUnitId)
+      .filter((v): v is string => Boolean(v))
+    if (pulledUnitIds.length > 0) {
+      await db
+        .update(orderUnits)
+        .set({ status: "assigned", updatedAt: Date.now() })
+        .where(inArray(orderUnits.id, pulledUnitIds))
+    }
   }
 
   await logActivity({

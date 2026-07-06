@@ -61,6 +61,68 @@ export const itemInputSchema = z.object({
   quantity: z.number().int().min(1).max(100000),
   accessories: z.string().trim().max(500).optional(),
   notes: z.string().trim().max(1000).optional(),
+  // Set when the item was pulled from an order unit (device instance).
+  orderUnitId: z.string().trim().max(60).optional(),
+})
+
+// ─── Suppliers ───────────────────────────────────────────────────────────────
+
+export const createSupplierSchema = z.object({
+  name: nonEmpty(200),
+  contactPerson: z.string().trim().max(200).optional(),
+  mobile: z.string().trim().max(30).optional(),
+  email: z.string().trim().max(200).optional(),
+  city: z.string().trim().max(120).optional(),
+  address: z.string().trim().max(500).optional(),
+  notes: z.string().trim().max(2000).optional(),
+})
+
+// ─── Orders ──────────────────────────────────────────────────────────────────
+
+export const orderLineInputSchema = z.object({
+  id: z.string().trim().max(60).optional(),
+  description: nonEmpty(300),
+  brand: z.string().trim().max(120).optional(),
+  model: z.string().trim().max(120).optional(),
+  quantity: z.number().int().min(1).max(100000),
+  rentalMonths: z.number().int().min(0).max(600).optional(),
+  unitPriceMonthly: z.number().min(0).max(100_000_000).optional(),
+  notes: z.string().trim().max(1000).optional(),
+})
+
+export const orderUnitInputSchema = z.object({
+  id: z.string().trim().max(60).optional(),
+  orderLineId: nonEmpty(60),
+  serialNumber: z.string().trim().max(120).optional(),
+  supplierId: z.string().trim().max(60).optional(),
+  purchaseCost: z.number().min(0).max(100_000_000).optional(),
+  status: z.enum(["in_stock", "assigned", "delivered", "returned", "damaged"]).optional(),
+  notes: z.string().trim().max(1000).optional(),
+})
+
+export const orderStatusSchema = z.enum([
+  "draft",
+  "confirmed",
+  "partially_fulfilled",
+  "fulfilled",
+  "cancelled",
+])
+
+export const createOrderSchema = z.object({
+  orderNumber: nonEmpty(120),
+  customerId: nonEmpty(60),
+  contactPerson: z.string().trim().max(200).optional(),
+  contactMobile: z.string().trim().max(30).optional(),
+  contactEmail: z.string().trim().max(200).optional(),
+  quoteDate: z.string().optional(),
+  rentalPeriodMonths: z.number().int().min(0).max(600).optional(),
+  additionalPeriodMonths: z.number().int().min(0).max(600).optional(),
+  notes: z.string().trim().max(2000).optional(),
+  lines: z.array(orderLineInputSchema).max(500),
+})
+
+export const updateOrderSchema = createOrderSchema.extend({
+  status: orderStatusSchema,
 })
 
 export const createRequestSchema = z.object({

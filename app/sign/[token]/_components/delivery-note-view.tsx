@@ -1,21 +1,15 @@
 import type { DeliveryNoteData } from "@/lib/actions/delivery-notes"
-import { formatDate, formatAuditDateTime } from "@/lib/utils/format"
+import { formatDate } from "@/lib/utils/format"
 
-const PURPLE = "#512A83"
-const BLUE = "#60B5D1"
-const GRAY_HEADER = "#BFBFBF"
-const GRAY_ROW = "#D9D9D9"
-
-function formatDeliveryDate(ts: number | null | undefined): string {
-  if (!ts) return "—"
-  return formatDate(ts)
+function fmt(ts: number | null | undefined): string {
+  return ts ? formatDate(ts) : "—"
 }
 
 const RentKaraLogo = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 746.28 323.4"
-    style={{ width: "28mm", height: "auto", display: "block" }}
+    style={{ width: "26mm", height: "auto", display: "block" }}
     aria-label="Rent Kara"
   >
     <path fill="#512b83" d="M2.78,113.31a27.1,27.1,0,0,0,41.79,21.81L195.51,37.59a2.89,2.89,0,0,0,.19-4.71,160.38,160.38,0,0,0-194.57,0A2.87,2.87,0,0,0,0,35.31l.06,1.14Z"/>
@@ -32,444 +26,240 @@ const RentKaraLogo = () => (
   </svg>
 )
 
+const CONDITION_LABEL: Record<string, string> = {
+  good: "Good / سليم",
+  damaged: "Damaged / تالف",
+  missing: "Missing / مفقود",
+}
+const CONDITION_COLOR: Record<string, string> = {
+  good: "#2e7d32",
+  damaged: "#b45309",
+  missing: "#c62828",
+}
+
+function SignatureBox({
+  titleEn,
+  titleAr,
+  name,
+  nationalId,
+  date,
+  signatureData,
+  pendingLabel,
+}: {
+  titleEn: string
+  titleAr: string
+  name: string | null
+  nationalId: string | null
+  date: string
+  signatureData: string | null
+  pendingLabel?: string
+}) {
+  return (
+    <div className="dn-sig-box">
+      <div className="dn-sig-hdr">
+        <span className="dn-sig-hdr-en">{titleEn}</span>
+        <span className="dn-sig-hdr-ar">{titleAr}</span>
+      </div>
+      <div className="dn-sig-body">
+        <div className="dn-sf">
+          <span className="dn-sfl-en">Name</span>
+          <span className="dn-sfv">{name ?? "—"}</span>
+          <span className="dn-sfl-ar">الاسم</span>
+        </div>
+        <div className="dn-sf">
+          <span className="dn-sfl-en">ID Number</span>
+          <span className="dn-sfv">{nationalId ?? "—"}</span>
+          <span className="dn-sfl-ar">رقم الهوية</span>
+        </div>
+        <div className="dn-sf">
+          <span className="dn-sfl-en">Date</span>
+          <span className="dn-sfv">{date}</span>
+          <span className="dn-sfl-ar">التاريخ</span>
+        </div>
+        <div className="dn-sf">
+          <span className="dn-sfl-en">Signature</span>
+          <span className="dn-sfv" />
+          <span className="dn-sfl-ar">التوقيع</span>
+        </div>
+        {signatureData ? (
+          <div className="dn-sig-img-wrap">
+            <img className="dn-sig-img" src={signatureData} alt="Signature" />
+          </div>
+        ) : (
+          <div className="dn-sig-pending">{pendingLabel ?? "Awaiting signature / بانتظار التوقيع"}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
-  const { request, customer, contact, items, signature, verificationId } = data
-  const totalQty = items.reduce((sum, i) => sum + i.quantity, 0)
-  const quoteNum = request?.quoteNumber ?? ""
-  // Use actual sign-off date on the final document; fall back to planned delivery date for preview
-  const deliveryDateTs = signature?.signedAt ?? request?.deliveryDate ?? null
-  const docRef = [
-    quoteNum ? `DN#${quoteNum}` : null,
-    customer?.name ?? null,
-  ].filter(Boolean).join(" ")
+  const { request, customer, items, signature, authorized, requiresAuthorized, authorizedName } = data
+  const totalQty = items.reduce((s, i) => s + i.quantity, 0)
+  const signDate = fmt(signature?.signedAt ?? request?.deliveryDate ?? null)
 
   return (
-    <>
-    <div
-      id="delivery-note-root"
-      style={{
-        width: "297mm",
-        height: "210mm",
-        position: "relative",
-        background: "#ffffff",
-        overflow: "hidden",
-        fontFamily: 'Arial, Helvetica, "Tahoma", sans-serif',
-        color: "#222",
-        fontSize: "7.5pt",
-      }}
-    >
-      {/* ── Top header strip ── */}
-      <div style={{
-        position: "absolute", top: "4mm", left: "4mm",
-        width: "289mm", height: "16mm", background: GRAY_HEADER,
-      }} />
-      <div style={{
-        position: "absolute", top: "4mm", right: "4mm",
-        width: "160mm", height: "16mm", background: PURPLE,
-        clipPath: "polygon(16% 0, 100% 0, 100% 100%, 0% 100%)",
-      }} />
-      <div style={{ position: "absolute", top: "6mm", left: "9mm" }}>
-        <RentKaraLogo />
+    <div className="dn-root" id="delivery-note-root">
+      <style>{DN_STYLES}</style>
+
+      {/* Header */}
+      <div className="dn-hdr">
+        <div className="dn-hdr-logo"><RentKaraLogo /></div>
+        <div className="dn-hdr-purple2" />
+        <div className="dn-hdr-purple" />
       </div>
 
-      {/* ── Title ── */}
-      <div style={{
-        position: "absolute", top: "23mm", left: "13mm", right: "13mm",
-        height: "10mm", borderBottom: `0.7mm solid ${PURPLE}`,
-      }}>
-        <span style={{
-          position: "absolute", left: 0, bottom: "1.5mm",
-          fontSize: "16pt", fontWeight: 700, color: PURPLE,
-        }}>Delivery Note</span>
-        <span style={{
-          position: "absolute", right: 0, bottom: "1.5mm",
-          fontSize: "14pt", fontWeight: 700, color: PURPLE, direction: "rtl",
-        }}>سند تسليم</span>
-      </div>
-
-      {/* ── Details table ── */}
-      <table style={{
-        position: "absolute", top: "35mm", left: "56mm",
-        width: "185mm", borderCollapse: "collapse", fontSize: "7.5pt",
-      }}>
-        <colgroup>
-          <col style={{ width: "35mm" }} />
-          <col style={{ width: "60mm" }} />
-          <col style={{ width: "45mm" }} />
-          <col style={{ width: "45mm" }} />
-        </colgroup>
-        <tbody>
-          {[
-            { en: "Quote Number",    ar: "رقم الطلب",          val: quoteNum || "—", gray: true },
-            { en: "Delivery Date",   ar: "تاريخ التسليم",      val: formatDeliveryDate(deliveryDateTs), gray: false },
-            { en: "Prepared For",    ar: "تم اعداده لصالح",    val: customer?.name ?? "—", gray: true },
-            { en: "Point of Contact",ar: "مسؤول التواصل",      val: contact?.name ?? customer?.contactPerson ?? "—", gray: false },
-            { en: "Phone Number",    ar: "رقم الجوال",          val: contact?.mobile ?? customer?.mobile ?? "—", gray: true },
-            { en: "E-mail",          ar: "البريد الإلكتروني",  val: contact?.email ?? customer?.email ?? "—", gray: false },
-          ].map(({ en, ar, val, gray }) => (
-            <tr key={en} style={{ background: gray ? GRAY_ROW : "#fff" }}>
-              <td style={{ padding: "0 3mm", height: "4.6mm", verticalAlign: "middle", fontWeight: 700 }}>{en}</td>
-              <td style={{ padding: "0 3mm", height: "4.6mm", verticalAlign: "middle", fontWeight: 700, textAlign: "center" }}>{val}</td>
-              <td style={{ width: "45mm" }} />
-              <td style={{ padding: "0 3mm", height: "4.6mm", verticalAlign: "middle", fontWeight: 700, textAlign: "right", direction: "rtl" }}>{ar}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      {/* ── Divider ── */}
-      <div style={{
-        position: "absolute", top: "66mm", left: "56mm",
-        width: "185mm", borderTop: "0.3mm solid #777",
-      }} />
-
-      {/* ── Devices section ── */}
-      <div style={{ position: "absolute", top: "69mm", left: "23mm", width: "251mm" }}>
-
-        {/* Blue header bar */}
-        <div style={{
-          height: "5mm", background: BLUE, color: "#fff",
-          fontWeight: 700, fontSize: "9pt",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          padding: "0 4mm",
-        }}>
-          <span>Devices Information</span>
-          <span dir="rtl">معلومات الأجهزة</span>
+      <div className="dn-body">
+        {/* Title */}
+        <div className="dn-title-row">
+          <div className="dn-title">Delivery Note</div>
+          <div className="dn-title-divider" />
+          <div className="dn-title dn-rtl">سند تسليم</div>
         </div>
 
+        {/* Info table — company / customer data */}
+        <div className="dn-info-wrap">
+          <table className="dn-info-tbl">
+            <tbody>
+              <tr className="dn-sec-hdr"><td colSpan={3}>Order Information &nbsp;/&nbsp; بيانات الطلب</td></tr>
+              <tr><td className="dn-en-lbl">Quote Number</td><td className="dn-val dn-fw">{request?.quoteNumber ?? "—"}</td><td className="dn-ar-lbl">رقم الطلب</td></tr>
+              <tr><td className="dn-en-lbl">Delivery Date</td><td className="dn-val">{fmt(request?.deliveryDate)}</td><td className="dn-ar-lbl">تاريخ التسليم</td></tr>
+              <tr className="dn-sec-hdr"><td colSpan={3}>Client Information &nbsp;/&nbsp; بيانات العميل</td></tr>
+              <tr><td className="dn-en-lbl">Prepared For</td><td className="dn-val dn-fw">{customer?.name ?? "—"}</td><td className="dn-ar-lbl">تم إعداده لصالح</td></tr>
+              <tr><td className="dn-en-lbl">Point of Contact</td><td className="dn-val">{customer?.contactPerson ?? "—"}</td><td className="dn-ar-lbl">مسؤول التواصل</td></tr>
+              <tr><td className="dn-en-lbl">Phone Number</td><td className="dn-val">{customer?.mobile ?? "—"}</td><td className="dn-ar-lbl">رقم الجوال</td></tr>
+              <tr><td className="dn-en-lbl">E-mail</td><td className="dn-val">{customer?.email ?? "—"}</td><td className="dn-ar-lbl">البريد الإلكتروني</td></tr>
+              <tr><td className="dn-en-lbl">City</td><td className="dn-val">{customer?.city ?? "—"}</td><td className="dn-ar-lbl">المدينة</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        {/* Devices band */}
+        <div className="dn-dev-band">Devices Information &nbsp;:&nbsp; معلومات الأجهزة</div>
+
         {/* Devices table */}
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "7.5pt" }}>
+        <table className="dn-dev-tbl">
           <colgroup>
-            <col style={{ width: "27%" }} />
-            <col style={{ width: "66%" }} />
-            <col style={{ width: "7%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "48%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "28%" }} />
           </colgroup>
           <thead>
             <tr>
-              <th style={{ background: GRAY_ROW, color: "#111", fontWeight: 700, height: "7mm", padding: "0 2mm", borderRight: `0.2mm solid ${GRAY_HEADER}`, textAlign: "left", verticalAlign: "middle" }}>
-                <div>Serial Number</div>
-                <div style={{ direction: "rtl", fontSize: "6.5pt", fontWeight: 500 }}>الرقم التسلسلي</div>
-              </th>
-              <th style={{ background: GRAY_ROW, color: "#111", fontWeight: 700, height: "7mm", padding: "0 2mm", borderRight: `0.2mm solid ${GRAY_HEADER}`, textAlign: "left", verticalAlign: "middle" }}>
-                <div>Device Specs</div>
-                <div style={{ direction: "rtl", fontSize: "6.5pt", fontWeight: 500 }}>وصف الجهاز</div>
-              </th>
-              <th style={{ background: GRAY_ROW, color: "#111", fontWeight: 700, height: "7mm", padding: "0 2mm", textAlign: "center", verticalAlign: "middle" }}>
-                <div>QTY</div>
-                <div style={{ direction: "rtl", fontSize: "6.5pt", fontWeight: 500 }}>الكمية</div>
-              </th>
+              <th>Serial Number<span className="dn-th-ar">الرقم التسلسلي</span></th>
+              <th className="dn-thw">Device Specs<span className="dn-th-ar">مواصفات الجهاز</span></th>
+              <th>Qty<span className="dn-th-ar">الكمية</span></th>
+              <th>Condition<span className="dn-th-ar">الحالة</span></th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
-              <tr>
-                <td colSpan={3} style={{ padding: "0 2mm", height: "5mm", textAlign: "center", color: "#999" }}>No items</td>
-              </tr>
+              <tr><td colSpan={4} style={{ textAlign: "center", color: "#999" }}>No items</td></tr>
             ) : (
               items.map((item) => (
-                <tr key={item.id} style={{ borderBottom: "0.2mm solid #D0D0D0" }}>
-                  <td style={{ padding: "0 2mm", height: "5mm", verticalAlign: "middle", fontFamily: "monospace" }}>
-                    {item.serialNumber ?? "—"}
-                  </td>
-                  <td style={{ padding: "0 2mm", height: "5mm", verticalAlign: "middle" }}>
+                <tr key={item.id}>
+                  <td style={{ fontFamily: "monospace" }}>{item.serialNumber ?? "—"}</td>
+                  <td className="dn-thw">
                     {item.description}
                     {(item.brand || item.model) && ` — ${[item.brand, item.model].filter(Boolean).join(" ")}`}
-                    {item.condition && item.condition !== "good" && (
-                      <span
-                        style={{
-                          marginInlineStart: "2mm",
-                          padding: "0 1.2mm",
-                          borderRadius: "1mm",
-                          fontSize: "6.5pt",
-                          fontWeight: 700,
-                          color: "#fff",
-                          background: item.condition === "damaged" ? "#B45309" : "#B91C1C",
-                        }}
-                      >
-                        {item.condition === "damaged" ? "DAMAGED / تالف" : "MISSING / مفقود"}
-                      </span>
-                    )}
                   </td>
-                  <td style={{ padding: "0 2mm", height: "5mm", verticalAlign: "middle", textAlign: "center", fontWeight: 700 }}>
-                    {item.quantity}
+                  <td>{item.quantity}</td>
+                  <td style={{ color: item.condition ? CONDITION_COLOR[item.condition] : "#1A1A1A", fontWeight: 700 }}>
+                    {item.condition ? CONDITION_LABEL[item.condition] : "—"}
                   </td>
                 </tr>
               ))
             )}
+            <tr className="dn-tot-row">
+              <td colSpan={2} style={{ textAlign: "right", paddingRight: "12px" }}>Total Items &nbsp;/&nbsp; إجمالي الأصناف</td>
+              <td>{totalQty}</td>
+              <td />
+            </tr>
           </tbody>
         </table>
 
-        {/* Total row */}
-        <div style={{
-          height: "8mm", borderTop: "0.4mm solid #999", borderBottom: "0.4mm solid #999",
-          display: "flex", justifyContent: "flex-end", alignItems: "center",
-          fontSize: "8.5pt", fontWeight: 700, color: PURPLE, paddingRight: "8mm", gap: "3mm",
-        }}>
-          <span>Total Qty:</span>
-          <strong>{totalQty}</strong>
-        </div>
-      </div>
-
-      {/* ── Confirmation ── */}
-      <div style={{
-        position: "absolute", top: "103mm", left: "23mm", width: "251mm",
-        textAlign: "center", color: PURPLE, fontWeight: 700,
-      }}>
-        <div style={{ fontSize: "8.5pt", marginBottom: "1mm" }}>
-          I confirm that I have inspected the devices and items, verified the quantities, and received them in good condition
-        </div>
-        <div style={{ fontSize: "7pt", direction: "rtl" }}>
-          أقر بأنني قمت بفحص الأجهزة والمنتجات والتحقق من الكميات، واستلمتها بحالة جيدة.
-        </div>
-      </div>
-
-      {/* ── Signature box ── */}
-      <div style={{
-        position: "absolute", top: "116mm", left: "88mm",
-        width: "121mm", height: "52mm",
-        border: "0.3mm solid #999",
-      }}>
-        {/* Header */}
-        <div style={{
-          height: "9mm", background: GRAY_ROW, textAlign: "center",
-          fontWeight: 700, fontSize: "8pt",
-          display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center",
-          lineHeight: 1.3,
-        }}>
-          <div>Signature of the Receiver</div>
-          <div dir="rtl" style={{ fontSize: "7pt", fontWeight: 600 }}>توقيع المستلم</div>
+        {/* Disclaimer */}
+        <div className="dn-disclaimer">
+          I confirm that I have inspected the devices and items, verified the quantities, and received them in good condition.
+          <span className="dn-disclaimer-ar">أقر بأنني قد قمت بفحص الأجهزة والأصناف والتحقق من الكميات واستلمتها بحالة جيدة.</span>
         </div>
 
-        {/* Fields */}
-        <div style={{ padding: "1mm 7mm 0", fontSize: "7.5pt" }}>
-          {signature ? (
-            /* Signed — show real data */
-            <>
-              <SigFieldFilled labelEn="Name"      labelAr="الاسم"       value={signature.fullName} />
-              <SigFieldFilled labelEn="ID Number" labelAr="رقم الهوية"  value={signature.nationalId ?? "—"} />
-              <SigFieldFilled labelEn="Date"      labelAr="التاريخ"     value={formatDate(signature.signedAt)} />
-              <div style={{ marginTop: "2mm" }}>
-                <div style={{ fontSize: "7pt", color: "#555", marginBottom: "1mm" }}>
-                  Signature &nbsp;/&nbsp; <span dir="rtl">التوقيع</span>
-                </div>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={signature.signatureData}
-                  alt="Signature"
-                  style={{ maxWidth: "80mm", maxHeight: "14mm", border: "0.2mm solid #ddd", padding: "1mm", background: "#fff" }}
-                />
-              </div>
-            </>
-          ) : (
-            /* Blank — lines for manual signing */
-            <>
-              <SigRow labelEn="Name"      labelAr="الاسم" />
-              <SigRow labelEn="ID Number" labelAr="رقم الهوية" />
-              <SigRow labelEn="Date"      labelAr="التاريخ" />
-              <SigRow labelEn="Signature" labelAr="التوقيع" tall />
-            </>
+        {/* Signatures */}
+        <div className="dn-sig-wrap">
+          <SignatureBox
+            titleEn="Signature of the Receiver"
+            titleAr="توقيع المستلم"
+            name={signature?.fullName ?? null}
+            nationalId={signature?.nationalId ?? null}
+            date={signDate}
+            signatureData={signature?.signatureData ?? null}
+          />
+          {requiresAuthorized && (
+            <SignatureBox
+              titleEn="Authorised Signatory"
+              titleAr="المفوّض بالتوقيع"
+              name={authorized?.fullName ?? authorizedName ?? null}
+              nationalId={authorized?.nationalId ?? null}
+              date={authorized ? fmt(authorized.signedAt) : "—"}
+              signatureData={authorized?.signatureData ?? null}
+            />
           )}
         </div>
-      </div>
 
-      {/* ── Footer ── */}
-      <div style={{
-        position: "absolute", bottom: "16mm", left: "23mm", width: "251mm",
-        textAlign: "center", color: PURPLE, fontWeight: 700,
-      }}>
-        <div style={{ fontSize: "8.5pt" }}>
-          Kindly sign and return the Delivery Note to complete the delivery process
-        </div>
-        <div style={{ fontSize: "7pt", direction: "rtl", marginTop: "1mm" }}>
-          نأمل التكرم بالتوقيع وإعادة إرسال سند التسليم لاستكمال إجراءات التسليم
-        </div>
-      </div>
-
-      {/* ── Doc ref ── */}
-      <div style={{
-        position: "absolute", bottom: "10mm", right: "18mm",
-        fontSize: "5pt", color: "#333",
-      }}>
-        {docRef}
-      </div>
-    </div>
-
-    {/* Audit page — printed as second page, only when signed */}
-    {signature && <AuditPage data={data} />}
-    </>
-  )
-}
-
-// ─── Audit Page ──────────────────────────────────────────────────────────────
-
-function AuditRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <tr>
-      <td style={{
-        padding: "2mm 3mm",
-        fontWeight: 700,
-        fontSize: "7.5pt",
-        color: "#444",
-        whiteSpace: "nowrap",
-        width: "50mm",
-        borderBottom: "0.2mm solid #e0e0e0",
-        verticalAlign: "top",
-      }}>{label}</td>
-      <td style={{
-        padding: "2mm 3mm",
-        fontSize: "7.5pt",
-        borderBottom: "0.2mm solid #e0e0e0",
-        fontFamily: mono ? "monospace" : "inherit",
-        wordBreak: "break-all",
-        verticalAlign: "top",
-      }}>{value || "—"}</td>
-    </tr>
-  )
-}
-
-function AuditSectionHeader({ title }: { title: string }) {
-  return (
-    <tr>
-      <td colSpan={2} style={{
-        padding: "2mm 3mm",
-        background: PURPLE,
-        color: "#fff",
-        fontWeight: 700,
-        fontSize: "8pt",
-        letterSpacing: "0.3mm",
-      }}>{title}</td>
-    </tr>
-  )
-}
-
-function AuditPage({ data }: { data: DeliveryNoteData }) {
-  const { request, customer, signature, verificationId } = data
-  if (!signature) return null
-
-  const verifyUrl = verificationId
-    ? `https://koph.vercel.app/verify/${verificationId}`
-    : null
-
-  return (
-    <div
-      style={{
-        width: "297mm",
-        minHeight: "210mm",
-        position: "relative",
-        background: "#ffffff",
-        fontFamily: 'Arial, Helvetica, "Tahoma", sans-serif',
-        color: "#222",
-        fontSize: "7.5pt",
-        pageBreakBefore: "always",
-        paddingBottom: "16mm",
-      }}
-    >
-      {/* Header strip */}
-      <div style={{ position: "absolute", top: "4mm", left: "4mm", width: "289mm", height: "16mm", background: GRAY_HEADER }} />
-      <div style={{
-        position: "absolute", top: "4mm", right: "4mm",
-        width: "160mm", height: "16mm", background: PURPLE,
-        clipPath: "polygon(16% 0, 100% 0, 100% 100%, 0% 100%)",
-      }} />
-      <div style={{ position: "absolute", top: "6mm", left: "9mm" }}>
-        <RentKaraLogo />
-      </div>
-
-      {/* Title */}
-      <div style={{
-        position: "absolute", top: "23mm", left: "13mm", right: "13mm",
-        height: "10mm", borderBottom: `0.7mm solid ${PURPLE}`,
-        display: "flex", alignItems: "flex-end", justifyContent: "space-between",
-        paddingBottom: "1.5mm",
-      }}>
-        <span style={{ fontSize: "15pt", fontWeight: 700, color: PURPLE }}>Electronic Signature Audit</span>
-        <span style={{ fontSize: "13pt", fontWeight: 700, color: PURPLE, direction: "rtl" }}>سجل التوقيع الإلكتروني</span>
-      </div>
-
-      {/* Audit table */}
-      <div style={{ position: "absolute", top: "37mm", left: "13mm", right: "13mm" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", border: `0.3mm solid ${GRAY_HEADER}` }}>
-          <tbody>
-            <AuditSectionHeader title="REQUEST INFORMATION" />
-            <AuditRow label="Request Number" value={request?.requestNumber ?? "—"} mono />
-            <AuditRow label="Quote Number" value={request?.quoteNumber ?? "—"} mono />
-            <AuditRow label="Customer" value={customer?.name ?? "—"} />
-
-            <AuditSectionHeader title="SIGNER INFORMATION" />
-            <AuditRow label="Recipient Name" value={signature.fullName} />
-            <AuditRow label="National ID / Iqama" value={signature.nationalId ?? "—"} mono />
-
-            <AuditSectionHeader title="SIGNATURE DETAILS" />
-            <AuditRow label="Signed At" value={formatAuditDateTime(signature.signedAt)} />
-            <AuditRow label="Verification ID" value={verificationId ?? "—"} mono />
-            {verifyUrl && <AuditRow label="Verify URL" value={verifyUrl} mono />}
-
-            <AuditSectionHeader title="TECHNICAL AUDIT INFORMATION" />
-            <AuditRow label="IP Address" value={signature.ipAddress ?? "—"} mono />
-            <AuditRow label="User Agent" value={signature.userAgent ?? "—"} />
-            <AuditRow label="Audit Data Hash" value={signature.auditDataHash ?? "—"} mono />
-          </tbody>
-        </table>
-
-        {/* Signature image */}
-        <div style={{ marginTop: "6mm" }}>
-          <div style={{
-            fontSize: "8pt", fontWeight: 700, color: PURPLE,
-            borderBottom: `0.5mm solid ${PURPLE}`, paddingBottom: "1mm", marginBottom: "3mm",
-          }}>
-            Captured Signature / التوقيع المُلتقط
-          </div>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={signature.signatureData}
-            alt="Signature"
-            style={{
-              maxWidth: "80mm",
-              maxHeight: "25mm",
-              border: `0.3mm solid ${GRAY_HEADER}`,
-              padding: "2mm",
-              background: "#fff",
-              display: "block",
-            }}
-          />
-        </div>
-
-        {/* Footer note */}
-        <div style={{
-          marginTop: "6mm",
-          fontSize: "6.5pt",
-          color: "#777",
-          borderTop: `0.3mm solid ${GRAY_HEADER}`,
-          paddingTop: "2mm",
-        }}>
-          This audit record is automatically generated and cryptographically bound to the signed document.
-          The Audit Data Hash confirms the integrity of the information recorded at the time of signing.
-          {verifyUrl && ` Verify authenticity at: ${verifyUrl}`}
+        {/* Footer */}
+        <div className="dn-footer">
+          Thank you for choosing Kara. We appreciate your trust and look forward to serving you again.
+          <br />
+          شكراً لاختياركم كارا، نقدر ثقتكم ونتطلع لخدمتكم مرة أخرى
         </div>
       </div>
     </div>
   )
 }
 
-function SigRow({ labelEn, labelAr, tall }: { labelEn: string; labelAr: string; tall?: boolean }) {
-  return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "25mm 58mm 25mm",
-      alignItems: "flex-end", height: tall ? "16mm" : "9mm",
-    }}>
-      <span style={{ fontSize: "7pt" }}>{labelEn}</span>
-      <div style={{ borderBottom: "0.3mm solid #555", height: "1mm" }} />
-      <span style={{ direction: "rtl", textAlign: "right", fontSize: "7pt" }}>{labelAr}</span>
-    </div>
-  )
-}
-
-function SigFieldFilled({ labelEn, labelAr, value }: { labelEn: string; labelAr: string; value: string }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "25mm 1fr 25mm", alignItems: "center", height: "9mm" }}>
-      <span style={{ fontSize: "7pt", color: "#555" }}>{labelEn}</span>
-      <span style={{ fontWeight: 700, fontSize: "7.5pt", textAlign: "center" }}>{value}</span>
-      <span style={{ direction: "rtl", textAlign: "right", fontSize: "7pt", color: "#555" }}>{labelAr}</span>
-    </div>
-  )
-}
+const DN_STYLES = `
+.dn-root{width:210mm;margin:0 auto;background:#fff;color:#1A1A1A;font-family:'Cairo','Bahij','Geeza Pro',Arial,sans-serif;font-size:11px;direction:ltr;}
+.dn-rtl{direction:rtl;}
+.dn-hdr{position:relative;background:#d4d0d0;overflow:hidden;display:flex;align-items:center;padding:14px 22px;min-height:78px;}
+.dn-hdr-logo{z-index:2;position:relative;flex-shrink:0;}
+.dn-hdr-purple{position:absolute;right:-18px;top:-8px;bottom:-8px;width:200px;background:#512B83;transform:skewX(-12deg);z-index:1;}
+.dn-hdr-purple2{position:absolute;right:44px;top:-8px;bottom:-8px;width:40px;background:#6a3fa0;transform:skewX(-12deg);z-index:1;opacity:.5;}
+.dn-body{padding:16px 24px 18px;}
+.dn-title-row{display:flex;justify-content:center;align-items:center;gap:18px;margin-bottom:14px;}
+.dn-title{font-size:20px;font-weight:700;color:#512B83;}
+.dn-title-divider{width:1px;height:20px;background:#512B83;opacity:.35;}
+.dn-info-wrap{display:flex;justify-content:center;margin-bottom:12px;}
+.dn-info-tbl{width:82%;border-collapse:collapse;font-size:11px;}
+.dn-info-tbl td{padding:6px 14px;border:none;vertical-align:middle;}
+.dn-sec-hdr td{background:#e8e4f0;color:#512B83;font-weight:700;text-align:center;font-size:11px;}
+.dn-en-lbl{color:#555;text-align:left;width:30%;}
+.dn-val{color:#1A1A1A;text-align:center;font-weight:500;width:40%;}
+.dn-fw{font-weight:700;color:#512B83;}
+.dn-ar-lbl{color:#555;text-align:right;direction:rtl;width:30%;}
+.dn-info-tbl tr:last-child td{border-bottom:1.5px solid #1A1A1A;}
+.dn-dev-band{background:#60B5D1;color:#fff;text-align:center;padding:7px 12px;font-weight:700;font-size:12px;}
+.dn-dev-tbl{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:12px;table-layout:fixed;}
+.dn-dev-tbl th{background:#512B83;color:#fff;padding:6px;border:1px solid #3d1f63;text-align:center;font-weight:600;}
+.dn-th-ar{display:block;font-size:8px;font-weight:400;opacity:.85;margin-top:2px;direction:rtl;}
+.dn-thw{text-align:left;padding-left:8px;}
+.dn-dev-tbl td{padding:5px 6px;border:1px solid #e0dcea;text-align:center;vertical-align:middle;word-break:break-word;}
+.dn-tot-row td{background:#512B83;color:#fff;font-weight:700;}
+.dn-disclaimer{font-size:10px;color:#512B83;text-align:center;margin:12px 0 14px;line-height:1.8;font-style:italic;}
+.dn-disclaimer-ar{display:block;direction:rtl;margin-top:4px;}
+.dn-sig-wrap{display:flex;gap:14px;margin-bottom:14px;}
+.dn-sig-box{flex:1;border:1px solid #ccc;border-radius:6px;overflow:hidden;}
+.dn-sig-hdr{background:#e8e4f0;color:#512B83;padding:7px 12px;font-weight:700;font-size:10.5px;border-bottom:1px solid #d4cfe4;display:flex;justify-content:space-between;align-items:center;}
+.dn-sig-hdr-ar{direction:rtl;}
+.dn-sig-body{padding:10px 12px;}
+.dn-sf{display:grid;grid-template-columns:1fr 1.4fr 1fr;align-items:center;padding:5px 0;border-bottom:1px dotted #e8e4f0;}
+.dn-sf:last-child{border:none;}
+.dn-sfl-en{color:#838383;font-size:10px;text-align:left;}
+.dn-sfl-ar{color:#838383;font-size:10px;text-align:right;direction:rtl;}
+.dn-sfv{font-weight:600;font-size:11px;color:#1A1A1A;text-align:center;}
+.dn-sig-img-wrap{margin-top:8px;padding-top:6px;border-top:1px solid #e0dcea;text-align:center;}
+.dn-sig-img{display:inline-block;width:auto;height:auto;max-height:70px;}
+.dn-sig-pending{margin-top:8px;padding:14px 0;text-align:center;color:#b45309;font-size:10px;font-weight:700;border-top:1px dashed #e0dcea;direction:rtl;}
+.dn-footer{text-align:center;padding:10px 16px 12px;border-top:2px solid #60B5D1;font-size:10px;color:#512B83;font-weight:700;line-height:1.8;}
+@media print{@page{margin:8mm;size:A4;}.dn-root{width:100%;}}
+`
