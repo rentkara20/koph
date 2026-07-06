@@ -170,8 +170,8 @@ export default async function TaskPage({
         {customerContacts.length > 0 && (
           <div className="rounded-xl bg-background border overflow-hidden">
             <div className="px-4 py-3 border-b bg-muted/50">
-              <p className="text-sm font-semibold text-kara-purple">Contact persons</p>
-              <p className="text-xs text-muted-foreground mt-0.5">People to reach at the delivery location</p>
+              <p className="text-sm font-semibold text-kara-purple">{tPortal("contactPersons")}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">{tPortal("contactPersonsHint")}</p>
             </div>
             <ul className="divide-y">
               {customerContacts.map((c) => {
@@ -182,7 +182,7 @@ export default async function TaskPage({
                       <p className="font-medium text-sm">{c.name}</p>
                       {isReceiver && (
                         <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                          Primary receiver
+                          {tPortal("primaryReceiver")}
                         </span>
                       )}
                     </div>
@@ -225,7 +225,7 @@ export default async function TaskPage({
                           className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
                         >
                           <MapPin className="size-3" />
-                          View on map
+                          {tPortal("viewOnMap")}
                         </a>
                       )}
                       {c.mobile && (() => {
@@ -248,7 +248,7 @@ export default async function TaskPage({
                             className="inline-flex items-center gap-1 text-xs text-green-600 font-medium hover:text-green-700"
                           >
                             <MessageCircle className="size-3" />
-                            WhatsApp
+                            {tPortal("whatsapp")}
                           </a>
                         )
                       })()}

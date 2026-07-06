@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from "react"
+import { useTranslations } from "next-intl"
 import { upload } from "@vercel/blob/client"
 import { Camera, X, Loader2 } from "lucide-react"
 import Image from "next/image"
@@ -18,6 +19,7 @@ export function PhotoUpload({
   token: string
   existingPhotos: Photo[]
 }) {
+  const t = useTranslations("portal")
   const [photos, setPhotos] = useState<Photo[]>(existingPhotos)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState("")
@@ -51,7 +53,7 @@ export function PhotoUpload({
         { id: blob.url, fileUrl: blob.url, fileName: file.name },
       ])
     } catch (err) {
-      setError((err as Error).message ?? "Upload failed. Please try again.")
+      setError((err as Error).message ?? t("uploadFailed"))
     } finally {
       setUploading(false)
       if (inputRef.current) inputRef.current.value = ""
@@ -110,7 +112,7 @@ export function PhotoUpload({
             ) : (
               <>
                 <Camera className="size-4" />
-                {photos.length === 0 ? "Add photos" : `Add more (${photos.length}/${MAX_PHOTOS})`}
+                {photos.length === 0 ? t("addPhotos") : t("addMorePhotos", { count: photos.length, max: MAX_PHOTOS })}
               </>
             )}
           </button>
