@@ -229,7 +229,8 @@
       "close": "Close",
       "openPad": "Open signature pad",
       "idPlaceholder": "ID number",
-      "namePlaceholder": "Customer full name"
+      "namePlaceholder": "Customer full name",
+      "deliveryNote": "Delivery Note"
     }
   },
   "payments": {

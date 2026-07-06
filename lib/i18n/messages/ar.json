@@ -229,7 +229,8 @@
       "close": "إغلاق",
       "openPad": "افتح لوحة التوقيع",
       "idPlaceholder": "رقم الهوية",
-      "namePlaceholder": "اسم العميل الكامل"
+      "namePlaceholder": "اسم العميل الكامل",
+      "deliveryNote": "سند تسليم"
     }
   },
   "payments": {

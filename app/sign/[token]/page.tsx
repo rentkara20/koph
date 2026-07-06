@@ -88,7 +88,7 @@ export default async function SignPage({
   return (
     <div className="min-h-svh bg-muted/40">
       <SignHeader
-        documentName={sig.documentName}
+        documentName={t("deliveryNote")}
         subtitle={customer?.name}
         statusLabel={statusLabel}
         statusVariant={STATUS_VARIANT[sig.status] ?? "outline"}
@@ -116,7 +116,7 @@ export default async function SignPage({
               <Certificate
                 signature={deliveryNote.signature}
                 verificationId={deliveryNote.verificationId}
-                documentName={sig.documentName}
+                documentName={t("deliveryNote")}
               />
             )}
             <DownloadButton token={token} />
@@ -128,7 +128,7 @@ export default async function SignPage({
               <header className="flex items-center justify-between gap-3 bg-kara-purple px-5 py-3.5">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-primary-foreground">
-                    {sig.documentName}
+                    {t("deliveryNote")}
                   </p>
                   {request?.requestNumber && (
                     <p className="truncate font-mono text-xs text-primary-foreground/70">
