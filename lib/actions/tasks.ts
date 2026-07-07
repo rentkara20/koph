@@ -196,12 +196,21 @@ export async function signOffTask(
 
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Task not found" }
-  if (task.status !== "pending_signoff") return { error: "Task is not awaiting sign-off" }
 
-  // Never generate payment for work under a cancelled/deleted request
+  // Admins can override a failed task straight to closed (partner actually
+  // delivered but marked it failed by mistake) instead of only accepting
+  // sign-off from the normal pending_signoff state
+  const isOverride = task.status === "failed"
+  if (task.status !== "pending_signoff" && !isOverride) {
+    return { error: "Task is not awaiting sign-off" }
+  }
+
+  // Never generate payment for work under a cancelled/deleted request. A
+  // failed request is allowed through when this is itself the override that
+  // rescues the request out of that failed state.
   const [parentRequest] = await db.select().from(requests).where(eq(requests.id, task.requestId))
   if (!parentRequest || parentRequest.deletedAt) return { error: "Request no longer exists" }
-  if (["cancelled", "failed"].includes(parentRequest.status)) {
+  if (parentRequest.status === "cancelled" || (parentRequest.status === "failed" && !isOverride)) {
     return { error: "Cannot sign off a task on a cancelled request" }
   }
 
@@ -256,8 +265,8 @@ export async function signOffTask(
   await logActivity({
     entityType: "request",
     entityId: task.requestId,
-    action: "task_signed_off",
-    i18nKey: "activity.taskSignedOff",
+    action: isOverride ? "task_force_completed" : "task_signed_off",
+    i18nKey: isOverride ? "activity.taskForceCompleted" : "activity.taskSignedOff",
     performedBy: session.user.id,
   })
 

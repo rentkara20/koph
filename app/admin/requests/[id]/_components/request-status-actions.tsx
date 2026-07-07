@@ -9,6 +9,7 @@ import { updateRequestStatus } from "@/lib/actions/requests"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -70,18 +71,20 @@ export function RequestStatusActions({
         <ChevronDown className="size-3.5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuLabel>Change status</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {MANUAL_STATUSES.map(({ value, destructive }) => (
-          <DropdownMenuItem
-            key={value}
-            variant={destructive ? "destructive" : "default"}
-            disabled={currentStatus === value}
-            onClick={() => handleChange(value)}
-          >
-            {t(`status.${value}`)}
-          </DropdownMenuItem>
-        ))}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Change status</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {MANUAL_STATUSES.map(({ value, destructive }) => (
+            <DropdownMenuItem
+              key={value}
+              variant={destructive ? "destructive" : "default"}
+              disabled={currentStatus === value}
+              onClick={() => handleChange(value)}
+            >
+              {t(`status.${value}`)}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   )

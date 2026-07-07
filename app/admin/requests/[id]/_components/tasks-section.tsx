@@ -122,10 +122,12 @@ function SignOffButton({
   taskId,
   pricingModel,
   unitPrice,
+  isOverride,
 }: {
   taskId: string
   pricingModel: string | null
   unitPrice: number | null
+  isOverride?: boolean
 }) {
   const router = useRouter()
   const tToast = useTranslations("toast")
@@ -163,12 +165,19 @@ function SignOffButton({
 
   if (!open) {
     return (
-      <Button size="sm" onClick={() => setOpen(true)}>Sign off</Button>
+      <Button size="sm" variant={isOverride ? "outline" : "default"} onClick={() => setOpen(true)}>
+        {isOverride ? "Force complete" : "Sign off"}
+      </Button>
     )
   }
 
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {isOverride && (
+        <span className="text-xs text-destructive">
+          Task failed — marking complete will still generate payment.
+        </span>
+      )}
       {needsQty && (
         <Input
           type="number"
@@ -456,12 +465,13 @@ export function TasksSection({
                     </button>
                   )}
 
-                  {/* Sign off */}
-                  {task.status === "pending_signoff" && (
+                  {/* Sign off (or admin override for a failed task) */}
+                  {(task.status === "pending_signoff" || task.status === "failed") && (
                     <SignOffButton
                       taskId={task.id}
                       pricingModel={task.pricingModel}
                       unitPrice={task.unitPrice}
+                      isOverride={task.status === "failed"}
                     />
                   )}
 
