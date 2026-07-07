@@ -6,6 +6,7 @@ import { getSignatureByToken, recordSignatureOpened } from "@/lib/actions/signat
 import { getDeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { formatDate } from "@/lib/utils/format"
 import { SignatureForm } from "./_components/signature-form"
+import { ReceiverConfirmationCard } from "./_components/receiver-confirmation-card"
 import { DeliveryNoteView } from "./_components/delivery-note-view"
 import { DownloadButton } from "./_components/download-button"
 import { SignHeader } from "./_components/sign-header"
@@ -230,6 +231,15 @@ export default async function SignPage({
                   </div>
                 )}
               </div>
+            )}
+
+            {canSign && sig.signatoryRole === "authorized" && deliveryNote?.signature && (
+              <ReceiverConfirmationCard
+                fullName={deliveryNote.signature.fullName}
+                nationalId={deliveryNote.signature.nationalId}
+                signedAt={deliveryNote.signature.signedAt}
+                signatureData={deliveryNote.signature.signatureData}
+              />
             )}
 
             {canSign && (

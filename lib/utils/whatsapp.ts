@@ -79,6 +79,21 @@ export function signLinkMessage(opts: {
   ].join("\n")
 }
 
+export function authorizedSignoffMessage(opts: {
+  authorizedName: string | null
+  receiverName: string
+  requestNumber: string
+  deliveredDate: string
+  signLink: string
+}): string {
+  return [
+    `مرحباً${opts.authorizedName ? " " + opts.authorizedName : ""}،`,
+    `تم تسليم طلب رقم ${opts.requestNumber} إلى ${opts.receiverName} بتاريخ ${opts.deliveredDate}.`,
+    `برجاء التكرم بالتوقيع على سند الاستلام للتوثيق من الرابط:`,
+    opts.signLink,
+  ].join("\n")
+}
+
 // ─── Link builders ──────────────────────────────────────────────────────────
 
 export const taskLink = (token: string) => `${appUrl()}/task/${token}`

@@ -108,8 +108,20 @@ export async function getSignatureRequestsForRequest(requestId: string) {
   if (!session) return []
 
   return db
-    .select()
+    .select({
+      id: signatureRequests.id,
+      documentName: signatureRequests.documentName,
+      status: signatureRequests.status,
+      secureToken: signatureRequests.secureToken,
+      requireNationalId: signatureRequests.requireNationalId,
+      createdAt: signatureRequests.createdAt,
+      signatoryRole: signatureRequests.signatoryRole,
+      parentSignatureRequestId: signatureRequests.parentSignatureRequestId,
+      signerName: customerSignatures.fullName,
+      signedAt: customerSignatures.signedAt,
+    })
     .from(signatureRequests)
+    .leftJoin(customerSignatures, eq(customerSignatures.signatureRequestId, signatureRequests.id))
     .where(eq(signatureRequests.requestId, requestId))
     .orderBy(desc(signatureRequests.createdAt))
 }

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, Copy, Check, Send, X, FileText, Trash2, ShieldCheck } from "lucide-react"
+import { Plus, Copy, Check, Send, X, FileText, Trash2, ShieldCheck, MessageCircle } from "lucide-react"
 import {
   createSignatureRequest,
   markSignatureAsSent,
@@ -12,6 +12,7 @@ import {
   deleteSignatureRequest,
   requestAuthorizedSignoff,
 } from "@/lib/actions/signatures"
+import { buildWhatsappUrl, signLinkMessage, authorizedSignoffMessage, signLink } from "@/lib/utils/whatsapp"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -53,7 +54,11 @@ type SigRow = {
   createdAt: number
   signatoryRole: string
   parentSignatureRequestId: string | null
+  signerName: string | null
+  signedAt: number | null
 }
+
+type WhatsappContact = { name: string; mobile: string | null } | null
 
 function CopySignLink({ token }: { token: string }) {
   const tToast = useTranslations("toast")
@@ -83,17 +88,22 @@ const ACTIVE_STATUSES = ["draft", "sent", "opened", "otp_verified"]
 
 export function SignaturesSection({
   requestId,
+  requestNumber,
   signatures,
   defaultRequireNationalId,
-  hasAuthorizedContact,
+  receiverContact,
+  authorizedContact,
   defaultDocumentName,
 }: {
   requestId: string
+  requestNumber: string
   signatures: SigRow[]
   defaultRequireNationalId: boolean
-  hasAuthorizedContact: boolean
+  receiverContact: WhatsappContact
+  authorizedContact: WhatsappContact
   defaultDocumentName?: string
 }) {
+  const hasAuthorizedContact = !!authorizedContact
   const router = useRouter()
   const tToast = useTranslations("toast")
   const [showForm, setShowForm] = useState(false)
@@ -189,6 +199,34 @@ export function SignaturesSection({
             // customer has a flagged signatory and no stage-2 exists yet.
             const canRequestAuthorized =
               !isAuthorizedRow && sig.status === "signed" && hasAuthorizedContact && !hasStage2
+
+            // WhatsApp: send the sign link to the receiver, or — for the
+            // authorised-signatory stage — name the actual receiver + delivery
+            // date so the signatory knows who they're co-signing after.
+            const parentReceiver = isAuthorizedRow
+              ? signatures.find((s) => s.id === sig.parentSignatureRequestId) ?? null
+              : null
+            const whatsappUrl = !isActive
+              ? null
+              : isAuthorizedRow
+                ? buildWhatsappUrl(
+                    authorizedContact?.mobile,
+                    authorizedSignoffMessage({
+                      authorizedName: authorizedContact?.name ?? null,
+                      receiverName: parentReceiver?.signerName ?? "-",
+                      requestNumber,
+                      deliveredDate: parentReceiver?.signedAt ? formatDate(parentReceiver.signedAt) : "-",
+                      signLink: signLink(sig.secureToken),
+                    })
+                  )
+                : buildWhatsappUrl(
+                    receiverContact?.mobile,
+                    signLinkMessage({
+                      customerName: receiverContact?.name ?? null,
+                      requestNumber,
+                      signLink: signLink(sig.secureToken),
+                    })
+                  )
             return (
               <div key={sig.id} className="rounded-lg border p-3 space-y-2">
                 <div className="flex items-start justify-between gap-2">
@@ -213,6 +251,18 @@ export function SignaturesSection({
 
                 <div className="flex flex-wrap items-center gap-3 pt-1">
                   {isActive && <CopySignLink token={sig.secureToken} />}
+
+                  {isActive && whatsappUrl && (
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 transition-colors"
+                    >
+                      <MessageCircle className="size-3" />
+                      WhatsApp
+                    </a>
+                  )}
 
                   {sig.status === "signed" && (
                     <a

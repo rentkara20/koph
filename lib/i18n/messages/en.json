@@ -253,7 +253,9 @@
       "delivery": "Delivery",
       "typedSignToggle": "Can't draw? Type your name to sign",
       "typedSignLabel": "Type your full name as signature",
-      "expiringSoon": "This link expires within 24 hours"
+      "expiringSoon": "This link expires within 24 hours",
+      "receiverConfirmedTitle": "Confirmed received by",
+      "receiverSignedAtLabel": "Signed on"
     }
   },
   "payments": {

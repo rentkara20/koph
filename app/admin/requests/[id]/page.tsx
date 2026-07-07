@@ -249,9 +249,13 @@ export default async function RequestDetailPage({
             <CardContent>
               <SignaturesSection
                 requestId={request.id}
+                requestNumber={request.requestNumber}
                 signatures={signatures}
                 defaultRequireNationalId={request.requireNationalId}
-                hasAuthorizedContact={contacts.some((c) => c.isAuthorizedSignatory)}
+                receiverContact={
+                  contacts.find((c) => c.id === request.receiverContactId) ?? null
+                }
+                authorizedContact={contacts.find((c) => c.isAuthorizedSignatory) ?? null}
                 defaultDocumentName={`Delivery Note #${request.quoteNumber ?? request.requestNumber}${customer ? " " + customer.name : ""}`}
               />
             </CardContent>

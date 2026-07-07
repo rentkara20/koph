@@ -253,7 +253,9 @@
       "delivery": "التسليم",
       "typedSignToggle": "لا تستطيع الرسم؟ اكتب اسمك للتوقيع",
       "typedSignLabel": "اكتب اسمك الكامل كتوقيع",
-      "expiringSoon": "تنتهي صلاحية هذا الرابط خلال ٢٤ ساعة"
+      "expiringSoon": "تنتهي صلاحية هذا الرابط خلال ٢٤ ساعة",
+      "receiverConfirmedTitle": "تم استلام الطلب بواسطة",
+      "receiverSignedAtLabel": "تاريخ التوقيع"
     }
   },
   "payments": {
