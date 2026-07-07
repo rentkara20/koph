@@ -8,9 +8,11 @@ import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PartnerEditForm } from "./_components/partner-edit-form"
+import { PartnerView } from "./_components/partner-view"
 import { ContractsSection } from "./_components/contracts-section"
 import { PartnerLoginSection } from "./_components/partner-login-section"
 import { DeleteButton } from "@/components/delete-button"
+import { EditableSection } from "@/components/editable-section"
 import { cn } from "@/lib/utils"
 
 export default async function PartnerDetailPage({
@@ -54,7 +56,11 @@ export default async function PartnerDetailPage({
           <Card>
             <CardHeader><CardTitle className="text-sm font-medium text-muted-foreground">Partner info</CardTitle></CardHeader>
             <CardContent>
-              <PartnerEditForm partner={partner} />
+              <EditableSection
+                editLabel="Edit"
+                view={<PartnerView partner={partner} />}
+                edit={<PartnerEditForm partner={partner} />}
+              />
             </CardContent>
           </Card>
         </div>

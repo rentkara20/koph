@@ -11,9 +11,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { orderStatusVariant } from "@/lib/utils/order-status"
 import { formatDate } from "@/lib/utils/format"
 import { OrderEditForm } from "./_components/order-edit-form"
+import { OrderView } from "./_components/order-view"
 import { UnitsSection } from "./_components/units-section"
 import { CancelOrderButton } from "./_components/cancel-order-button"
 import { DeleteButton } from "@/components/delete-button"
+import { EditableSection } from "@/components/editable-section"
 import { cn } from "@/lib/utils"
 
 export default async function OrderDetailPage({
@@ -67,7 +69,11 @@ export default async function OrderDetailPage({
           <CardTitle className="text-base">{t("orderDetails")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <OrderEditForm order={order} lines={lines} customers={customerList} />
+          <EditableSection
+            editLabel="Edit"
+            view={<OrderView order={order} lines={lines} customers={customerList} />}
+            edit={<OrderEditForm order={order} lines={lines} customers={customerList} />}
+          />
         </CardContent>
       </Card>
 

@@ -258,7 +258,7 @@ export async function generatePartnerActivationLink(partnerId: string): Promise<
 
   revalidatePath(`/admin/partners/${partnerId}`)
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
-  return { id: partnerId, link: `${baseUrl}/partner/activate/${activationToken}` }
+  return { id: partnerId, link: `${baseUrl}/activate/${activationToken}` }
 }
 
 export async function getPartnerByActivationToken(token: string) {

@@ -6,7 +6,9 @@ import { getSupplier, deleteSupplier } from "@/lib/actions/suppliers"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { SupplierEditForm } from "./_components/supplier-edit-form"
+import { SupplierView } from "./_components/supplier-view"
 import { DeleteButton } from "@/components/delete-button"
+import { EditableSection } from "@/components/editable-section"
 import { cn } from "@/lib/utils"
 
 export default async function SupplierDetailPage({
@@ -42,7 +44,11 @@ export default async function SupplierDetailPage({
           <CardTitle className="text-base">{t("edit")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <SupplierEditForm supplier={supplier} />
+          <EditableSection
+            editLabel={t("edit")}
+            view={<SupplierView supplier={supplier} />}
+            edit={<SupplierEditForm supplier={supplier} />}
+          />
         </CardContent>
       </Card>
     </div>

@@ -4,18 +4,23 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import Link from "next/link"
 import { updateSupplier } from "@/lib/actions/suppliers"
 import type { Supplier } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { buttonVariants } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
 
-export function SupplierEditForm({ supplier }: { supplier: Supplier }) {
+export function SupplierEditForm({
+  supplier,
+  onCancel,
+  onSaved,
+}: {
+  supplier: Supplier
+  onCancel?: () => void
+  onSaved?: () => void
+}) {
   const t = useTranslations("suppliers")
   const tCommon = useTranslations("common")
   const tToast = useTranslations("toast")
@@ -40,6 +45,7 @@ export function SupplierEditForm({ supplier }: { supplier: Supplier }) {
       toast.success(tToast("updated"))
       setLoading(false)
       router.refresh()
+      onSaved?.()
     } catch {
       setError("An unexpected error occurred")
       toast.error(tToast("genericError"))
@@ -109,9 +115,9 @@ export function SupplierEditForm({ supplier }: { supplier: Supplier }) {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex gap-3 justify-end">
-        <Link href="/admin/suppliers" className={cn(buttonVariants({ variant: "outline" }))}>
-          {tCommon("back")}
-        </Link>
+        <Button type="button" variant="outline" onClick={() => onCancel?.()} disabled={loading}>
+          {tCommon("cancel")}
+        </Button>
         <Button type="submit" disabled={loading}>
           {loading ? tCommon("loading") : tCommon("save")}
         </Button>

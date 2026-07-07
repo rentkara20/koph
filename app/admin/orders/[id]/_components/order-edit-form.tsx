@@ -14,8 +14,6 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
-import { buttonVariants } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { ExternalLink } from "lucide-react"
 
@@ -37,10 +35,14 @@ export function OrderEditForm({
   order,
   lines: initialLines,
   customers,
+  onCancel,
+  onSaved,
 }: {
   order: Order
   lines: OrderLine[]
   customers: Customer[]
+  onCancel?: () => void
+  onSaved?: () => void
 }) {
   const t = useTranslations("orders")
   const tCommon = useTranslations("common")
@@ -101,6 +103,7 @@ export function OrderEditForm({
       toast.success(tToast("updated"))
       setLoading(false)
       router.refresh()
+      onSaved?.()
     } catch {
       setError("An unexpected error occurred")
       toast.error(tToast("genericError"))
@@ -219,9 +222,9 @@ export function OrderEditForm({
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex gap-3 justify-end">
-        <Link href="/admin/orders" className={cn(buttonVariants({ variant: "outline" }))}>
-          {tCommon("back")}
-        </Link>
+        <Button type="button" variant="outline" onClick={() => onCancel?.()} disabled={loading}>
+          {tCommon("cancel")}
+        </Button>
         <Button type="submit" disabled={loading}>
           {loading ? tCommon("loading") : tCommon("save")}
         </Button>
