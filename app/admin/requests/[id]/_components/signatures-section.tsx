@@ -86,11 +86,13 @@ export function SignaturesSection({
   signatures,
   defaultRequireNationalId,
   hasAuthorizedContact,
+  defaultDocumentName,
 }: {
   requestId: string
   signatures: SigRow[]
   defaultRequireNationalId: boolean
   hasAuthorizedContact: boolean
+  defaultDocumentName?: string
 }) {
   const router = useRouter()
   const tToast = useTranslations("toast")
@@ -306,6 +308,7 @@ export function SignaturesSection({
               <Input
                 name="documentName"
                 required
+                defaultValue={defaultDocumentName}
                 placeholder="e.g. Rental agreement, Service authorization"
                 autoFocus
               />

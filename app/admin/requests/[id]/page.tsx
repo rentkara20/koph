@@ -252,6 +252,7 @@ export default async function RequestDetailPage({
                 signatures={signatures}
                 defaultRequireNationalId={request.requireNationalId}
                 hasAuthorizedContact={contacts.some((c) => c.isAuthorizedSignatory)}
+                defaultDocumentName={`Delivery Note #${request.quoteNumber ?? request.requestNumber}${customer ? " " + customer.name : ""}`}
               />
             </CardContent>
           </Card>
