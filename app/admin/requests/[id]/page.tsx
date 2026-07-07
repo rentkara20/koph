@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { formatDate, formatDateTime } from "@/lib/utils/format"
 import { RequestStatusActions } from "./_components/request-status-actions"
+import { ReopenRequestButton } from "./_components/reopen-request-button"
 import { DeleteButton } from "@/components/delete-button"
 import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
@@ -72,6 +73,7 @@ export default async function RequestDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <ReopenRequestButton requestId={request.id} currentStatus={request.status} />
           <RequestStatusActions requestId={request.id} currentStatus={request.status} />
           <DeleteButton
             onDelete={deleteRequest.bind(null, request.id)}

@@ -114,7 +114,8 @@
     "availableUnits": "متاح",
     "noAvailableUnits": "لا توجد أجهزة متاحة في هذه الطلبية.",
     "addSelected": "إضافة المحدد",
-    "fromOrder": "من طلبية"
+    "fromOrder": "من طلبية",
+    "reopen": "إعادة فتح"
   },
   "tasks": {
     "title": "المهام",

@@ -114,7 +114,8 @@
     "availableUnits": "available",
     "noAvailableUnits": "No available devices in this order.",
     "addSelected": "Add selected",
-    "fromOrder": "from order"
+    "fromOrder": "from order",
+    "reopen": "Reopen"
   },
   "tasks": {
     "title": "Tasks",
