@@ -193,7 +193,29 @@
       "password": "Password",
       "create": "Create login",
       "created": "Login created",
-      "hint": "Share the email and password with the partner — they sign in at koph.vercel.app and see only their own tasks and earnings."
+      "hint": "Share the email and password with the partner — they sign in at koph.vercel.app and see only their own tasks and earnings.",
+      "generateLink": "Send activation link instead",
+      "linkGenerated": "Activation link generated",
+      "linkHint": "The partner opens this link once to set their own email and password. Expires in 72 hours.",
+      "copyLink": "Copy link",
+      "linkCopied": "Link copied",
+      "resetPassword": "Reset password",
+      "newPassword": "New password",
+      "resetPasswordHint": "Sets a new password immediately — the partner does not need their old one.",
+      "resetSubmit": "Save new password",
+      "resetSuccess": "Password updated"
+    },
+    "activation": {
+      "title": "Set up your login",
+      "subtitle": "Welcome, {name} — choose the email and password you'll use to sign in.",
+      "email": "Email",
+      "password": "Password",
+      "confirmPassword": "Confirm password",
+      "submit": "Activate account",
+      "submitting": "Activating…",
+      "mismatch": "Passwords do not match",
+      "success": "Account activated. Redirecting to login…",
+      "expired": "This activation link has expired or was already used. Ask your KARA contact to send a new one."
     }
   },
   "signatures": {

@@ -75,6 +75,9 @@ const AR: Record<string, string> = {
   "A user with this email already exists": "يوجد مستخدم بهذا البريد بالفعل",
   "Could not create the login account": "تعذر إنشاء الحساب",
   "Invalid email or password (min 8 characters)": "بريد أو كلمة مرور غير صالحة (٨ أحرف على الأقل)",
+  "Link expired or invalid": "الرابط منتهي أو غير صالح",
+  "Password must be at least 8 characters": "كلمة المرور يجب ألا تقل عن ٨ أحرف",
+  "Partner has no login": "الشريك ليس لديه حساب دخول",
 
   // Orders / suppliers / customers
   "Order not found": "الطلبية غير موجودة",

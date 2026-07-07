@@ -4,10 +4,12 @@ import { z } from "zod"
 import { and, asc, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { partners, partnerContracts, requestTypes, users } from "@/lib/db/schema"
-import { createId } from "@/lib/utils/ids"
+import { partners, partnerContracts, requestTypes, users, accounts } from "@/lib/db/schema"
+import { createId, generateToken } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { auth } from "@/lib/auth/config"
+
+const ACTIVATION_TOKEN_TTL_MS = 3 * 24 * 60 * 60 * 1000 // 72 hours
 
 export type ActionResult = { error?: string; id?: string }
 
@@ -230,4 +232,129 @@ export async function createPartnerLogin(
 
   revalidatePath(`/admin/partners/${partnerId}`)
   return { id: created.id }
+}
+
+// ─── Self-service activation link ──────────────────────────────────────────
+
+/**
+ * Admin-triggered: generates a one-time link the partner opens to set their
+ * own email + password. Avoids the admin typing (and mistyping) the
+ * partner's email, and the password never has to travel over chat.
+ */
+export async function generatePartnerActivationLink(partnerId: string): Promise<ActionResult & { link?: string }> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const [partner] = await db.select({ id: partners.id, userId: partners.userId }).from(partners).where(eq(partners.id, partnerId))
+  if (!partner) return { error: "Partner not found" }
+
+  const activationToken = generateToken()
+  const activationTokenExpiresAt = Date.now() + ACTIVATION_TOKEN_TTL_MS
+
+  await db
+    .update(partners)
+    .set({ activationToken, activationTokenExpiresAt, updatedAt: Date.now() })
+    .where(eq(partners.id, partnerId))
+
+  revalidatePath(`/admin/partners/${partnerId}`)
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  return { id: partnerId, link: `${baseUrl}/partner/activate/${activationToken}` }
+}
+
+export async function getPartnerByActivationToken(token: string) {
+  const [partner] = await db
+    .select({
+      id: partners.id,
+      name: partners.name,
+      email: partners.email,
+      userId: partners.userId,
+      activationTokenExpiresAt: partners.activationTokenExpiresAt,
+    })
+    .from(partners)
+    .where(eq(partners.activationToken, token))
+
+  if (!partner) return null
+  if (!partner.activationTokenExpiresAt || partner.activationTokenExpiresAt < Date.now()) return null
+  return partner
+}
+
+const activateSchema = z.object({
+  email: z.string().trim().email().max(200),
+  password: z.string().min(8).max(100),
+})
+
+/**
+ * Public action — no admin session. Guarded entirely by the (unguessable,
+ * time-limited, single-use) token, same trust model as /task/[token] and /sign/[token].
+ */
+export async function activatePartnerAccount(
+  token: string,
+  email: string,
+  password: string
+): Promise<ActionResult> {
+  const parsed = activateSchema.safeParse({ email, password })
+  if (!parsed.success) return { error: "Invalid email or password (min 8 characters)" }
+
+  const partner = await getPartnerByActivationToken(token)
+  if (!partner) return { error: "Link expired or invalid" }
+  if (partner.userId) return { error: "Partner already has a login" }
+
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email))
+  if (existing) return { error: "A user with this email already exists" }
+
+  try {
+    await auth.api.signUpEmail({
+      body: { email: parsed.data.email, password: parsed.data.password, name: partner.name },
+    })
+  } catch (error) {
+    console.error("activatePartnerAccount signup failed", error)
+    return { error: "Could not create the login account" }
+  }
+
+  const [created] = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email))
+  if (!created) return { error: "Could not create the login account" }
+
+  await db.transaction(async (tx) => {
+    await tx.update(users).set({ role: "partner", emailVerified: true }).where(eq(users.id, created.id))
+    await tx
+      .update(partners)
+      .set({ userId: created.id, activationToken: null, activationTokenExpiresAt: null, updatedAt: Date.now() })
+      .where(eq(partners.id, partner.id))
+  })
+
+  return { id: partner.id }
+}
+
+// ─── Admin-triggered password reset ────────────────────────────────────────
+
+const resetPasswordSchema = z.object({
+  password: z.string().min(8).max(100),
+})
+
+/**
+ * Lets an admin set a new password for a partner who already has a linked
+ * login (e.g. they forgot it). Hashes with better-auth's own hasher and
+ * writes directly to the credential account row — no need for the old password.
+ */
+export async function resetPartnerPassword(partnerId: string, password: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = resetPasswordSchema.safeParse({ password })
+  if (!parsed.success) return { error: "Password must be at least 8 characters" }
+
+  const [partner] = await db.select({ userId: partners.userId }).from(partners).where(eq(partners.id, partnerId))
+  if (!partner?.userId) return { error: "Partner has no login" }
+
+  const { hashPassword } = await import("better-auth/crypto")
+  const hashed = await hashPassword(parsed.data.password)
+
+  const result = await db
+    .update(accounts)
+    .set({ password: hashed, updatedAt: Date.now() })
+    .where(and(eq(accounts.userId, partner.userId), eq(accounts.providerId, "credential")))
+
+  if (result.rowsAffected === 0) return { error: "Partner has no login" }
+
+  return { id: partnerId }
 }

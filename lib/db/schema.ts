@@ -205,6 +205,9 @@ export const partners = sqliteTable("partner", {
     .notNull()
     .default("active"),
   notes: text("notes"),
+  // Self-service portal login setup — admin generates, partner opens it once to set their own password.
+  activationToken: text("activation_token").unique(),
+  activationTokenExpiresAt: integer("activation_token_expires_at"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
   deletedAt: integer("deleted_at"),

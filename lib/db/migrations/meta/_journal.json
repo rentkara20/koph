@@ -29,6 +29,13 @@
       "when": 1783360457606,
       "tag": "0003_aromatic_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783431268925,
+      "tag": "0004_add_partner_activation_token",
+      "breakpoints": true
     }
   ]
 }
