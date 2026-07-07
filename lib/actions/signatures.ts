@@ -20,6 +20,8 @@ import {
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
 import { notify, notifyAdmins } from "@/lib/utils/notify"
+import { sendEmail } from "@/lib/email/resend"
+import { deliveryNoteSignedEmail } from "@/lib/email/templates"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import {
   createSignatureRequestSchema,
@@ -488,6 +490,22 @@ async function handlePostSignature(ctx: PostSignatureCtx) {
       entityType: "signature_request",
       entityId: sig.id,
     })
+
+    // Best-effort email to the customer with the signed delivery note link.
+    // No-ops when RESEND_API_KEY isn't configured (see lib/email/resend.ts).
+    const [customerRow] = await db
+      .select({ name: customers.name, email: customers.email })
+      .from(customers)
+      .where(eq(customers.id, sig.customerId))
+    if (customerRow?.email) {
+      const printUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${sig.secureToken}/print`
+      const { subject, html } = deliveryNoteSignedEmail({
+        customerName: customerRow.name,
+        requestNumber,
+        printUrl,
+      })
+      await sendEmail({ to: customerRow.email, subject, html })
+    }
   }
 
   // 2) Two-stage signatory chaining.

@@ -3,6 +3,7 @@ import {
   getPartnerPerformance,
   getPaymentSummaryByMonth,
   getPendingPaymentsSummary,
+  getInventoryByModel,
 } from "@/lib/actions/reports"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -26,14 +27,30 @@ const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "suc
 }
 
 export default async function ReportsPage() {
-  const [statusRows, partnerPerf, paymentSummary, pendingSummary] = await Promise.all([
-    getRequestsByStatus(),
-    getPartnerPerformance(),
-    getPaymentSummaryByMonth(),
-    getPendingPaymentsSummary(),
-  ])
+  const [statusRows, partnerPerf, paymentSummary, pendingSummary, inventoryByModel] =
+    await Promise.all([
+      getRequestsByStatus(),
+      getPartnerPerformance(),
+      getPaymentSummaryByMonth(),
+      getPendingPaymentsSummary(),
+      getInventoryByModel(),
+    ])
 
   const totalRequests = statusRows.reduce((s, r) => s + r.count, 0)
+
+  // Collapse per-status rows into one line per model: available vs out vs other.
+  const modelMap = new Map<string, { label: string; available: number; out: number; other: number }>()
+  for (const row of inventoryByModel) {
+    const label = [row.brand, row.model].filter(Boolean).join(" · ") || "—"
+    const entry = modelMap.get(label) ?? { label, available: 0, out: 0, other: 0 }
+    if (row.status === "in_stock") entry.available += row.count
+    else if (["assigned", "delivered"].includes(row.status)) entry.out += row.count
+    else entry.other += row.count
+    modelMap.set(label, entry)
+  }
+  const modelRows = [...modelMap.values()].sort(
+    (a, b) => b.available + b.out + b.other - (a.available + a.out + a.other)
+  )
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -133,6 +150,41 @@ export default async function ReportsPage() {
                     <td className="px-4 py-3 tabular-nums text-green-700">{p.closed}</td>
                     <td className="px-4 py-3 tabular-nums text-red-700">{p.failed}</td>
                     <td className="px-4 py-3 tabular-nums text-muted-foreground">{p.active}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Inventory by model */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Inventory by model
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {modelRows.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">No devices yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Model</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground text-green-700">Available</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Out</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Other</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {modelRows.map((row) => (
+                  <tr key={row.label}>
+                    <td className="px-4 py-3 font-medium">{row.label}</td>
+                    <td className="px-4 py-3 tabular-nums text-green-700">{row.available}</td>
+                    <td className="px-4 py-3 tabular-nums">{row.out}</td>
+                    <td className="px-4 py-3 tabular-nums text-muted-foreground">{row.other}</td>
                   </tr>
                 ))}
               </tbody>

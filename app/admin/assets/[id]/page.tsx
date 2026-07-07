@@ -10,6 +10,7 @@ import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
 import { ASSET_STATUS_VARIANT } from "../status-variant"
 import { AssetActions } from "./_components/asset-actions"
+import { OpenMaintenanceButton } from "./_components/open-maintenance-button"
 import { AssetNoteForm } from "./_components/asset-note-form"
 
 export default async function AssetPage({
@@ -64,7 +65,12 @@ export default async function AssetPage({
       </div>
 
       {/* Actions */}
-      <AssetActions assetId={asset.id} actions={assetActionsFor(asset.status as AssetStatus)} />
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <AssetActions assetId={asset.id} actions={assetActionsFor(asset.status as AssetStatus)} />
+        {["in_stock", "returned", "damaged"].includes(asset.status) && (
+          <OpenMaintenanceButton assetId={asset.id} />
+        )}
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Details card */}

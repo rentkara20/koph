@@ -10,6 +10,7 @@ import { CustomerView } from "./_components/customer-view"
 import { ContactsSection } from "./_components/contacts-section"
 import { DeleteButton } from "@/components/delete-button"
 import { EditableSection } from "@/components/editable-section"
+import { PortalLinkButton } from "./_components/portal-link-button"
 import { cn } from "@/lib/utils"
 
 export default async function CustomerDetailPage({
@@ -37,10 +38,13 @@ export default async function CustomerDetailPage({
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight">{customer.name}</h1>
         </div>
-        <DeleteButton
-          onDelete={deleteCustomer.bind(null, id)}
-          redirectTo="/admin/customers"
-        />
+        <div className="flex items-center gap-2">
+          <PortalLinkButton customerId={id} />
+          <DeleteButton
+            onDelete={deleteCustomer.bind(null, id)}
+            redirectTo="/admin/customers"
+          />
+        </div>
       </div>
 
       <Card>

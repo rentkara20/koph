@@ -42,6 +42,36 @@ const STATEMENTS: string[] = [
     created_at integer NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS asset_event_asset_idx ON asset_event (asset_id, created_at)`,
+  // ── Maintenance orders + customer portal ──────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS maintenance_order (
+    id text PRIMARY KEY,
+    asset_id text NOT NULL REFERENCES order_unit(id) ON DELETE CASCADE,
+    issue text NOT NULL,
+    status text NOT NULL DEFAULT 'open',
+    cost real,
+    vendor_notes text,
+    opened_by text,
+    opened_at integer NOT NULL,
+    closed_at integer
+  )`,
+  `CREATE INDEX IF NOT EXISTS maintenance_order_asset_idx ON maintenance_order (asset_id)`,
+  `CREATE INDEX IF NOT EXISTS maintenance_order_status_idx ON maintenance_order (status)`,
+  `CREATE TABLE IF NOT EXISTS customer_portal_token (
+    id text PRIMARY KEY,
+    customer_id text NOT NULL UNIQUE REFERENCES customer(id) ON DELETE CASCADE,
+    token text NOT NULL UNIQUE,
+    created_at integer NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS customer_callback_request (
+    id text PRIMARY KEY,
+    customer_id text NOT NULL REFERENCES customer(id) ON DELETE CASCADE,
+    request_id text,
+    kind text NOT NULL,
+    message text,
+    resolved_at integer,
+    created_at integer NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS customer_callback_customer_idx ON customer_callback_request (customer_id)`,
 ]
 
 export async function POST(): Promise<Response> {

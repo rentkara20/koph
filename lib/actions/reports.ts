@@ -2,8 +2,39 @@
 
 import { count, desc, eq, sql, sum } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { partners, partnerPayments, partnerTasks, paymentBatches, requests } from "@/lib/db/schema"
+import { orderLines, orderUnits, partners, partnerPayments, partnerTasks, paymentBatches, requests } from "@/lib/db/schema"
 import { getStaffSession } from "@/lib/auth/session"
+
+// ─── Inventory: on-hand counts by location and model ─────────────────────────
+
+export async function getInventoryByLocation() {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  return db
+    .select({ location: orderUnits.location, status: orderUnits.status, count: count() })
+    .from(orderUnits)
+    .groupBy(orderUnits.location, orderUnits.status)
+    .orderBy(orderUnits.location)
+}
+
+export async function getInventoryByModel() {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  return db
+    .select({
+      brand: orderLines.brand,
+      model: orderLines.model,
+      status: orderUnits.status,
+      count: count(),
+    })
+    .from(orderUnits)
+    .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+    .groupBy(orderLines.brand, orderLines.model, orderUnits.status)
+    .orderBy(desc(count()))
+    .limit(100)
+}
 
 // ─── Requests by status ───────────────────────────────────────────────────────
 

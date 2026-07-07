@@ -6,6 +6,7 @@ import type { AssetStatus } from "@/lib/domain/asset-status"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { GenerateTagsButton } from "./_components/generate-tags-button"
+import { SyncNotionButton } from "./_components/sync-notion-button"
 import { ASSET_STATUS_VARIANT } from "./status-variant"
 
 const STATUS_ORDER: AssetStatus[] = [
@@ -59,7 +60,10 @@ export default async function AssetsPage({
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <GenerateTagsButton />
+        <div className="flex gap-2">
+          <SyncNotionButton />
+          <GenerateTagsButton />
+        </div>
       </div>
 
       {/* Status filter chips with live counts */}

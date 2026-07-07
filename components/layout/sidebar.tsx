@@ -17,12 +17,14 @@ import {
   Coins,
   BarChart3,
   Settings,
+  Wrench,
 } from "lucide-react"
 
 const navItems = [
   { key: "dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { key: "orders", href: "/admin/orders", icon: PackageSearch },
   { key: "assets", href: "/admin/assets", icon: Laptop },
+  { key: "maintenance", href: "/admin/maintenance", icon: Wrench },
   { key: "requests", href: "/admin/requests", icon: ClipboardList },
   { key: "customers", href: "/admin/customers", icon: Users },
   { key: "suppliers", href: "/admin/suppliers", icon: Store },

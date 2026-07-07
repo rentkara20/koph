@@ -12,7 +12,8 @@
     "logout": "تسجيل الخروج",
     "orders": "طلبات العملاء",
     "suppliers": "التجار",
-    "assets": "الأصول"
+    "assets": "الأصول",
+    "maintenance": "الصيانة"
   },
   "common": {
     "save": "حفظ",
@@ -490,7 +491,8 @@
     "customerSigned": "{customerName} وقّع سند التسليم للطلب {requestNumber}",
     "authorizedSignoffPending": "بانتظار توقيع المفوّض للطلب {requestNumber}",
     "fullySigned": "تم توقيع سند التسليم للطلب {requestNumber} بالكامل",
-    "titleWithUnread": "الإشعارات، {count} غير مقروءة"
+    "titleWithUnread": "الإشعارات، {count} غير مقروءة",
+    "customerCallback": "{customerName} طلب {kind}"
   },
   "suppliers": {
     "title": "التجار",
@@ -652,5 +654,49 @@
       "tasks": "المهام",
       "statements": "الأرباح"
     }
+  },
+  "maintenance": {
+    "title": "الصيانة",
+    "subtitle": "أوامر الإصلاح المفتوحة وتاريخ تكلفتها",
+    "asset": "الأصل",
+    "issue": "العطل",
+    "status": "الحالة",
+    "cost": "التكلفة (ر.س)",
+    "opened": "تاريخ الفتح",
+    "openOrder": "فتح أمر صيانة",
+    "start": "بدء العمل",
+    "close": "إغلاق",
+    "closeTitle": "إغلاق أمر الصيانة",
+    "vendorNotes": "ملاحظات المورد / الإصلاح",
+    "markDone": "تحديد كمكتمل",
+    "markCancelled": "إلغاء الأمر",
+    "closedDone": "تم إغلاق أمر الصيانة",
+    "closedCancelled": "تم إلغاء أمر الصيانة",
+    "statuses": {
+      "open": "مفتوح",
+      "in_progress": "قيد العمل",
+      "done": "مكتمل",
+      "cancelled": "ملغى"
+    }
+  },
+  "clientPortal": {
+    "title": "أجهزتي",
+    "requests": "الطلبات",
+    "noRequests": "لا توجد طلبات بعد",
+    "assets": "الأجهزة الموجودة لديك",
+    "noAssets": "لا توجد أجهزة مخصصة بعد",
+    "callbackTitle": "تحتاج شيء؟",
+    "callbackKinds": {
+      "return": "طلب استلام",
+      "extension": "طلب تمديد",
+      "issue": "بلاغ عن عطل"
+    },
+    "relatedRequest": "الطلب المرتبط",
+    "message": "رسالة (اختياري)",
+    "submitCallback": "إرسال الطلب",
+    "callbackSent": "شكراً — فريقنا سيتواصل معك قريباً.",
+    "portalLink": "رابط بوابة العميل",
+    "copyLink": "نسخ الرابط",
+    "linkCopied": "تم نسخ الرابط"
   }
 }

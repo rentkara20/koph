@@ -748,6 +748,63 @@ export const assetEvents = sqliteTable(
   (t) => [index("asset_event_asset_idx").on(t.assetId, t.createdAt)]
 )
 
+// ─── Maintenance orders (work orders for an asset's repair cycle) ───────────
+// Distinct from a raw asset_event: this tracks an open issue through to
+// resolution with a cost, not just a single status flip.
+
+export const maintenanceOrders = sqliteTable(
+  "maintenance_order",
+  {
+    id: text("id").primaryKey(),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => orderUnits.id, { onDelete: "cascade" }),
+    issue: text("issue").notNull(),
+    status: text("status", {
+      enum: ["open", "in_progress", "done", "cancelled"],
+    })
+      .notNull()
+      .default("open"),
+    cost: real("cost"),
+    vendorNotes: text("vendor_notes"),
+    openedBy: text("opened_by").references(() => users.id),
+    openedAt: integer("opened_at").notNull().$defaultFn(now),
+    closedAt: integer("closed_at"),
+  },
+  (t) => [
+    index("maintenance_order_asset_idx").on(t.assetId),
+    index("maintenance_order_status_idx").on(t.status),
+  ]
+)
+
+// ─── Customer portal (magic-link, read-mostly view of a customer's assets) ──
+
+export const customerPortalTokens = sqliteTable("customer_portal_token", {
+  id: text("id").primaryKey(),
+  customerId: text("customer_id")
+    .notNull()
+    .unique()
+    .references(() => customers.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+})
+
+export const customerCallbackRequests = sqliteTable(
+  "customer_callback_request",
+  {
+    id: text("id").primaryKey(),
+    customerId: text("customer_id")
+      .notNull()
+      .references(() => customers.id, { onDelete: "cascade" }),
+    requestId: text("request_id"),
+    kind: text("kind", { enum: ["return", "extension", "issue"] }).notNull(),
+    message: text("message"),
+    resolvedAt: integer("resolved_at"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("customer_callback_customer_idx").on(t.customerId)]
+)
+
 export type Supplier = typeof suppliers.$inferSelect
 export type NewSupplier = typeof suppliers.$inferInsert
 export type Order = typeof orders.$inferSelect
@@ -756,3 +813,5 @@ export type OrderLine = typeof orderLines.$inferSelect
 export type NewOrderLine = typeof orderLines.$inferInsert
 export type OrderUnit = typeof orderUnits.$inferSelect
 export type NewOrderUnit = typeof orderUnits.$inferInsert
+export type MaintenanceOrder = typeof maintenanceOrders.$inferSelect
+export type NewMaintenanceOrder = typeof maintenanceOrders.$inferInsert

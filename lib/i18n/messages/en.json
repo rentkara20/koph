@@ -12,7 +12,8 @@
     "logout": "Log out",
     "orders": "Customer Orders",
     "suppliers": "Suppliers",
-    "assets": "Assets"
+    "assets": "Assets",
+    "maintenance": "Maintenance"
   },
   "common": {
     "save": "Save",
@@ -490,7 +491,8 @@
     "customerSigned": "{customerName} signed the delivery note for {requestNumber}",
     "authorizedSignoffPending": "Authorised sign-off pending for {requestNumber}",
     "fullySigned": "Delivery note for {requestNumber} is fully signed",
-    "titleWithUnread": "Notifications, {count} unread"
+    "titleWithUnread": "Notifications, {count} unread",
+    "customerCallback": "{customerName} requested {kind}"
   },
   "suppliers": {
     "title": "Suppliers",
@@ -652,5 +654,49 @@
       "tasks": "Tasks",
       "statements": "Earnings"
     }
+  },
+  "maintenance": {
+    "title": "Maintenance",
+    "subtitle": "Open repair orders and their cost history",
+    "asset": "Asset",
+    "issue": "Issue",
+    "status": "Status",
+    "cost": "Cost (SAR)",
+    "opened": "Opened",
+    "openOrder": "Open maintenance order",
+    "start": "Start work",
+    "close": "Close",
+    "closeTitle": "Close maintenance order",
+    "vendorNotes": "Vendor / repair notes",
+    "markDone": "Mark done",
+    "markCancelled": "Cancel order",
+    "closedDone": "Maintenance order closed",
+    "closedCancelled": "Maintenance order cancelled",
+    "statuses": {
+      "open": "Open",
+      "in_progress": "In progress",
+      "done": "Done",
+      "cancelled": "Cancelled"
+    }
+  },
+  "clientPortal": {
+    "title": "My Devices",
+    "requests": "Requests",
+    "noRequests": "No requests yet",
+    "assets": "Devices with you",
+    "noAssets": "No devices assigned yet",
+    "callbackTitle": "Need something?",
+    "callbackKinds": {
+      "return": "Request pickup",
+      "extension": "Request extension",
+      "issue": "Report an issue"
+    },
+    "relatedRequest": "Related request",
+    "message": "Message (optional)",
+    "submitCallback": "Send request",
+    "callbackSent": "Thanks — our team will reach out shortly.",
+    "portalLink": "Client portal link",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied"
   }
 }
