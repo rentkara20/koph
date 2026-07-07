@@ -11,8 +11,8 @@ type SyncResult = { error?: string; synced?: number; failed?: number }
 export async function syncAssetsToNotion(): Promise<SyncResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
-  if (!isNotionSyncEnabled()) {
-    return { error: "Notion sync is not configured. Set NOTION_API_KEY and NOTION_DATABASE_ID." }
+  if (!(await isNotionSyncEnabled())) {
+    return { error: "Notion sync is not configured or has been paused in Settings → Integrations." }
   }
 
   const rows = await db

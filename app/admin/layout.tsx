@@ -2,6 +2,7 @@ import { redirect } from "next/navigation"
 import { getSession } from "@/lib/auth/session"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+import { BottomNav } from "@/components/layout/bottom-nav"
 
 export default async function AdminLayout({
   children,
@@ -23,10 +24,11 @@ export default async function AdminLayout({
           userName={session.user.name}
           userRole={role}
         />
-        <main className="flex-1 overflow-y-auto bg-muted/40 p-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/40 p-4 pb-20 sm:p-6 lg:pb-6">
           {children}
         </main>
       </div>
+      <BottomNav />
     </div>
   )
 }

@@ -48,47 +48,73 @@ export default async function PaymentsPage() {
               No batches yet. Generate the first one from pending payments.
             </p>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Partner</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Period</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">Payments</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Amount (SAR)</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden md:table-cell">Generated</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+            <>
+              {/* Mobile: cards */}
+              <div className="grid gap-2 p-4 sm:hidden">
                 {batches.map((batch) => (
-                  <tr key={batch.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
-                    <td className="px-4 py-3 font-medium">
-                      <Link
-                        href={`/admin/payments/${batch.id}`}
-                        className="after:absolute after:inset-0"
-                      >
-                        {batch.partnerName ?? "—"}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 font-mono">{batch.period}</td>
-                    <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                      {batch.paymentCount}
-                    </td>
-                    <td className="px-4 py-3 font-medium tabular-nums">
-                      {batch.totalAmount.toFixed(2)}
-                    </td>
-                    <td className="px-4 py-3">
+                  <Link
+                    key={batch.id}
+                    href={`/admin/payments/${batch.id}`}
+                    className="block rounded-lg border p-4 active:bg-muted/40"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-medium">{batch.partnerName ?? "—"}</span>
                       <Badge variant={STATUS_VARIANT[batch.status] ?? "outline"}>
                         {STATUS_LABEL[batch.status] ?? batch.status}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                      {formatDate(batch.generatedAt)}
-                    </td>
-                  </tr>
+                    </div>
+                    <p className="mt-1 font-mono text-sm text-muted-foreground">{batch.period}</p>
+                    <div className="mt-2 flex items-center justify-between text-sm">
+                      <span className="text-muted-foreground">{batch.paymentCount} payments</span>
+                      <span className="font-medium tabular-nums">{batch.totalAmount.toFixed(2)} SAR</span>
+                    </div>
+                  </Link>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Desktop: table */}
+              <table className="hidden w-full text-sm sm:table">
+                <thead className="border-b bg-muted/50">
+                  <tr>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">Partner</th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">Period</th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">Payments</th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">Amount (SAR)</th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">Status</th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">Generated</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {batches.map((batch) => (
+                    <tr key={batch.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
+                      <td className="px-4 py-3 font-medium">
+                        <Link
+                          href={`/admin/payments/${batch.id}`}
+                          className="after:absolute after:inset-0"
+                        >
+                          {batch.partnerName ?? "—"}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 font-mono">{batch.period}</td>
+                      <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                        {batch.paymentCount}
+                      </td>
+                      <td className="px-4 py-3 font-medium tabular-nums">
+                        {batch.totalAmount.toFixed(2)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={STATUS_VARIANT[batch.status] ?? "outline"}>
+                          {STATUS_LABEL[batch.status] ?? batch.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                        {formatDate(batch.generatedAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </CardContent>
       </Card>

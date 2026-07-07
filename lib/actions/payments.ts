@@ -14,6 +14,7 @@ import { createId, generateSecureToken } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { periodSchema, firstError } from "@/lib/validation/schemas"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
+import { getBusinessMonthOffsetModifier } from "@/lib/actions/settings"
 
 export type PaymentActionResult = { error?: string; id?: string }
 
@@ -111,13 +112,16 @@ export async function getPartnersWithPendingPayments() {
   const session = await getStaffSession()
   if (!session) return []
 
+  // Business-month offset is admin-configurable (Settings → Pricing &
+  // Payments) — otherwise a sign-off right after local midnight can land in
+  // the wrong month's batch depending on the operating timezone.
+  const offset = await getBusinessMonthOffsetModifier()
+
   return db
     .select({
       partnerId: partnerPayments.partnerId,
       partnerName: partners.name,
-      // Business months are Riyadh time (UTC+3), not UTC — otherwise a
-      // sign-off before 3am on the 1st lands in the previous month's batch
-      period: sql<string>`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', '+3 hours'))`,
+      period: sql<string>`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', ${offset}))`,
       totalAmount: sql<number>`COALESCE(SUM(${partnerPayments.totalAmount}), 0)`,
       paymentCount: count(partnerPayments.id),
     })
@@ -127,7 +131,7 @@ export async function getPartnersWithPendingPayments() {
     .groupBy(
       partnerPayments.partnerId,
       partners.name,
-      sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', '+3 hours'))`
+      sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', ${offset}))`
     )
     .orderBy(partners.name)
 }
@@ -145,56 +149,66 @@ export async function generateBatch(
   if (!parsedPeriod.success) return { error: firstError(parsedPeriod.error) }
   if (!partnerId) return { error: "Partner is required" }
 
-  // Only an OPEN batch blocks generation. Once a period's batch is paid,
-  // late sign-offs for that period must still be batchable — otherwise those
-  // payments are stranded forever.
-  const [openBatch] = await db
-    .select()
-    .from(paymentBatches)
-    .where(
-      and(
-        eq(paymentBatches.partnerId, partnerId),
-        eq(paymentBatches.period, period),
-        notInArray(paymentBatches.status, ["paid"])
-      )
-    )
-
-  if (openBatch) return { error: "An open batch already exists for this partner and period" }
-
-  const payments = await db
-    .select()
-    .from(partnerPayments)
-    .where(
-      and(
-        eq(partnerPayments.partnerId, partnerId),
-        eq(partnerPayments.status, "pending"),
-        eq(
-          sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', '+3 hours'))`,
-          period
-        )
-      )
-    )
-
-  if (payments.length === 0)
-    return { error: "No pending payments for this partner and period" }
-
-  const totalAmount = payments.reduce((s, p) => s + p.totalAmount, 0)
   const batchId = createId()
+  let totalAmount = 0
+  const offset = await getBusinessMonthOffsetModifier()
 
-  await db.transaction(async (tx) => {
-    await tx.insert(paymentBatches).values({
-      id: batchId,
-      partnerId,
-      period,
-      totalAmount,
-      status: "draft",
+  try {
+    await db.transaction(async (tx) => {
+      // Re-check for an open batch and select pending payments inside the same
+      // transaction so two concurrent generateBatch calls can't both pass the
+      // check and both claim the same payments (financial double-batching).
+      const [openBatch] = await tx
+        .select()
+        .from(paymentBatches)
+        .where(
+          and(
+            eq(paymentBatches.partnerId, partnerId),
+            eq(paymentBatches.period, period),
+            notInArray(paymentBatches.status, ["paid"])
+          )
+        )
+      if (openBatch) throw new Error("OPEN_BATCH_EXISTS")
+
+      const payments = await tx
+        .select()
+        .from(partnerPayments)
+        .where(
+          and(
+            eq(partnerPayments.partnerId, partnerId),
+            eq(partnerPayments.status, "pending"),
+            eq(
+              sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', ${offset}))`,
+              period
+            )
+          )
+        )
+      if (payments.length === 0) throw new Error("NO_PENDING_PAYMENTS")
+
+      totalAmount = payments.reduce((s, p) => s + p.totalAmount, 0)
+
+      await tx.insert(paymentBatches).values({
+        id: batchId,
+        partnerId,
+        period,
+        totalAmount,
+        status: "draft",
+      })
+
+      await tx
+        .update(partnerPayments)
+        .set({ batchId, status: "batched", updatedAt: Date.now() })
+        .where(inArray(partnerPayments.id, payments.map((p) => p.id)))
     })
-
-    await tx
-      .update(partnerPayments)
-      .set({ batchId, status: "batched", updatedAt: Date.now() })
-      .where(inArray(partnerPayments.id, payments.map((p) => p.id)))
-  })
+  } catch (error) {
+    if (error instanceof Error && error.message === "OPEN_BATCH_EXISTS") {
+      return { error: "An open batch already exists for this partner and period" }
+    }
+    if (error instanceof Error && error.message === "NO_PENDING_PAYMENTS") {
+      return { error: "No pending payments for this partner and period" }
+    }
+    throw error
+  }
 
   // Set the statement token separately + tolerantly: the statement_token column
   // may not exist yet on an un-migrated DB, and it must not block batch creation.

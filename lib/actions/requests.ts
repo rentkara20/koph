@@ -50,65 +50,84 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
   const trackingCode = generateTrackingCode()
   const id = createId()
 
-  await db.insert(requests).values({
-    id,
-    requestNumber,
-    trackingCode,
-    typeId: data.typeId,
-    customerId: data.customerId,
-    quoteNumber: data.quoteNumber?.trim() || null,
-    salesRef: data.salesRef || null,
-    poNumber: data.poNumber || null,
-    deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).getTime() : null,
-    collectionDate: data.collectionDate ? new Date(data.collectionDate).getTime() : null,
-    timeWindow: data.timeWindow || null,
-    requireNationalId: data.requireNationalId,
-    notes: data.notes || null,
-    status: "draft",
-    createdBy: session.user.id,
-  })
+  const pulledUnitIds = data.items
+    .map((item) => item.orderUnitId)
+    .filter((v): v is string => Boolean(v))
 
-  if (data.items.length > 0) {
-    await db.insert(requestItems).values(
-      data.items.map((item) => ({
-        id: createId(),
-        requestId: id,
-        description: item.description,
-        brand: item.brand || null,
-        model: item.model || null,
-        serialNumber: item.serialNumber || null,
-        quantity: item.quantity,
-        accessories: item.accessories || null,
-        notes: item.notes || null,
-        orderUnitId: item.orderUnitId || null,
-      }))
-    )
+  try {
+  await db.transaction(async (tx) => {
+    await tx.insert(requests).values({
+      id,
+      requestNumber,
+      trackingCode,
+      typeId: data.typeId,
+      customerId: data.customerId,
+      quoteNumber: data.quoteNumber?.trim() || null,
+      salesRef: data.salesRef || null,
+      poNumber: data.poNumber || null,
+      deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).getTime() : null,
+      collectionDate: data.collectionDate ? new Date(data.collectionDate).getTime() : null,
+      timeWindow: data.timeWindow || null,
+      requireNationalId: data.requireNationalId,
+      notes: data.notes || null,
+      status: "draft",
+      createdBy: session.user.id,
+    })
 
-    // Mark pulled order units as assigned so they are not double-booked, and
-    // stamp who/where they are committed to for the asset timeline.
-    const pulledUnitIds = data.items
-      .map((item) => item.orderUnitId)
-      .filter((v): v is string => Boolean(v))
-    if (pulledUnitIds.length > 0) {
-      await db
-        .update(orderUnits)
-        .set({
-          status: "assigned",
-          currentRequestId: id,
-          currentCustomerId: data.customerId,
-          updatedAt: Date.now(),
-        })
-        .where(inArray(orderUnits.id, pulledUnitIds))
-      for (const unitId of pulledUnitIds) {
-        await recordAssetEvent({
-          assetId: unitId,
-          type: "assigned",
-          toStatus: "assigned",
+    if (data.items.length > 0) {
+      await tx.insert(requestItems).values(
+        data.items.map((item) => ({
+          id: createId(),
           requestId: id,
-          customerId: data.customerId,
-          byUserId: session.user.id,
-        })
+          description: item.description,
+          brand: item.brand || null,
+          model: item.model || null,
+          serialNumber: item.serialNumber || null,
+          quantity: item.quantity,
+          accessories: item.accessories || null,
+          notes: item.notes || null,
+          orderUnitId: item.orderUnitId || null,
+        }))
+      )
+
+      // Mark pulled order units as assigned so they are not double-booked.
+      // The status guard + affected-row check closes the race where two
+      // concurrent requests both read the same "in_stock" unit as available.
+      if (pulledUnitIds.length > 0) {
+        const result = await tx
+          .update(orderUnits)
+          .set({
+            status: "assigned",
+            currentRequestId: id,
+            currentCustomerId: data.customerId,
+            updatedAt: Date.now(),
+          })
+          .where(and(inArray(orderUnits.id, pulledUnitIds), eq(orderUnits.status, "in_stock")))
+
+        const claimed = (result as { rowsAffected?: number }).rowsAffected ?? pulledUnitIds.length
+        if (claimed !== pulledUnitIds.length) {
+          throw new Error("UNIT_ALREADY_COMMITTED")
+        }
       }
+    }
+  })
+  } catch (error) {
+    if (error instanceof Error && error.message === "UNIT_ALREADY_COMMITTED") {
+      return { error: "One or more selected devices were just claimed by another request. Please re-select available units." }
+    }
+    throw error
+  }
+
+  if (pulledUnitIds.length > 0) {
+    for (const unitId of pulledUnitIds) {
+      await recordAssetEvent({
+        assetId: unitId,
+        type: "assigned",
+        toStatus: "assigned",
+        requestId: id,
+        customerId: data.customerId,
+        byUserId: session.user.id,
+      })
     }
   }
 
@@ -247,6 +266,34 @@ export async function getRequest(id: string) {
 
 type ManualStatus = "on_hold" | "cancelled" | "rescheduled" | "failed"
 
+// Return any order units reserved for this request back to in_stock. Called
+// on cancel/fail/delete so cancelled work never leaves inventory permanently
+// stuck in "assigned" — closes off a fleet-shrinkage bug.
+async function releaseUnitsForRequest(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  requestId: string,
+  byUserId: string,
+  itemIds?: string[]
+) {
+  const itemFilter = itemIds
+    ? and(eq(requestItems.requestId, requestId), inArray(requestItems.id, itemIds))
+    : eq(requestItems.requestId, requestId)
+
+  const items = await tx
+    .select({ orderUnitId: requestItems.orderUnitId })
+    .from(requestItems)
+    .where(itemFilter)
+  const unitIds = items.map((i) => i.orderUnitId).filter((v): v is string => Boolean(v))
+  if (unitIds.length === 0) return []
+
+  await tx
+    .update(orderUnits)
+    .set({ status: "in_stock", currentRequestId: null, currentCustomerId: null, updatedAt: Date.now() })
+    .where(and(inArray(orderUnits.id, unitIds), eq(orderUnits.status, "assigned")))
+
+  return unitIds
+}
+
 export async function updateRequestStatus(
   id: string,
   status: ManualStatus
@@ -254,6 +301,7 @@ export async function updateRequestStatus(
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
+  let releasedUnitIds: string[] = []
   await db.transaction(async (tx) => {
     await tx.update(requests).set({ status, updatedAt: Date.now() }).where(eq(requests.id, id))
 
@@ -270,8 +318,19 @@ export async function updateRequestStatus(
             notInArray(partnerTasks.status, ["closed", "cancelled", "rejected", "failed"])
           )
         )
+      releasedUnitIds = await releaseUnitsForRequest(tx, id, session.user.id)
     }
   })
+
+  for (const unitId of releasedUnitIds) {
+    await recordAssetEvent({
+      assetId: unitId,
+      type: "status_change",
+      toStatus: "in_stock",
+      requestId: id,
+      byUserId: session.user.id,
+    })
+  }
 
   await logActivity({
     entityType: "request",
@@ -418,7 +477,22 @@ export async function deleteRequestItem(
 
   if (await itemsAreFrozen(requestId)) return { error: ITEMS_FROZEN_ERROR }
 
-  await db.delete(requestItems).where(eq(requestItems.id, itemId))
+  let releasedUnitIds: string[] = []
+  await db.transaction(async (tx) => {
+    releasedUnitIds = await releaseUnitsForRequest(tx, requestId, session.user.id, [itemId])
+    await tx.delete(requestItems).where(eq(requestItems.id, itemId))
+  })
+
+  for (const unitId of releasedUnitIds) {
+    await recordAssetEvent({
+      assetId: unitId,
+      type: "status_change",
+      toStatus: "in_stock",
+      requestId,
+      byUserId: session.user.id,
+    })
+  }
+
   revalidatePath(`/admin/requests/${requestId}`)
   return {}
 }
@@ -537,6 +611,7 @@ export async function deleteRequest(id: string): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
+  let releasedUnitIds: string[] = []
   await db.transaction(async (tx) => {
     await tx.update(requests).set({ deletedAt: Date.now() }).where(eq(requests.id, id))
 
@@ -551,7 +626,18 @@ export async function deleteRequest(id: string): Promise<ActionResult> {
           notInArray(partnerTasks.status, ["closed", "cancelled", "rejected", "failed"])
         )
       )
+    releasedUnitIds = await releaseUnitsForRequest(tx, id, session.user.id)
   })
+
+  for (const unitId of releasedUnitIds) {
+    await recordAssetEvent({
+      assetId: unitId,
+      type: "status_change",
+      toStatus: "in_stock",
+      requestId: id,
+      byUserId: session.user.id,
+    })
+  }
 
   revalidatePath("/admin/requests")
   return {}

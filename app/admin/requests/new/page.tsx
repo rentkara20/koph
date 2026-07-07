@@ -27,7 +27,7 @@ export default async function NewRequestPage({
           href="/admin/requests"
           className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
         >
-          <ArrowLeft className="size-4" />
+          <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">{t("new")}</h1>
       </div>

@@ -46,7 +46,7 @@ export default async function PaymentBatchPage({
             href="/admin/payments"
             className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
           >
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className="size-4 rtl:rotate-180" />
           </Link>
           <div>
             <div className="flex items-center gap-3">

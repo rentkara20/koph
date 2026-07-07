@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
-import { getTranslations } from "next-intl/server"
+import { getLocale, getTranslations } from "next-intl/server"
 import { getTaskByToken, getTaskPhotos } from "@/lib/actions/tasks"
+import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
 import { getServicesForTask } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
@@ -21,24 +22,26 @@ export default async function TaskPage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const [data, t, tStatus, tReq, tCust, tPortal] = await Promise.all([
+  const [data, t, tStatus, tReq, tCust, tPortal, locale] = await Promise.all([
     getTaskByToken(token),
     getTranslations("tasks"),
     getTranslations("tasks.status"),
     getTranslations("requests"),
     getTranslations("customers"),
     getTranslations("portal"),
+    getLocale(),
   ])
 
   if (!data) notFound()
 
   const { task, request, customer, requestType, items, isExpired, linkedContact } = data
 
-  const [photos, taskServices, allContacts, sigData] = await Promise.all([
+  const [photos, taskServices, allContacts, sigData, failureReasons] = await Promise.all([
     getTaskPhotos(task.id),
     getServicesForTask(task.id),
     customer && !linkedContact ? getCustomerContacts(customer.id) : Promise.resolve([]),
     getSignatureForTaskToken(token),
+    getActiveFailureReasons(),
   ])
 
   // If a specific contact was selected, show only that one; otherwise show all
@@ -389,7 +392,14 @@ export default async function TaskPage({
             className="mx-auto max-w-md px-4 py-3"
             style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
           >
-            <TaskActions token={token} status={task.status} />
+            <TaskActions
+              token={token}
+              status={task.status}
+              failureReasons={failureReasons.map((r) => ({
+                slug: r.slug,
+                label: locale === "ar" ? r.nameAr : r.nameEn,
+              }))}
+            />
           </div>
         </div>
       )}

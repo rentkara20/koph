@@ -313,6 +313,32 @@ export const servicesCatalog = sqliteTable("services_catalog", {
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 })
 
+// ─── Failure reasons (config-driven) ────────────────────────────────────────
+// Was a fixed text enum on partner_task.failure_reason (no DB check
+// constraint on sqlite text columns here, so this table is a safe swap —
+// admins manage the list, the column just stores whatever slug is active).
+
+export const failureReasons = sqliteTable("failure_reason", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  nameEn: text("name_en").notNull(),
+  nameAr: text("name_ar").notNull(),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+})
+
+// ─── App settings (generic scalar config store) ─────────────────────────────
+// Key/value store for admin-tunable scalars (e.g. required photo count,
+// token TTLs) so these stop requiring a code change + deploy to adjust.
+
+export const appSettings = sqliteTable("app_setting", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(), // JSON-encoded
+  updatedBy: text("updated_by").references(() => users.id),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+})
+
 // ─── Task services (checklist) ──────────────────────────────────────────────
 
 export const taskServices = sqliteTable("task_service", {
@@ -574,6 +600,8 @@ export type PartnerContract = typeof partnerContracts.$inferSelect
 export type PartnerTask = typeof partnerTasks.$inferSelect
 export type NewPartnerTask = typeof partnerTasks.$inferInsert
 export type ServicesCatalog = typeof servicesCatalog.$inferSelect
+export type FailureReason = typeof failureReasons.$inferSelect
+export type AppSetting = typeof appSettings.$inferSelect
 export type TaskService = typeof taskServices.$inferSelect
 export type SignatureRequest = typeof signatureRequests.$inferSelect
 export type NewSignatureRequest = typeof signatureRequests.$inferInsert

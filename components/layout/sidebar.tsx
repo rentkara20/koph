@@ -5,42 +5,14 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
-import {
-  Laptop,
-  LayoutDashboard,
-  ClipboardList,
-  PackageSearch,
-  Users,
-  Truck,
-  Store,
-  FileSignature,
-  Coins,
-  BarChart3,
-  Settings,
-  Wrench,
-} from "lucide-react"
-
-const navItems = [
-  { key: "dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-  { key: "orders", href: "/admin/orders", icon: PackageSearch },
-  { key: "assets", href: "/admin/assets", icon: Laptop },
-  { key: "maintenance", href: "/admin/maintenance", icon: Wrench },
-  { key: "requests", href: "/admin/requests", icon: ClipboardList },
-  { key: "customers", href: "/admin/customers", icon: Users },
-  { key: "suppliers", href: "/admin/suppliers", icon: Store },
-  { key: "partners", href: "/admin/partners", icon: Truck },
-  { key: "signatures", href: "/admin/signatures", icon: FileSignature },
-  { key: "payments", href: "/admin/payments", icon: Coins },
-  { key: "reports", href: "/admin/reports", icon: BarChart3 },
-  { key: "settings", href: "/admin/settings", icon: Settings },
-] as const
+import { navItems } from "./nav-items"
 
 export function Sidebar() {
   const pathname = usePathname()
   const t = useTranslations("nav")
 
   return (
-    <aside className="flex h-full w-56 flex-col border-e bg-sidebar">
+    <aside className="hidden h-full w-56 flex-col border-e bg-sidebar lg:flex">
       {/* Logo */}
       <div className="flex h-14 items-center gap-2.5 border-b px-4">
         <Image

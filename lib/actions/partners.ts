@@ -4,12 +4,12 @@ import { z } from "zod"
 import { and, asc, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { partners, partnerContracts, requestTypes, users, accounts } from "@/lib/db/schema"
+import { partners, partnerContracts, requestTypes, users, accounts, sessions } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { auth } from "@/lib/auth/config"
 
-const ACTIVATION_TOKEN_TTL_MS = 3 * 24 * 60 * 60 * 1000 // 72 hours
+import { getActivationTokenTtlMs, getDefaultLocale } from "@/lib/actions/settings"
 
 export type ActionResult = { error?: string; id?: string }
 
@@ -181,7 +181,7 @@ export async function deletePartner(id: string): Promise<ActionResult> {
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(200),
-  password: z.string().min(1).max(100),
+  password: z.string().min(10).max(100),
 })
 
 /**
@@ -249,7 +249,7 @@ export async function generatePartnerActivationLink(partnerId: string): Promise<
   if (!partner) return { error: "Partner not found" }
 
   const activationToken = generateToken()
-  const activationTokenExpiresAt = Date.now() + ACTIVATION_TOKEN_TTL_MS
+  const activationTokenExpiresAt = Date.now() + (await getActivationTokenTtlMs())
 
   await db
     .update(partners)
@@ -280,7 +280,7 @@ export async function getPartnerByActivationToken(token: string) {
 
 const activateSchema = z.object({
   email: z.string().trim().email().max(200),
-  password: z.string().min(1).max(100),
+  password: z.string().min(10).max(100),
 })
 
 /**
@@ -314,8 +314,13 @@ export async function activatePartnerAccount(
   const [created] = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email))
   if (!created) return { error: "Could not create the login account" }
 
+  const defaultLocale = await getDefaultLocale()
+
   await db.transaction(async (tx) => {
-    await tx.update(users).set({ role: "partner", emailVerified: true }).where(eq(users.id, created.id))
+    await tx
+      .update(users)
+      .set({ role: "partner", emailVerified: true, lang: defaultLocale })
+      .where(eq(users.id, created.id))
     await tx
       .update(partners)
       .set({ userId: created.id, activationToken: null, activationTokenExpiresAt: null, updatedAt: Date.now() })
@@ -328,7 +333,7 @@ export async function activatePartnerAccount(
 // ─── Admin-triggered password reset ────────────────────────────────────────
 
 const resetPasswordSchema = z.object({
-  password: z.string().min(1).max(100),
+  password: z.string().min(10).max(100),
 })
 
 /**
@@ -355,6 +360,11 @@ export async function resetPartnerPassword(partnerId: string, password: string):
     .where(and(eq(accounts.userId, partner.userId), eq(accounts.providerId, "credential")))
 
   if (result.rowsAffected === 0) return { error: "Partner has no login" }
+
+  // Revoke existing sessions so a reset triggered over a suspected compromise
+  // actually kicks out any attacker-held session rather than leaving it valid
+  // for up to 7 days.
+  await db.delete(sessions).where(eq(sessions.userId, partner.userId))
 
   return { id: partnerId }
 }

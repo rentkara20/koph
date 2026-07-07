@@ -16,7 +16,7 @@ export default async function ServicesPage() {
           href="/admin/settings"
           className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
         >
-          <ArrowLeft className="size-4" />
+          <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Services catalog</h1>

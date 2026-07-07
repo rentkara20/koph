@@ -7,6 +7,7 @@ import {
   attachments,
   customerContacts,
   customers,
+  notifications,
   partners,
   partnerContracts,
   partnerPayments,
@@ -36,6 +37,8 @@ import { computePayment, requiresQuantity, type PricingModel } from "@/lib/domai
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 import { assetStatusAfter, canAssetTransition, type AssetStatus } from "@/lib/domain/asset-status"
 import { recordAssetEvent } from "@/lib/actions/assets"
+import { isValidActiveFailureReason } from "@/lib/actions/failure-reasons"
+import { getRequiredDeliveryPhotoCount, getTaskTokenTtlMs } from "@/lib/actions/settings"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
@@ -91,7 +94,7 @@ export async function createTask(
   if (!parsed.success) return { error: firstError(parsed.error) }
 
   const taskToken = generateToken()
-  const taskTokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000 // 7 days
+  const taskTokenExpiresAt = Date.now() + (await getTaskTokenTtlMs())
 
   const id = createId()
   await db.insert(partnerTasks).values({
@@ -232,8 +235,12 @@ export async function signOffTask(
     return { error: "Quantity is required for this contract's pricing model" }
   }
 
+  try {
   await db.transaction(async (tx) => {
-    await tx
+    // Guard the write on the status we validated above — a concurrent sign-off
+    // (double-tap, two admins) on the same task would otherwise both pass
+    // validation against a stale read and both insert a payment record.
+    const result = await tx
       .update(partnerTasks)
       .set({
         status: "closed",
@@ -242,7 +249,10 @@ export async function signOffTask(
         closedAt: Date.now(),
         updatedAt: Date.now(),
       })
-      .where(eq(partnerTasks.id, taskId))
+      .where(and(eq(partnerTasks.id, taskId), eq(partnerTasks.status, task.status)))
+
+    const changed = (result as { rowsAffected?: number }).rowsAffected ?? 1
+    if (changed === 0) throw new Error("TASK_STATUS_CHANGED")
 
     // Auto-create partner_payment when task has a contract
     if (contract) {
@@ -264,6 +274,12 @@ export async function signOffTask(
       })
     }
   })
+  } catch (error) {
+    if (error instanceof Error && error.message === "TASK_STATUS_CHANGED") {
+      return { error: "Task status changed since you loaded this page. Please refresh and retry." }
+    }
+    throw error
+  }
 
   // Move the request's pulled devices through the asset lifecycle:
   // delivery-type sign-off -> delivered (with customer); collection-type ->
@@ -370,7 +386,7 @@ export async function regenerateTaskLink(taskId: string): Promise<ActionResult> 
   if (!task) return { error: "Task not found" }
 
   const taskToken = generateToken()
-  const taskTokenExpiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000
+  const taskTokenExpiresAt = Date.now() + (await getTaskTokenTtlMs())
 
   await db
     .update(partnerTasks)
@@ -460,6 +476,9 @@ export async function updateTaskByToken(
     if (!failureReasonSchema.safeParse(data.failureReason).success) {
       return { error: "Invalid failure reason" }
     }
+    if (!(await isValidActiveFailureReason(data.failureReason))) {
+      return { error: "Invalid failure reason" }
+    }
   }
 
   const newStatus = ACTION_STATUS[action]
@@ -467,15 +486,19 @@ export async function updateTaskByToken(
     return { error: "Invalid action for current task status" }
   }
 
-  // Proof-of-delivery: require at least one photo before a partner can mark a
-  // delivery done. Failures are exempt (photo may be impossible on-site).
+  // Proof-of-delivery: require at least the admin-configured photo count
+  // before a partner can mark a delivery done. Failures are exempt (photo
+  // may be impossible on-site).
   if (newStatus === "pending_signoff") {
-    const [{ value: photoCount }] = await db
-      .select({ value: count() })
-      .from(attachments)
-      .where(and(eq(attachments.entityId, task.id), eq(attachments.entityType, "partner_task")))
-    if (photoCount === 0) {
-      return { error: "PHOTO_REQUIRED" }
+    const requiredPhotos = await getRequiredDeliveryPhotoCount()
+    if (requiredPhotos > 0) {
+      const [{ value: photoCount }] = await db
+        .select({ value: count() })
+        .from(attachments)
+        .where(and(eq(attachments.entityId, task.id), eq(attachments.entityType, "partner_task")))
+      if (photoCount < requiredPhotos) {
+        return { error: "PHOTO_REQUIRED" }
+      }
     }
   }
 
@@ -495,7 +518,16 @@ export async function updateTaskByToken(
     updates.taskTokenExpiresAt = Date.now()
   }
 
-  await db.update(partnerTasks).set(updates).where(eq(partnerTasks.taskToken, token))
+  // Guard on the status we validated above — a double-tap or two tabs racing
+  // the same magic link would otherwise both pass canTransition and both write.
+  const updateResult = await db
+    .update(partnerTasks)
+    .set(updates)
+    .where(and(eq(partnerTasks.taskToken, token), eq(partnerTasks.status, task.status)))
+  const rowsChanged = (updateResult as { rowsAffected?: number }).rowsAffected ?? 1
+  if (rowsChanged === 0) {
+    return { error: "Task status changed. Please refresh and try again." }
+  }
 
   await logActivity({
     entityType: "request",
@@ -565,7 +597,18 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
   // Closed tasks have payment records referencing them — deleting would orphan the payment
   if (task.status === "closed") return { error: "Closed tasks cannot be deleted" }
 
-  await db.delete(partnerTasks).where(eq(partnerTasks.id, taskId))
+  // FK pragma is off in this project (see orders.ts), so a hard-delete here
+  // would silently orphan attachment rows/photos and notification rows that
+  // reference this task — clean them up in the same transaction.
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(attachments)
+      .where(and(eq(attachments.entityId, taskId), eq(attachments.entityType, "partner_task")))
+    await tx
+      .delete(notifications)
+      .where(and(eq(notifications.entityId, taskId), eq(notifications.entityType, "partner_task")))
+    await tx.delete(partnerTasks).where(eq(partnerTasks.id, taskId))
+  })
 
   revalidatePath(`/admin/requests/${task.requestId}`)
   return {}

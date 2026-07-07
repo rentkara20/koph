@@ -14,9 +14,10 @@ interface DeleteButtonProps {
   label?: string
 }
 
-export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteButtonProps) {
+export function DeleteButton({ onDelete, redirectTo, label }: DeleteButtonProps) {
   const router = useRouter()
   const tToast = useTranslations("toast")
+  const tDelete = useTranslations("delete")
   const [confirming, setConfirming] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
@@ -40,7 +41,7 @@ export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteB
         router.refresh()
       }
     } catch {
-      setError("An unexpected error occurred")
+      setError(tDelete("unexpectedError"))
       toast.error(tToast("genericError"))
       setLoading(false)
       setConfirming(false)
@@ -51,14 +52,15 @@ export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteB
     return (
       <div className="flex items-center gap-2">
         {error && <p className="text-xs text-destructive">{error}</p>}
-        <span className="text-sm text-muted-foreground">Are you sure?</span>
+        <span className="text-sm text-muted-foreground">{tDelete("confirm")}</span>
         <Button
           variant="destructive"
           size="sm"
           onClick={handleDelete}
           disabled={loading}
+          autoFocus
         >
-          {loading ? "Deleting…" : "Yes, delete"}
+          {loading ? tDelete("deleting") : tDelete("yesDelete")}
         </Button>
         <Button
           variant="outline"
@@ -66,7 +68,7 @@ export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteB
           onClick={() => setConfirming(false)}
           disabled={loading}
         >
-          Cancel
+          {tDelete("cancel")}
         </Button>
       </div>
     )
@@ -79,7 +81,7 @@ export function DeleteButton({ onDelete, redirectTo, label = "Delete" }: DeleteB
       onClick={() => setConfirming(true)}
     >
       <Trash2 className="size-4" />
-      {label}
+      {label ?? tDelete("label")}
     </Button>
   )
 }

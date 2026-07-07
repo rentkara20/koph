@@ -36,6 +36,13 @@
       "when": 1783431268925,
       "tag": "0004_add_partner_activation_token",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783455144544,
+      "tag": "0005_broad_joystick",
+      "breakpoints": true
     }
   ]
 }

@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { LanguageSwitcher } from "./language-switcher"
 import { NotificationBell } from "./notification-bell"
+import { MobileNav } from "./mobile-nav"
 import { authClient } from "@/lib/auth/client"
 import { useRouter } from "next/navigation"
 
@@ -47,23 +48,26 @@ export function Header({ userName, userRole }: HeaderProps) {
   }
 
   return (
-    <header className="flex h-14 items-center justify-between border-b bg-background px-4">
-      <form onSubmit={handleSearch} className="flex items-center gap-1.5 flex-1 max-w-xs">
-        <Search className="size-3.5 text-muted-foreground shrink-0" aria-hidden />
-        <label htmlFor="admin-search" className="sr-only">
-          {tCommon("search")}
-        </label>
-        <input
-          id="admin-search"
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={tCommon("search") + "…"}
-          className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        />
-      </form>
+    <header className="flex h-14 items-center justify-between gap-2 border-b bg-background px-3 sm:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+        <MobileNav />
+        <form onSubmit={handleSearch} className="flex min-w-0 flex-1 items-center gap-1.5 sm:max-w-xs">
+          <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <label htmlFor="admin-search" className="sr-only">
+            {tCommon("search")}
+          </label>
+          <input
+            id="admin-search"
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={tCommon("search") + "…"}
+            className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+        </form>
+      </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <LanguageSwitcher />
         <NotificationBell />
 

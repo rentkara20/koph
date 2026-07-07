@@ -40,7 +40,7 @@ export default function NewPartnerPage() {
     <div className="space-y-6 max-w-2xl">
       <div className="flex items-center gap-3">
         <Link href="/admin/partners" className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}>
-          <ArrowLeft className="size-4" />
+          <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <h1 className="text-2xl font-semibold tracking-tight">{t("new")}</h1>
       </div>

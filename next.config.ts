@@ -19,10 +19,11 @@ const SECURITY_HEADERS = [
     // Defense-in-depth for token pages rendering third-party data.
     // 'unsafe-inline' script-src is required by Next.js hydration without a
     // nonce pipeline; frame-ancestors 'none' mirrors X-Frame-Options.
+    // 'unsafe-eval' dropped — not required for Next.js production hydration.
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline'",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com",
       "font-src 'self' data:",

@@ -13,7 +13,10 @@
     "orders": "Customer Orders",
     "suppliers": "Suppliers",
     "assets": "Assets",
-    "maintenance": "Maintenance"
+    "maintenance": "Maintenance",
+    "menu": "Menu",
+    "openMenu": "Open menu",
+    "more": "More"
   },
   "common": {
     "save": "Save",
@@ -247,6 +250,10 @@
       "nationalId": "National ID / Iqama",
       "nationalIdOptional": "National ID / Iqama (optional)",
       "draw": "Draw your signature",
+      "fillRequiredFields": "Please fill in the required fields below",
+      "nameRequired": "Enter your full name (at least 2 characters)",
+      "nationalIdRequired": "Enter a valid national ID / Iqama",
+      "consentRequired": "Please accept the terms to continue",
       "clear": "Clear",
       "clearSignature": "Clear signature",
       "consent": "I confirm that the information provided is accurate and I agree to sign this document electronically.",
@@ -398,6 +405,19 @@
     "noMobile": "No mobile number on file for this contact",
     "whatsappOpened": "Opening WhatsApp…",
     "conditionsSaved": "Item conditions recorded"
+  },
+  "delete": {
+    "confirm": "Are you sure?",
+    "yesDelete": "Yes, delete",
+    "cancel": "Cancel",
+    "deleting": "Deleting…",
+    "label": "Delete",
+    "unexpectedError": "An unexpected error occurred"
+  },
+  "errorPage": {
+    "title": "Something went wrong",
+    "description": "An unexpected error occurred. You can try again, or come back later.",
+    "retry": "Try again"
   },
   "dashboard": {
     "title": "Dashboard",

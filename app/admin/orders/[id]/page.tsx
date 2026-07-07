@@ -44,7 +44,7 @@ export default async function OrderDetailPage({
             href="/admin/orders"
             className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
           >
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className="size-4 rtl:rotate-180" />
           </Link>
           <h1 className="text-2xl font-semibold tracking-tight font-mono">{order.orderNumber}</h1>
           <Badge variant={orderStatusVariant[order.status] ?? "outline"}>

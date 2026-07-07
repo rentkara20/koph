@@ -96,7 +96,7 @@ export default async function AssetsPage({
       </div>
 
       {/* Search */}
-      <form method="GET" className="relative max-w-sm">
+      <form method="GET" className="relative w-full sm:max-w-sm">
         {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
         <Search
           className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -110,7 +110,7 @@ export default async function AssetsPage({
           name="q"
           defaultValue={q}
           placeholder={t("searchPlaceholder")}
-          className="flex h-8 w-full rounded-lg border border-input bg-background ps-9 pe-3 text-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring"
+          className="flex h-9 w-full rounded-lg border border-input bg-background ps-9 pe-3 text-sm focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:border-ring"
         />
       </form>
 

@@ -1,10 +1,15 @@
 import { Client } from "@notionhq/client"
+import { isNotionSyncForceDisabled } from "@/lib/actions/settings"
 
 // One-way mirror: KOPH -> Notion. Soft-disabled until both env vars are set
 // (see report for setup steps) — never blocks the caller. Uses the v5 SDK's
 // data-source API (Notion's 2025-09 schema split databases into data sources).
-export function isNotionSyncEnabled(): boolean {
-  return Boolean(process.env.NOTION_API_KEY && process.env.NOTION_DATA_SOURCE_ID)
+// Also checks the admin kill-switch (Settings → Integrations) so ops can
+// pause the mirror without a redeploy.
+export async function isNotionSyncEnabled(): Promise<boolean> {
+  const configured = Boolean(process.env.NOTION_API_KEY && process.env.NOTION_DATA_SOURCE_ID)
+  if (!configured) return false
+  return !(await isNotionSyncForceDisabled())
 }
 
 let client: Client | null = null

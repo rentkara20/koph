@@ -1,20 +1,68 @@
 import Link from "next/link"
-import { Settings2, BookOpen } from "lucide-react"
+import { Settings2, BookOpen, ClipboardList, Coins, KeyRound, Bell, Palette, Package, Shield, Plug } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
 const SECTIONS = [
+  {
+    href: "/admin/settings/request-tasks",
+    icon: ClipboardList,
+    title: "Request & Task Configuration",
+    description: "Request types, task failure reasons, photo requirements, and link expiry — no code change needed.",
+  },
   {
     href: "/admin/settings/services",
     icon: BookOpen,
     title: "Services catalog",
     description: "Manage the checklist services that can be assigned to partner tasks.",
   },
+  {
+    href: "/admin/settings/pricing-payments",
+    icon: Coins,
+    title: "Pricing & Payments",
+    description: "Business-month timezone rules for partner payment batching.",
+  },
+  {
+    href: "/admin/settings/session-security",
+    icon: KeyRound,
+    title: "Token & Session Policy",
+    description: "Login session info, magic-link expiry, and incident-response sign-out.",
+  },
+  {
+    href: "/admin/settings/notifications",
+    icon: Bell,
+    title: "Notifications",
+    description: "Retention window and the weekly ops digest email.",
+  },
+  {
+    href: "/admin/settings/branding",
+    icon: Palette,
+    title: "Branding & Locale",
+    description: "Default language for new accounts.",
+  },
+  {
+    href: "/admin/settings/asset-rules",
+    icon: Package,
+    title: "Asset & Inventory Rules",
+    description: "What's configurable vs. intentionally fixed in the asset state machine.",
+  },
+  {
+    href: "/admin/settings/roles",
+    icon: Shield,
+    title: "Roles & Permissions",
+    description: "Reference for what each role can do.",
+  },
+  {
+    href: "/admin/settings/integrations",
+    icon: Plug,
+    title: "Integrations",
+    description: "Notion sync pause/resume and other connected systems.",
+  },
 ] as const
 
 export default function SettingsPage() {
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="mx-auto max-w-2xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">

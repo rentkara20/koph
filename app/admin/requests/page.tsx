@@ -57,16 +57,16 @@ export default async function RequestsPage({
 
       {/* Filter */}
       <form method="GET" className="flex flex-wrap items-center gap-3">
-        <div className="relative">
+        <div className="relative w-full sm:w-64">
           <Search className="absolute start-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             name="search"
             defaultValue={search ?? ""}
             placeholder={t("searchPlaceholder")}
-            className="ps-8 w-64"
+            className="ps-8 w-full"
           />
         </div>
-        <Select name="status" defaultValue={status ?? ""} className="w-48">
+        <Select name="status" defaultValue={status ?? ""} className="w-full sm:w-48">
           <option value="">{tCommon("all")}</option>
           {STATUS_OPTIONS.map((s) => (
             <option key={s} value={s}>
@@ -87,67 +87,94 @@ export default async function RequestsPage({
         )}
       </form>
 
-      {/* Table */}
+      {/* List */}
       {requestList.length === 0 ? (
         <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
           {tCommon("noResults")}
         </div>
       ) : (
-        <div className="rounded-lg border overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/50">
-              <tr>
-                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
-                  {t("requestNumber")}
-                </th>
-                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden lg:table-cell">
-                  {t("quoteNumber")}
-                </th>
-                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">
-                  {t("type")}
-                </th>
-                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
-                  {t("customer")}
-                </th>
-                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
-                  {tCommon("status")}
-                </th>
-                <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">
-                  {t("deliveryDate")}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {requestList.map((r) => (
-                <tr key={r.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/admin/requests/${r.id}`}
-                      className="font-mono font-medium after:absolute after:inset-0"
-                    >
-                      {r.requestNumber}
-                    </Link>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground hidden lg:table-cell">
-                    {r.quoteNumber ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                    {r.typeName ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{r.customerName ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <Badge variant={requestStatusVariant[r.status] ?? "outline"}>
-                      {t(`status.${r.status}`)}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                    {formatDate(r.deliveryDate)}
-                  </td>
+        <>
+          {/* Mobile: cards */}
+          <div className="grid gap-2 sm:hidden">
+            {requestList.map((r) => (
+              <Link
+                key={r.id}
+                href={`/admin/requests/${r.id}`}
+                className="block rounded-lg border p-4 active:bg-muted/40"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="font-mono text-sm font-medium">{r.requestNumber}</span>
+                  <Badge variant={requestStatusVariant[r.status] ?? "outline"}>
+                    {t(`status.${r.status}`)}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">{r.customerName ?? "—"}</p>
+                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  {r.typeName && <span>{r.typeName}</span>}
+                  {r.deliveryDate && <span>{formatDate(r.deliveryDate)}</span>}
+                  {r.quoteNumber && <span className="font-mono">{r.quoteNumber}</span>}
+                </div>
+              </Link>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden rounded-lg border overflow-hidden sm:block">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
+                    {t("requestNumber")}
+                  </th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden lg:table-cell">
+                    {t("quoteNumber")}
+                  </th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">
+                    {t("type")}
+                  </th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
+                    {t("customer")}
+                  </th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
+                    {tCommon("status")}
+                  </th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">
+                    {t("deliveryDate")}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y">
+                {requestList.map((r) => (
+                  <tr key={r.id} className="relative hover:bg-muted/30 transition-colors cursor-pointer">
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/admin/requests/${r.id}`}
+                        className="font-mono font-medium after:absolute after:inset-0"
+                      >
+                        {r.requestNumber}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground hidden lg:table-cell">
+                      {r.quoteNumber ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                      {r.typeName ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{r.customerName ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant={requestStatusVariant[r.status] ?? "outline"}>
+                        {t(`status.${r.status}`)}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                      {formatDate(r.deliveryDate)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Pagination */}

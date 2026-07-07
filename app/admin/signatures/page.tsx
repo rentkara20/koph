@@ -56,68 +56,98 @@ export default async function SignaturesPage() {
               <p className="text-xs">Open a request and use the Signature requests section.</p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead className="border-b bg-muted/50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                    Document
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">
-                    Customer
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden md:table-cell">
-                    Request
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">
-                    Status
-                  </th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">
-                    Created
-                  </th>
-                  <th className="px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
+            <>
+              {/* Mobile: cards */}
+              <div className="grid gap-2 p-4 sm:hidden">
                 {signatures.map((sig) => (
-                  <tr key={sig.id} className={`hover:bg-muted/30 transition-colors ${sig.requestId ? "relative cursor-pointer" : ""}`}>
-                    <td className="px-4 py-3">
+                  <div key={sig.id} className="rounded-lg border p-4">
+                    <div className="flex items-start justify-between gap-2">
                       {sig.requestId ? (
-                        <Link
-                          href={`/admin/requests/${sig.requestId}`}
-                          className="font-medium after:absolute after:inset-0"
-                        >
+                        <Link href={`/admin/requests/${sig.requestId}`} className="font-medium">
                           {sig.documentName}
                         </Link>
                       ) : (
                         <p className="font-medium">{sig.documentName}</p>
                       )}
-                      {sig.requireNationalId && (
-                        <p className="text-xs text-muted-foreground mt-0.5">Requires ID</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                      {sig.customerName ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {sig.requestNumber ?? (sig.requestId ? sig.requestId.slice(0, 8) : "Standalone")}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
                       <Badge variant={STATUS_VARIANT[sig.status] ?? "outline"}>
                         {STATUS_LABEL[sig.status] ?? sig.status}
                       </Badge>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
-                      {formatDate(sig.createdAt)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
+                    </div>
+                    {sig.customerName && <p className="mt-1 text-sm text-muted-foreground">{sig.customerName}</p>}
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {sig.requestNumber ?? (sig.requestId ? sig.requestId.slice(0, 8) : "Standalone")}
+                      </span>
                       <SignatureDeleteButton id={sig.id} />
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 ))}
-              </tbody>
-            </table>
+              </div>
+
+              {/* Desktop: table */}
+              <table className="hidden w-full text-sm sm:table">
+                <thead className="border-b bg-muted/50">
+                  <tr>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
+                      Document
+                    </th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">
+                      Customer
+                    </th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">
+                      Request
+                    </th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">
+                      Status
+                    </th>
+                    <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden lg:table-cell">
+                      Created
+                    </th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {signatures.map((sig) => (
+                    <tr key={sig.id} className={`hover:bg-muted/30 transition-colors ${sig.requestId ? "relative cursor-pointer" : ""}`}>
+                      <td className="px-4 py-3">
+                        {sig.requestId ? (
+                          <Link
+                            href={`/admin/requests/${sig.requestId}`}
+                            className="font-medium after:absolute after:inset-0"
+                          >
+                            {sig.documentName}
+                          </Link>
+                        ) : (
+                          <p className="font-medium">{sig.documentName}</p>
+                        )}
+                        {sig.requireNationalId && (
+                          <p className="text-xs text-muted-foreground mt-0.5">Requires ID</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                        {sig.customerName ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {sig.requestNumber ?? (sig.requestId ? sig.requestId.slice(0, 8) : "Standalone")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <Badge variant={STATUS_VARIANT[sig.status] ?? "outline"}>
+                          {STATUS_LABEL[sig.status] ?? sig.status}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-muted-foreground hidden lg:table-cell">
+                        {formatDate(sig.createdAt)}
+                      </td>
+                      <td className="px-4 py-3 text-end relative z-10">
+                        <SignatureDeleteButton id={sig.id} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </CardContent>
       </Card>

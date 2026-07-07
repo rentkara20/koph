@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState } from "react"
+import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Check, CircleAlert, Loader2 } from "lucide-react"
@@ -33,6 +34,7 @@ const CONDITIONS: Condition[] = ["good", "damaged", "missing"]
 export function SignatureForm({ token, requireNationalId, consentText, items }: Props) {
   const t = useTranslations("signatures.signing")
   const tc = useTranslations("common")
+  const router = useRouter()
   const canvasRef = useRef<SignatureCanvasHandle>(null)
 
   const [fullName, setFullName] = useState("")
@@ -44,6 +46,7 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
   const [consentAccepted, setConsentAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [invalid, setInvalid] = useState<Set<FieldKey>>(new Set())
+  const [attempted, setAttempted] = useState(false)
 
   function markInvalid(fields: FieldKey[]) {
     setInvalid(new Set(fields))
@@ -59,14 +62,19 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
   }
 
   async function handleSubmit() {
+    setAttempted(true)
     const failed: FieldKey[] = []
     if (fullName.trim().length < 2) failed.push("fullName")
     if (requireNationalId && nationalId.trim().length < 5) failed.push("nationalId")
     if (canvasRef.current?.isEmpty() !== false) failed.push("signature")
 
-    if (failed.length > 0 || !consentAccepted) {
+    if (failed.length > 0) {
       markInvalid(failed)
-      toast.error(t("draw"))
+      toast.error(t("fillRequiredFields"))
+      return
+    }
+    if (!consentAccepted) {
+      toast.error(t("consentRequired"))
       return
     }
 
@@ -89,8 +97,9 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
     }
 
     toast.success(t("signed"))
-    // Reload to show signed state with delivery note + download button
-    window.location.reload()
+    // Refresh server data in place to show signed state + download button —
+    // a full page reload looked like a hang on a slow mobile connection.
+    router.refresh()
   }
 
   const canSubmit = consentAccepted && !loading
@@ -116,7 +125,11 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
             }}
             autoComplete="name"
             aria-invalid={invalid.has("fullName")}
+            aria-describedby={invalid.has("fullName") ? "sig-name-error" : undefined}
           />
+          {invalid.has("fullName") && (
+            <p id="sig-name-error" className="text-xs text-destructive">{t("nameRequired")}</p>
+          )}
         </div>
 
         {/* National ID */}
@@ -140,7 +153,11 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
             inputMode="numeric"
             className="font-mono"
             aria-invalid={invalid.has("nationalId")}
+            aria-describedby={invalid.has("nationalId") ? "sig-nid-error" : undefined}
           />
+          {invalid.has("nationalId") && (
+            <p id="sig-nid-error" className="text-xs text-destructive">{t("nationalIdRequired")}</p>
+          )}
         </div>
 
         {/* Mobile */}
@@ -190,7 +207,7 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
                           onClick={() =>
                             setConditions((prev) => ({ ...prev, [item.id]: c }))
                           }
-                          className={`flex items-center gap-1 rounded-md border px-2 py-1 text-xs font-medium transition-colors data-[on=true]:border-transparent data-[on=true]:font-bold data-[on=true]:text-white ${tone}`}
+                          className={`flex min-h-11 items-center gap-1 rounded-md border px-3 py-1 text-xs font-medium transition-colors data-[on=true]:border-transparent data-[on=true]:font-bold data-[on=true]:text-white ${tone}`}
                         >
                           {active && <Check className="size-3" aria-hidden />}
                           {t(c)}
@@ -221,17 +238,17 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
               checked={consentAccepted}
               onChange={(e) => setConsentAccepted(e.target.checked)}
               aria-describedby="consent-text"
-              aria-invalid={!consentAccepted}
+              aria-invalid={attempted && !consentAccepted}
               className="mt-0.5 size-4 accent-kara-purple"
             />
             {t("consentAccept")}
           </label>
         </div>
 
-        {!consentAccepted && (
-          <p aria-live="polite" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        {attempted && !consentAccepted && (
+          <p aria-live="polite" className="flex items-center gap-1.5 text-xs text-destructive">
             <CircleAlert className="size-3.5" aria-hidden />
-            {t("consentAccept")}
+            {t("consentRequired")}
           </p>
         )}
 

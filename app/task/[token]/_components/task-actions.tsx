@@ -11,18 +11,18 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
-const FAILURE_REASON_KEYS = [
-  "customer_unavailable",
-  "wrong_address",
-  "item_damaged",
-  "access_denied",
-  "customer_rescheduled",
-  "other",
-] as const
-
 type Action = "accept" | "reject" | "start" | "mark_done" | "mark_failed"
+type FailureReasonOption = { slug: string; label: string }
 
-export function TaskActions({ token, status }: { token: string; status: string }) {
+export function TaskActions({
+  token,
+  status,
+  failureReasons,
+}: {
+  token: string
+  status: string
+  failureReasons: FailureReasonOption[]
+}) {
   const t = useTranslations("tasks")
   const tPortal = useTranslations("portal")
   const tCommon = useTranslations("common")
@@ -164,9 +164,9 @@ export function TaskActions({ token, status }: { token: string; status: string }
               required
             >
               <option value="">—</option>
-              {FAILURE_REASON_KEYS.map((r) => (
-                <option key={r} value={r}>
-                  {t(`failureReasons.${r}`)}
+              {failureReasons.map((r) => (
+                <option key={r.slug} value={r.slug}>
+                  {r.label}
                 </option>
               ))}
             </Select>

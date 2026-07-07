@@ -46,14 +46,10 @@ export const partnerActionSchema = z.enum([
   "mark_failed",
 ])
 
-export const failureReasonSchema = z.enum([
-  "customer_unavailable",
-  "wrong_address",
-  "item_damaged",
-  "access_denied",
-  "customer_rescheduled",
-  "other",
-])
+// Failure reasons are now DB-driven (lib/db/schema.ts failureReasons table,
+// managed under Settings). This only checks shape — the action layer
+// (updateTaskByToken) validates the slug exists and is active.
+export const failureReasonSchema = z.string().min(1).max(50)
 
 const pricingModelSchema = z.enum(["per_order", "per_item", "per_day", "per_hour", "fixed"])
 

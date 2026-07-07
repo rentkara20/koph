@@ -9,7 +9,7 @@ import { createId } from "@paralleldrive/cuid2"
 
 async function seed() {
   const { db } = await import("./index")
-  const { requestTypes, consentVersions } = await import("./schema")
+  const { requestTypes, consentVersions, failureReasons } = await import("./schema")
 
   console.log("Seeding request types…")
 
@@ -38,6 +38,20 @@ async function seed() {
         "أؤكد أن المعلومات التي قدمتها دقيقة وكاملة. أفهم أن رقم هويتي الوطنية / الإقامة وتوقيعي سيتم تخزينهما بشكل آمن واستخدامهما فقط لأغراض التحقق من هذه المعاملة وفقاً للوائح حماية البيانات المعمول بها.",
       isActive: true,
     })
+    .onConflictDoNothing()
+
+  console.log("Seeding failure reasons…")
+
+  await db
+    .insert(failureReasons)
+    .values([
+      { id: createId(), slug: "customer_unavailable", nameEn: "Customer unavailable", nameAr: "العميل غير متوفر", sortOrder: 1 },
+      { id: createId(), slug: "wrong_address", nameEn: "Wrong address", nameAr: "عنوان خاطئ", sortOrder: 2 },
+      { id: createId(), slug: "item_damaged", nameEn: "Item damaged", nameAr: "الجهاز تالف", sortOrder: 3 },
+      { id: createId(), slug: "access_denied", nameEn: "Access denied", nameAr: "تم رفض الدخول", sortOrder: 4 },
+      { id: createId(), slug: "customer_rescheduled", nameEn: "Customer rescheduled", nameAr: "أعاد العميل الجدولة", sortOrder: 5 },
+      { id: createId(), slug: "other", nameEn: "Other", nameAr: "أخرى", sortOrder: 6 },
+    ])
     .onConflictDoNothing()
 
   console.log("Done.")
