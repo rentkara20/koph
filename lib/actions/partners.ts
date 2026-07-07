@@ -1,11 +1,13 @@
 "use server"
 
+import { z } from "zod"
 import { and, asc, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { partners, partnerContracts, requestTypes } from "@/lib/db/schema"
+import { partners, partnerContracts, requestTypes, users } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
+import { auth } from "@/lib/auth/config"
 
 export type ActionResult = { error?: string; id?: string }
 
@@ -101,7 +103,13 @@ export async function getPartner(id: string) {
     .where(eq(partnerContracts.partnerId, id))
     .orderBy(desc(partnerContracts.createdAt))
 
-  return { partner, contracts }
+  let linkedEmail: string | null = null
+  if (partner.userId) {
+    const [u] = await db.select({ email: users.email }).from(users).where(eq(users.id, partner.userId))
+    linkedEmail = u?.email ?? null
+  }
+
+  return { partner, contracts, linkedEmail }
 }
 
 // ─── Contracts ───────────────────────────────────────────────────────────────
@@ -165,4 +173,61 @@ export async function deletePartner(id: string): Promise<ActionResult> {
 
   revalidatePath("/admin/partners")
   return {}
+}
+
+// ─── Partner portal login ─────────────────────────────────────────────────────
+
+const loginSchema = z.object({
+  email: z.string().trim().email().max(200),
+  password: z.string().min(8).max(100),
+})
+
+/**
+ * Creates a portal login for a partner: a user account with role "partner"
+ * linked via partners.userId. The partner then signs in at /login and lands
+ * on /partner (scoped reads only — see lib/actions/partner-portal.ts).
+ */
+export async function createPartnerLogin(
+  partnerId: string,
+  email: string,
+  password: string
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = loginSchema.safeParse({ email, password })
+  if (!parsed.success) return { error: "Invalid email or password (min 8 characters)" }
+
+  const [partner] = await db.select().from(partners).where(eq(partners.id, partnerId))
+  if (!partner) return { error: "Partner not found" }
+  if (partner.userId) return { error: "Partner already has a login" }
+
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email))
+  if (existing) return { error: "A user with this email already exists" }
+
+  try {
+    await auth.api.signUpEmail({
+      body: { email: parsed.data.email, password: parsed.data.password, name: partner.name },
+    })
+  } catch (error) {
+    console.error("createPartnerLogin signup failed", error)
+    return { error: "Could not create the login account" }
+  }
+
+  const [created] = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email))
+  if (!created) return { error: "Could not create the login account" }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(users)
+      .set({ role: "partner", emailVerified: true })
+      .where(eq(users.id, created.id))
+    await tx
+      .update(partners)
+      .set({ userId: created.id, updatedAt: Date.now() })
+      .where(eq(partners.id, partnerId))
+  })
+
+  revalidatePath(`/admin/partners/${partnerId}`)
+  return { id: created.id }
 }

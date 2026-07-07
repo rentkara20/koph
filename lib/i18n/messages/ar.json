@@ -185,6 +185,15 @@
       "per_day": "لكل يوم",
       "per_hour": "لكل ساعة",
       "fixed": "مبلغ ثابت"
+    },
+    "login": {
+      "title": "حساب البوابة",
+      "linked": "الحساب مربوط",
+      "email": "البريد الإلكتروني",
+      "password": "كلمة المرور",
+      "create": "إنشاء الحساب",
+      "created": "تم إنشاء الحساب",
+      "hint": "شارك البريد وكلمة المرور مع الشريك — يسجّل الدخول من koph.vercel.app ويشاهد مهامه وأرباحه فقط."
     }
   },
   "signatures": {
@@ -283,7 +292,19 @@
     "lineItems": "البنود",
     "unitPrice": "سعر الوحدة",
     "amount": "المبلغ",
-    "task": "المهمة"
+    "task": "المهمة",
+    "batchStatus": {
+      "draft": "مسودة",
+      "approved": "معتمدة",
+      "sent_to_finance": "أُرسلت للمالية",
+      "paid": "مدفوعة"
+    },
+    "lineStatus": {
+      "pending": "معلّق",
+      "batched": "ضمن دفعة",
+      "paid": "مدفوع",
+      "on_hold": "موقوف"
+    }
   },
   "statement": {
     "title": "كشف حساب مدفوعات الشريك",
@@ -583,6 +604,31 @@
       "created": "ترقيم الأصل",
       "retired": "سحب",
       "correction": "تصحيح يدوي"
+    }
+  },
+  "partnerPortal": {
+    "title": "بوابة الشريك",
+    "welcome": "أهلاً، {name}",
+    "overviewSubtitle": "مهامك وأرباحك في مكان واحد",
+    "pendingEarnings": "مستحق لك",
+    "paidEarnings": "المدفوع حتى الآن",
+    "heldEarnings": "معلّق",
+    "activeTasks": "المهام النشطة",
+    "viewAll": "عرض الكل",
+    "noActiveTasks": "لا توجد مهام نشطة",
+    "allTasks": "مهامي",
+    "noTasks": "لا توجد مهام بعد",
+    "openTask": "فتح المهمة",
+    "statements": "كشوف حسابي",
+    "noStatements": "لا توجد كشوف بعد",
+    "earningsHistory": "سجل الأرباح",
+    "perTask": "{count} مهمة",
+    "expiredLink": "انتهت صلاحية الرابط — تواصل مع كارا",
+    "nav": {
+      "label": "تنقل الشريك",
+      "overview": "الرئيسية",
+      "tasks": "المهام",
+      "statements": "الأرباح"
     }
   }
 }

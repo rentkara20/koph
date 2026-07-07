@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { PartnerEditForm } from "./_components/partner-edit-form"
 import { ContractsSection } from "./_components/contracts-section"
+import { PartnerLoginSection } from "./_components/partner-login-section"
 import { DeleteButton } from "@/components/delete-button"
 import { cn } from "@/lib/utils"
 
@@ -26,7 +27,7 @@ export default async function PartnerDetailPage({
 
   if (!data) notFound()
 
-  const { partner, contracts } = data
+  const { partner, contracts, linkedEmail } = data
 
   return (
     <div className="space-y-6 max-w-3xl">
@@ -58,7 +59,7 @@ export default async function PartnerDetailPage({
           </Card>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -73,6 +74,8 @@ export default async function PartnerDetailPage({
               />
             </CardContent>
           </Card>
+
+          <PartnerLoginSection partnerId={partner.id} linkedEmail={linkedEmail} />
         </div>
       </div>
     </div>

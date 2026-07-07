@@ -185,6 +185,15 @@
       "per_day": "Per day",
       "per_hour": "Per hour",
       "fixed": "Fixed amount"
+    },
+    "login": {
+      "title": "Portal login",
+      "linked": "Login linked",
+      "email": "Email",
+      "password": "Password",
+      "create": "Create login",
+      "created": "Login created",
+      "hint": "Share the email and password with the partner — they sign in at koph.vercel.app and see only their own tasks and earnings."
     }
   },
   "signatures": {
@@ -283,7 +292,19 @@
     "lineItems": "Line items",
     "unitPrice": "Unit price",
     "amount": "Amount",
-    "task": "Task"
+    "task": "Task",
+    "batchStatus": {
+      "draft": "Draft",
+      "approved": "Approved",
+      "sent_to_finance": "Sent to finance",
+      "paid": "Paid"
+    },
+    "lineStatus": {
+      "pending": "Pending",
+      "batched": "In batch",
+      "paid": "Paid",
+      "on_hold": "On hold"
+    }
   },
   "statement": {
     "title": "Partner payment statement",
@@ -583,6 +604,31 @@
       "created": "Asset tagged",
       "retired": "Retired",
       "correction": "Manual correction"
+    }
+  },
+  "partnerPortal": {
+    "title": "Partner Portal",
+    "welcome": "Welcome, {name}",
+    "overviewSubtitle": "Your tasks and earnings in one place",
+    "pendingEarnings": "Due to you",
+    "paidEarnings": "Paid to date",
+    "heldEarnings": "On hold",
+    "activeTasks": "Active tasks",
+    "viewAll": "View all",
+    "noActiveTasks": "No active tasks",
+    "allTasks": "My tasks",
+    "noTasks": "No tasks yet",
+    "openTask": "Open task",
+    "statements": "My statements",
+    "noStatements": "No statements yet",
+    "earningsHistory": "Earnings history",
+    "perTask": "{count} tasks",
+    "expiredLink": "Link expired — contact KARA",
+    "nav": {
+      "label": "Partner navigation",
+      "overview": "Home",
+      "tasks": "Tasks",
+      "statements": "Earnings"
     }
   }
 }

@@ -69,6 +69,13 @@ const AR: Record<string, string> = {
   "Invalid note": "ملاحظة غير صالحة",
   "Invalid input": "مدخلات غير صالحة",
 
+  // Partner login
+  "Partner not found": "الشريك غير موجود",
+  "Partner already has a login": "الشريك لديه حساب بالفعل",
+  "A user with this email already exists": "يوجد مستخدم بهذا البريد بالفعل",
+  "Could not create the login account": "تعذر إنشاء الحساب",
+  "Invalid email or password (min 8 characters)": "بريد أو كلمة مرور غير صالحة (٨ أحرف على الأقل)",
+
   // Orders / suppliers / customers
   "Order not found": "الطلبية غير موجودة",
   "Order number already exists": "رقم الطلبية موجود بالفعل",
