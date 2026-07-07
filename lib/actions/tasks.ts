@@ -1,6 +1,6 @@
 "use server"
 
-import { and, count, desc, eq, gt, isNull, or } from "drizzle-orm"
+import { and, count, desc, eq, gt, isNotNull, isNull, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
@@ -10,6 +10,7 @@ import {
   partners,
   partnerContracts,
   partnerPayments,
+  orderUnits,
   partnerTasks,
   requestItems,
   requests,
@@ -33,6 +34,8 @@ import {
 import { deriveRequestStatus } from "@/lib/domain/request-status"
 import { computePayment, requiresQuantity, type PricingModel } from "@/lib/domain/pricing"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
+import { assetStatusAfter, canAssetTransition, type AssetStatus } from "@/lib/domain/asset-status"
+import { recordAssetEvent } from "@/lib/actions/assets"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
@@ -261,6 +264,57 @@ export async function signOffTask(
       })
     }
   })
+
+  // Move the request's pulled devices through the asset lifecycle:
+  // delivery-type sign-off -> delivered (with customer); collection-type ->
+  // returned (back for inspection). Best-effort: asset sync must never block
+  // the sign-off itself.
+  try {
+    const [reqType] = await db
+      .select({ slug: requestTypes.slug })
+      .from(requestTypes)
+      .where(eq(requestTypes.id, parentRequest.typeId))
+    const slug = reqType?.slug
+    const assetAction =
+      slug === "collection" ? ("return" as const)
+      : slug === "delivery" || slug === "installation" || slug === "swap" ? ("deliver" as const)
+      : null
+
+    if (assetAction) {
+      const pulled = await db
+        .select({ orderUnitId: requestItems.orderUnitId })
+        .from(requestItems)
+        .where(and(eq(requestItems.requestId, task.requestId), isNotNull(requestItems.orderUnitId)))
+      const unitIds = pulled.map((r) => r.orderUnitId).filter((v): v is string => Boolean(v))
+
+      for (const unitId of unitIds) {
+        const [unit] = await db.select().from(orderUnits).where(eq(orderUnits.id, unitId))
+        if (!unit || !canAssetTransition(unit.status as AssetStatus, assetAction)) continue
+        const to = assetStatusAfter(assetAction)
+        await db
+          .update(orderUnits)
+          .set({
+            status: to,
+            updatedAt: Date.now(),
+            ...(assetAction === "return"
+              ? { currentRequestId: null, currentCustomerId: null }
+              : {}),
+          })
+          .where(eq(orderUnits.id, unitId))
+        await recordAssetEvent({
+          assetId: unitId,
+          type: assetAction === "return" ? "returned" : "delivered",
+          fromStatus: unit.status,
+          toStatus: to,
+          requestId: task.requestId,
+          customerId: parentRequest.customerId,
+          byUserId: session.user.id,
+        })
+      }
+    }
+  } catch (error) {
+    console.error("asset sync on signOffTask failed", error)
+  }
 
   await logActivity({
     entityType: "request",
