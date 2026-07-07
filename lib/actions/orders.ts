@@ -1,9 +1,18 @@
 "use server"
 
-import { and, desc, eq, inArray, isNull, like, ne, or } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { customers, orderLines, orderUnits, orders, suppliers } from "@/lib/db/schema"
+import {
+  customers,
+  orderLines,
+  orderUnits,
+  orders,
+  requestItems,
+  requests,
+  requestTypes,
+  suppliers,
+} from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import {
@@ -12,6 +21,7 @@ import {
   orderUnitInputSchema,
   updateOrderSchema,
 } from "@/lib/validation/schemas"
+import { deriveOrderStatus } from "@/lib/utils/order-status"
 import { z } from "zod"
 
 export type ActionResult = { error?: string; id?: string }
@@ -102,10 +112,15 @@ export async function updateOrder(
   const d = parsed.data
 
   const dupe = await db
-    .select({ id: orders.id })
+    .select({ id: orders.id, status: orders.status })
     .from(orders)
     .where(and(eq(orders.orderNumber, d.orderNumber), isNull(orders.deletedAt)))
   if (dupe.some((row) => row.id !== id)) return { error: "Order number already exists" }
+
+  // Status is derived from unit fulfillment, not editable from this form —
+  // preserve whatever is currently stored (cancel/reopen use their own action).
+  const [current] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, id))
+  const status = current?.status ?? "draft"
 
   const lineTotals = d.lines.map((l) =>
     computeLineTotal(l.quantity, l.unitPriceMonthly, l.rentalMonths)
@@ -152,7 +167,7 @@ export async function updateOrder(
         rentalPeriodMonths: d.rentalPeriodMonths ?? null,
         additionalPeriodMonths: d.additionalPeriodMonths ?? null,
         total,
-        status: d.status,
+        status,
         notes: d.notes || null,
         updatedAt: Date.now(),
       })
@@ -283,8 +298,38 @@ export async function saveOrderUnits(
     if (toInsert.length > 0) await tx.insert(orderUnits).values(toInsert)
   })
 
+  // Recompute order.status from the units' final fulfillment state.
+  const [orderRow] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId))
+  const finalUnits = await db.select({ status: orderUnits.status }).from(orderUnits).where(eq(orderUnits.orderId, orderId))
+  const nextStatus = deriveOrderStatus(
+    finalUnits.map((u) => u.status),
+    orderRow?.status ?? "draft"
+  )
+  if (nextStatus !== orderRow?.status) {
+    await db.update(orders).set({ status: nextStatus, updatedAt: Date.now() }).where(eq(orders.id, orderId))
+  }
+
   revalidatePath(`/admin/orders/${orderId}`)
   return { id: orderId }
+}
+
+// ─── Manual cancel / reopen (the only human-set status transition) ───────────
+
+export async function setOrderCancelled(id: string, cancelled: boolean): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  if (cancelled) {
+    await db.update(orders).set({ status: "cancelled", updatedAt: Date.now() }).where(eq(orders.id, id))
+  } else {
+    // Reopen: recompute from current units rather than guessing a status.
+    const units = await db.select({ status: orderUnits.status }).from(orderUnits).where(eq(orderUnits.orderId, id))
+    const nextStatus = deriveOrderStatus(units.map((u) => u.status), "draft")
+    await db.update(orders).set({ status: nextStatus, updatedAt: Date.now() }).where(eq(orders.id, id))
+  }
+
+  revalidatePath(`/admin/orders/${id}`)
+  return { id }
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -298,9 +343,13 @@ export async function getOrders(search?: string) {
       id: orders.id,
       orderNumber: orders.orderNumber,
       status: orders.status,
-      total: orders.total,
+      quoteDate: orders.quoteDate,
       createdAt: orders.createdAt,
+      customerId: orders.customerId,
       customerName: customers.name,
+      firstDevice: sql<string | null>`(select ${orderLines.description} from ${orderLines} where ${orderLines.orderId} = ${orders.id} order by ${orderLines.createdAt} limit 1)`,
+      deviceCount: sql<number>`(select count(*) from ${orderLines} where ${orderLines.orderId} = ${orders.id})`,
+      totalQuantity: sql<number>`(select coalesce(sum(${orderLines.quantity}), 0) from ${orderLines} where ${orderLines.orderId} = ${orders.id})`,
     })
     .from(orders)
     .leftJoin(customers, eq(orders.customerId, customers.id))
@@ -339,6 +388,55 @@ export async function getOrder(id: string) {
     .orderBy(orderUnits.createdAt)
 
   return { order, lines, units }
+}
+
+export type LinkedRequest = {
+  id: string
+  requestNumber: string
+  status: string
+  typeName: string | null
+  createdAt: number
+  itemCount: number
+}
+
+// Reverse traceability: every request that pulled at least one unit from this
+// order, with how many of its items came from here.
+export async function getRequestsForOrder(orderId: string): Promise<LinkedRequest[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  const rows = await db
+    .select({
+      requestId: requests.id,
+      requestNumber: requests.requestNumber,
+      status: requests.status,
+      typeName: requestTypes.nameEn,
+      createdAt: requests.createdAt,
+    })
+    .from(requestItems)
+    .innerJoin(orderUnits, eq(requestItems.orderUnitId, orderUnits.id))
+    .innerJoin(requests, eq(requestItems.requestId, requests.id))
+    .leftJoin(requestTypes, eq(requests.typeId, requestTypes.id))
+    .where(and(eq(orderUnits.orderId, orderId), isNull(requests.deletedAt)))
+    .orderBy(desc(requests.createdAt))
+
+  const byId = new Map<string, LinkedRequest>()
+  for (const r of rows) {
+    const existing = byId.get(r.requestId)
+    if (existing) {
+      existing.itemCount += 1
+    } else {
+      byId.set(r.requestId, {
+        id: r.requestId,
+        requestNumber: r.requestNumber,
+        status: r.status,
+        typeName: r.typeName,
+        createdAt: r.createdAt,
+        itemCount: 1,
+      })
+    }
+  }
+  return [...byId.values()]
 }
 
 export async function deleteOrder(id: string): Promise<ActionResult> {

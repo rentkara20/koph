@@ -10,7 +10,7 @@
     "settings": "Settings",
     "tasks": "My Tasks",
     "logout": "Log out",
-    "orders": "Orders",
+    "orders": "Customer Orders",
     "suppliers": "Suppliers"
   },
   "common": {
@@ -454,29 +454,19 @@
     "address": "Address"
   },
   "orders": {
-    "title": "Orders",
+    "title": "Customer Orders",
     "new": "New order",
     "searchPlaceholder": "Search by order number or customer…",
     "orderNumber": "Order number",
     "customer": "Customer",
-    "contactPerson": "Contact person",
-    "contactMobile": "Contact mobile",
-    "contactEmail": "Contact email",
     "quoteDate": "Quote date",
-    "rentalPeriodMonths": "Rental period (months)",
-    "additionalPeriodMonths": "Additional period (months)",
-    "total": "Total",
     "orderDetails": "Order details",
     "lines": "Items",
     "linesHint": "The devices ordered, from the quotation.",
     "line": "Item",
     "addLine": "Add item",
     "deviceSpec": "Device / specs",
-    "brand": "Brand",
-    "model": "Model",
     "quantity": "Quantity",
-    "rentalMonths": "Rental months",
-    "unitPriceMonthly": "Monthly price",
     "units": "Devices (serials)",
     "unitsDescription": "One row per physical device: serial number, supplier and cost. Only in-stock devices can be pulled into a request.",
     "unitsHint": "Add each physical device with its serial number and supplier.",
@@ -502,6 +492,15 @@
       "delivered": "Delivered",
       "returned": "Returned",
       "damaged": "Damaged"
-    }
+    },
+    "devices": "Devices",
+    "unitsCount": "devices",
+    "viewCustomerProfile": "View profile",
+    "createDeliveryRequest": "Create delivery request",
+    "cancelOrder": "Cancel order",
+    "reopenOrder": "Reopen order",
+    "linkedRequests": "Operations from this order",
+    "linkedRequestsDescription": "Delivery, collection, and other operations created by pulling devices from this order.",
+    "noLinkedRequests": "No operations created from this order yet."
   }
 }

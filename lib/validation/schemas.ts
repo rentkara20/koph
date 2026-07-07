@@ -125,8 +125,10 @@ export const createOrderSchema = z.object({
   lines: z.array(orderLineInputSchema).max(500),
 })
 
+// Status is derived server-side from unit fulfillment (see deriveOrderStatus),
+// not set by the edit form — accepted here only for the manual cancel/reopen action.
 export const updateOrderSchema = createOrderSchema.extend({
-  status: orderStatusSchema,
+  status: orderStatusSchema.optional(),
 })
 
 export const createRequestSchema = z.object({

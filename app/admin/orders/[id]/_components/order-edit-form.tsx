@@ -8,7 +8,6 @@ import Link from "next/link"
 import { Plus, Trash2 } from "lucide-react"
 import { updateOrder } from "@/lib/actions/orders"
 import type { Customer, Order, OrderLine } from "@/lib/db/schema"
-import { orderStatuses } from "@/lib/utils/order-status"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,24 +17,16 @@ import { Separator } from "@/components/ui/separator"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { ExternalLink } from "lucide-react"
 
 type LineRow = {
   key: number
   dbId?: string
   description: string
-  brand: string
-  model: string
   quantity: number
-  rentalMonths: string
-  unitPriceMonthly: string
 }
 
 let nextKey = 1
-
-function toNum(v: string): number | undefined {
-  const n = Number(v)
-  return v.trim() && Number.isFinite(n) ? n : undefined
-}
 
 function dateInputValue(epoch: number | null): string {
   if (!epoch) return ""
@@ -63,20 +54,13 @@ export function OrderEditForm({
           key: nextKey++,
           dbId: l.id,
           description: l.description,
-          brand: l.brand ?? "",
-          model: l.model ?? "",
           quantity: l.quantity,
-          rentalMonths: l.rentalMonths != null ? String(l.rentalMonths) : "",
-          unitPriceMonthly: l.unitPriceMonthly != null ? String(l.unitPriceMonthly) : "",
         }))
-      : [{ key: nextKey++, description: "", brand: "", model: "", quantity: 1, rentalMonths: "", unitPriceMonthly: "" }]
+      : [{ key: nextKey++, description: "", quantity: 1 }]
   )
 
   function addLine() {
-    setLines((prev) => [
-      ...prev,
-      { key: nextKey++, description: "", brand: "", model: "", quantity: 1, rentalMonths: "", unitPriceMonthly: "" },
-    ])
+    setLines((prev) => [...prev, { key: nextKey++, description: "", quantity: 1 }])
   }
 
   function removeLine(key: number) {
@@ -98,23 +82,13 @@ export function OrderEditForm({
 
       const result = await updateOrder(order.id, {
         orderNumber: (fd.get("orderNumber") as string)?.trim(),
-        customerId: fd.get("customerId") as string,
-        status: fd.get("status") as (typeof orderStatuses)[number],
-        contactPerson: (fd.get("contactPerson") as string) || undefined,
-        contactMobile: (fd.get("contactMobile") as string) || undefined,
-        contactEmail: (fd.get("contactEmail") as string) || undefined,
+        customerId: (fd.get("customerId") as string) || order.customerId,
         quoteDate: (fd.get("quoteDate") as string) || undefined,
-        rentalPeriodMonths: toNum(fd.get("rentalPeriodMonths") as string),
-        additionalPeriodMonths: toNum(fd.get("additionalPeriodMonths") as string),
         notes: (fd.get("notes") as string) || undefined,
         lines: validLines.map((l) => ({
           id: l.dbId,
           description: l.description,
-          brand: l.brand || undefined,
-          model: l.model || undefined,
           quantity: l.quantity,
-          rentalMonths: toNum(l.rentalMonths),
-          unitPriceMonthly: toNum(l.unitPriceMonthly),
         })),
       })
 
@@ -151,54 +125,6 @@ export function OrderEditForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="status">{tCommon("status")}</Label>
-          <Select id="status" name="status" defaultValue={order.status}>
-            {orderStatuses.map((s) => (
-              <option key={s} value={s}>
-                {t(`status.${s}`)}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="customerId">
-            {t("customer")} <span className="text-destructive">*</span>
-          </Label>
-          <Select id="customerId" name="customerId" defaultValue={order.customerId} required>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="contactPerson">
-            {t("contactPerson")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="contactPerson" name="contactPerson" defaultValue={order.contactPerson ?? ""} />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="contactMobile">
-            {t("contactMobile")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="contactMobile" name="contactMobile" type="tel" defaultValue={order.contactMobile ?? ""} />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="contactEmail">
-            {t("contactEmail")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="contactEmail" name="contactEmail" type="email" defaultValue={order.contactEmail ?? ""} />
-        </div>
-
-        <div className="space-y-1.5">
           <Label htmlFor="quoteDate">
             {t("quoteDate")}{" "}
             <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
@@ -206,32 +132,26 @@ export function OrderEditForm({
           <Input id="quoteDate" name="quoteDate" type="date" defaultValue={dateInputValue(order.quoteDate)} />
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="rentalPeriodMonths">
-            {t("rentalPeriodMonths")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input
-            id="rentalPeriodMonths"
-            name="rentalPeriodMonths"
-            type="number"
-            min={0}
-            defaultValue={order.rentalPeriodMonths != null ? String(order.rentalPeriodMonths) : ""}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="additionalPeriodMonths">
-            {t("additionalPeriodMonths")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input
-            id="additionalPeriodMonths"
-            name="additionalPeriodMonths"
-            type="number"
-            min={0}
-            defaultValue={order.additionalPeriodMonths != null ? String(order.additionalPeriodMonths) : ""}
-          />
+        <div className="space-y-1.5 sm:col-span-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="customerId">
+              {t("customer")} <span className="text-destructive">*</span>
+            </Label>
+            <Link
+              href={`/admin/customers/${order.customerId}`}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline"
+            >
+              {t("viewCustomerProfile")}
+              <ExternalLink className="size-3" />
+            </Link>
+          </div>
+          <Select id="customerId" name="customerId" defaultValue={order.customerId} required>
+            {customers.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </Select>
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
@@ -271,7 +191,7 @@ export function OrderEditForm({
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs">
                   {t("deviceSpec")} <span className="text-destructive">*</span>
@@ -283,39 +203,12 @@ export function OrderEditForm({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("brand")}</Label>
-                <Input value={line.brand} onChange={(e) => updateLine(line.key, "brand", e.target.value)} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{t("model")}</Label>
-                <Input value={line.model} onChange={(e) => updateLine(line.key, "model", e.target.value)} />
-              </div>
-              <div className="space-y-1">
                 <Label className="text-xs">{t("quantity")}</Label>
                 <Input
                   type="number"
                   min={1}
                   value={line.quantity}
                   onChange={(e) => updateLine(line.key, "quantity", parseInt(e.target.value) || 1)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{t("rentalMonths")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={line.rentalMonths}
-                  onChange={(e) => updateLine(line.key, "rentalMonths", e.target.value)}
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs">{t("unitPriceMonthly")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={line.unitPriceMonthly}
-                  onChange={(e) => updateLine(line.key, "unitPriceMonthly", e.target.value)}
                 />
               </div>
             </div>

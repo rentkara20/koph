@@ -8,8 +8,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { RequestForm } from "./_components/request-form"
 import { cn } from "@/lib/utils"
 
-export default async function NewRequestPage() {
-  const [t, requestTypes, customerList] = await Promise.all([
+export default async function NewRequestPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ orderNumber?: string }>
+}) {
+  const [{ orderNumber }, t, requestTypes, customerList] = await Promise.all([
+    searchParams,
     getTranslations("requests"),
     getRequestTypes(),
     getCustomers(),
@@ -32,7 +37,7 @@ export default async function NewRequestPage() {
           <CardTitle className="text-base">{t("title")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <RequestForm requestTypes={requestTypes} customers={customerList} />
+          <RequestForm requestTypes={requestTypes} customers={customerList} initialOrderNumber={orderNumber} />
         </CardContent>
       </Card>
     </div>

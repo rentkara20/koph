@@ -52,10 +52,10 @@ export default async function OrdersPage({
             <thead className="border-b bg-muted/50">
               <tr>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("orderNumber")}</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">{t("quoteDate")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{t("customer")}</th>
+                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">{t("devices")}</th>
                 <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">{tCommon("status")}</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden md:table-cell">{t("total")}</th>
-                <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden lg:table-cell">{tCommon("date")}</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -69,17 +69,32 @@ export default async function OrdersPage({
                       {o.orderNumber}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-muted-foreground">{o.customerName ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
+                    {o.quoteDate ? formatDate(o.quoteDate) : "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link
+                      href={`/admin/customers/${o.customerId}`}
+                      className="relative z-10 text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      {o.customerName ?? "—"}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
+                    {o.deviceCount > 0 ? (
+                      <>
+                        {o.firstDevice}
+                        {o.deviceCount > 1 && ` +${o.deviceCount - 1}`}
+                        <span className="text-xs"> · {o.totalQuantity} {t("unitsCount")}</span>
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <Badge variant={orderStatusVariant[o.status] ?? "outline"}>
                       {t(`status.${o.status}`)}
                     </Badge>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                    {o.total != null ? o.total.toLocaleString() : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
-                    {formatDate(o.createdAt)}
                   </td>
                 </tr>
               ))}

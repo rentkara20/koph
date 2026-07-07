@@ -21,6 +21,7 @@ import {
   requestTypes,
   suppliers,
 } from "../lib/db/schema"
+import { deriveOrderStatus } from "../lib/utils/order-status"
 
 const DB_PATH = "./local-test.db"
 rmSync(DB_PATH, { force: true })
@@ -177,6 +178,40 @@ async function main() {
   assert(gone.length === 0, "in_stock-only line removed cleanly with its units")
   const itemsIntact = await db.select().from(requestItems).where(eq(requestItems.requestId, reqId))
   assert(itemsIntact.length === 2 && itemsIntact.every((i) => !!i.orderUnitId), "committed request items + their orderUnitId untouched")
+
+  // deriveOrderStatus: the new auto-status logic that replaced the manual select.
+  console.log("\nderiveOrderStatus (order-status.ts):")
+  assert(deriveOrderStatus([], "draft") === "draft", "no units → draft")
+  assert(deriveOrderStatus(["in_stock", "in_stock"], "draft") === "confirmed", "all in_stock → confirmed")
+  assert(deriveOrderStatus(["in_stock", "assigned"], "confirmed") === "partially_fulfilled", "mixed → partially_fulfilled")
+  assert(deriveOrderStatus(["assigned", "delivered"], "confirmed") === "fulfilled", "none in_stock → fulfilled")
+  assert(deriveOrderStatus(["in_stock"], "cancelled") === "cancelled", "cancelled is sticky regardless of units")
+
+  // getRequestsForOrder-equivalent: reverse traceability join + per-request item count.
+  console.log("\nReverse traceability (getRequestsForOrder logic):")
+  const linkRows = await db
+    .select({
+      requestId: requests.id,
+      requestNumber: requests.requestNumber,
+      status: requests.status,
+      typeName: requestTypes.nameEn,
+    })
+    .from(requestItems)
+    .innerJoin(orderUnits, eq(requestItems.orderUnitId, orderUnits.id))
+    .innerJoin(requests, eq(requestItems.requestId, requests.id))
+    .leftJoin(requestTypes, eq(requests.typeId, requestTypes.id))
+    .where(and(eq(orderUnits.orderId, orderId), isNull(requests.deletedAt)))
+
+  const byId = new Map()
+  for (const r of linkRows) {
+    const existing = byId.get(r.requestId)
+    if (existing) existing.itemCount += 1
+    else byId.set(r.requestId, { ...r, itemCount: 1 })
+  }
+  const linked = [...byId.values()]
+  assert(linked.length === 1, "exactly 1 distinct request linked to this order")
+  assert(linked[0].itemCount === 2, "linked request shows 2 items pulled from this order (not 1 row per join match)")
+  assert(linked[0].typeName === "Delivery", "request type name joined correctly")
 
   console.log("\n✅ ALL CHECKS PASSED")
   rmSync(DB_PATH, { force: true })

@@ -10,7 +10,7 @@
     "settings": "الإعدادات",
     "tasks": "مهامي",
     "logout": "تسجيل الخروج",
-    "orders": "الطلبيات",
+    "orders": "طلبات العملاء",
     "suppliers": "التجار"
   },
   "common": {
@@ -454,29 +454,19 @@
     "address": "العنوان"
   },
   "orders": {
-    "title": "الطلبيات",
+    "title": "طلبات العملاء",
     "new": "طلبية جديدة",
     "searchPlaceholder": "ابحث برقم الطلبية أو العميل…",
     "orderNumber": "رقم الطلبية",
     "customer": "العميل",
-    "contactPerson": "مسؤول التواصل",
-    "contactMobile": "جوال التواصل",
-    "contactEmail": "بريد التواصل",
     "quoteDate": "تاريخ العرض",
-    "rentalPeriodMonths": "مدة الإيجار (شهور)",
-    "additionalPeriodMonths": "المدة الإضافية (شهور)",
-    "total": "الإجمالي",
     "orderDetails": "تفاصيل الطلبية",
     "lines": "الأصناف",
     "linesHint": "الأجهزة المطلوبة من عرض السعر.",
     "line": "صنف",
     "addLine": "إضافة صنف",
     "deviceSpec": "الجهاز / المواصفات",
-    "brand": "العلامة",
-    "model": "الموديل",
     "quantity": "الكمية",
-    "rentalMonths": "شهور الإيجار",
-    "unitPriceMonthly": "السعر الشهري",
     "units": "الأجهزة (الأرقام التسلسلية)",
     "unitsDescription": "صف لكل جهاز: الرقم التسلسلي والمورّد والتكلفة. الأجهزة المتوفرة فقط يمكن سحبها إلى طلب.",
     "unitsHint": "أضف كل جهاز برقمه التسلسلي والمورّد.",
@@ -502,6 +492,15 @@
       "delivered": "مُسلّم",
       "returned": "مُرتجع",
       "damaged": "تالف"
-    }
+    },
+    "devices": "الأجهزة",
+    "unitsCount": "جهاز",
+    "viewCustomerProfile": "عرض الملف",
+    "createDeliveryRequest": "إنشاء عملية توصيل",
+    "cancelOrder": "إلغاء الطلب",
+    "reopenOrder": "إعادة فتح الطلب",
+    "linkedRequests": "العمليات من هذا الطلب",
+    "linkedRequestsDescription": "التوصيل والاستلام وغيرها من العمليات المنشأة بسحب أجهزة من هذا الطلب.",
+    "noLinkedRequests": "لا توجد عمليات منشأة من هذا الطلب بعد."
   }
 }

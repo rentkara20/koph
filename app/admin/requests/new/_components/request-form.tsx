@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import Link from "next/link"
@@ -49,9 +49,11 @@ function emptyItem(): ItemRow {
 export function RequestForm({
   requestTypes,
   customers,
+  initialOrderNumber,
 }: {
   requestTypes: RequestType[]
   customers: Customer[]
+  initialOrderNumber?: string
 }) {
   const t = useTranslations("requests")
   const tCommon = useTranslations("common")
@@ -65,14 +67,14 @@ export function RequestForm({
   const [quoteNumber, setQuoteNumber] = useState("")
 
   // Import-from-order state
-  const [orderNumberInput, setOrderNumberInput] = useState("")
+  const [orderNumberInput, setOrderNumberInput] = useState(initialOrderNumber ?? "")
   const [lookupLoading, setLookupLoading] = useState(false)
   const [lookupError, setLookupError] = useState("")
   const [lookup, setLookup] = useState<OrderLookup | null>(null)
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
 
-  async function handleLookup() {
-    const num = orderNumberInput.trim()
+  async function handleLookup(overrideNumber?: string) {
+    const num = (overrideNumber ?? orderNumberInput).trim()
     if (!num) return
     setLookupError("")
     setLookupLoading(true)
@@ -95,6 +97,14 @@ export function RequestForm({
       setLookupLoading(false)
     }
   }
+
+  // Coming from an order's "create delivery request" button — fetch immediately.
+  useEffect(() => {
+    if (initialOrderNumber?.trim()) {
+      handleLookup(initialOrderNumber)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
+  }, [])
 
   function toggleUnit(unitId: string) {
     setSelectedUnits((prev) => {
@@ -213,7 +223,7 @@ export function RequestForm({
             placeholder="e.g. 10669"
             className="font-mono max-w-xs"
           />
-          <Button type="button" variant="outline" onClick={handleLookup} disabled={lookupLoading}>
+          <Button type="button" variant="outline" onClick={() => handleLookup()} disabled={lookupLoading}>
             {lookupLoading ? tCommon("loading") : t("fetchOrder")}
           </Button>
         </div>

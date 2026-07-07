@@ -34,3 +34,21 @@ export const unitStatuses = [
   "returned",
   "damaged",
 ] as const
+
+type OrderStatus = (typeof orderStatuses)[number]
+type UnitStatus = (typeof unitStatuses)[number]
+
+// Order status is derived from its units' fulfillment, not set by hand.
+// "cancelled" is the only status a human sets directly (see cancelOrder).
+export function deriveOrderStatus(
+  unitStatuses: UnitStatus[],
+  currentStatus: OrderStatus
+): OrderStatus {
+  if (currentStatus === "cancelled") return "cancelled"
+  if (unitStatuses.length === 0) return "draft"
+
+  const fulfilled = unitStatuses.filter((s) => s !== "in_stock").length
+  if (fulfilled === 0) return "confirmed"
+  if (fulfilled === unitStatuses.length) return "fulfilled"
+  return "partially_fulfilled"
+}

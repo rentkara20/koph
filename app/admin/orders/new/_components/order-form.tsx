@@ -20,12 +20,7 @@ import { translateActionError } from "@/lib/i18n/action-errors"
 type LineRow = {
   id: number
   description: string
-  brand: string
-  model: string
   quantity: number
-  rentalMonths: string
-  unitPriceMonthly: string
-  notes: string
 }
 
 let nextLineId = 1
@@ -34,18 +29,8 @@ function emptyLine(): LineRow {
   return {
     id: nextLineId++,
     description: "",
-    brand: "",
-    model: "",
     quantity: 1,
-    rentalMonths: "",
-    unitPriceMonthly: "",
-    notes: "",
   }
-}
-
-function toNum(v: string): number | undefined {
-  const n = Number(v)
-  return v.trim() && Number.isFinite(n) ? n : undefined
 }
 
 export function OrderForm({ customers }: { customers: Customer[] }) {
@@ -80,21 +65,11 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
       const result = await createOrder({
         orderNumber: (fd.get("orderNumber") as string)?.trim(),
         customerId: fd.get("customerId") as string,
-        contactPerson: (fd.get("contactPerson") as string) || undefined,
-        contactMobile: (fd.get("contactMobile") as string) || undefined,
-        contactEmail: (fd.get("contactEmail") as string) || undefined,
         quoteDate: (fd.get("quoteDate") as string) || undefined,
-        rentalPeriodMonths: toNum(fd.get("rentalPeriodMonths") as string),
-        additionalPeriodMonths: toNum(fd.get("additionalPeriodMonths") as string),
         notes: (fd.get("notes") as string) || undefined,
         lines: validLines.map((l) => ({
           description: l.description,
-          brand: l.brand || undefined,
-          model: l.model || undefined,
           quantity: l.quantity,
-          rentalMonths: toNum(l.rentalMonths),
-          unitPriceMonthly: toNum(l.unitPriceMonthly),
-          notes: l.notes || undefined,
         })),
       })
 
@@ -143,51 +118,11 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="contactPerson">
-            {t("contactPerson")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="contactPerson" name="contactPerson" />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="contactMobile">
-            {t("contactMobile")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="contactMobile" name="contactMobile" type="tel" />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="contactEmail">
-            {t("contactEmail")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="contactEmail" name="contactEmail" type="email" />
-        </div>
-
-        <div className="space-y-1.5">
           <Label htmlFor="quoteDate">
             {t("quoteDate")}{" "}
             <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
           </Label>
           <Input id="quoteDate" name="quoteDate" type="date" />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="rentalPeriodMonths">
-            {t("rentalPeriodMonths")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="rentalPeriodMonths" name="rentalPeriodMonths" type="number" min={0} />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="additionalPeriodMonths">
-            {t("additionalPeriodMonths")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="additionalPeriodMonths" name="additionalPeriodMonths" type="number" min={0} />
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
@@ -231,7 +166,7 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs">
                   {t("deviceSpec")} <span className="text-destructive">*</span>
@@ -244,47 +179,12 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("brand")}</Label>
-                <Input
-                  value={line.brand}
-                  onChange={(e) => updateLine(line.id, "brand", e.target.value)}
-                  placeholder="e.g. Lenovo"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{t("model")}</Label>
-                <Input
-                  value={line.model}
-                  onChange={(e) => updateLine(line.id, "model", e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
                 <Label className="text-xs">{t("quantity")}</Label>
                 <Input
                   type="number"
                   min={1}
                   value={line.quantity}
                   onChange={(e) => updateLine(line.id, "quantity", parseInt(e.target.value) || 1)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{t("rentalMonths")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={line.rentalMonths}
-                  onChange={(e) => updateLine(line.id, "rentalMonths", e.target.value)}
-                />
-              </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs">{t("unitPriceMonthly")}</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={line.unitPriceMonthly}
-                  onChange={(e) => updateLine(line.id, "unitPriceMonthly", e.target.value)}
-                  placeholder="SAR / month"
                 />
               </div>
             </div>
