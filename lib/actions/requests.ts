@@ -1,5 +1,6 @@
 "use server"
 
+import { recordAssetEvent } from "@/lib/actions/assets"
 import { and, count, desc, eq, inArray, isNull, like, notInArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
@@ -83,15 +84,31 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
       }))
     )
 
-    // Mark pulled order units as assigned so they are not double-booked.
+    // Mark pulled order units as assigned so they are not double-booked, and
+    // stamp who/where they are committed to for the asset timeline.
     const pulledUnitIds = data.items
       .map((item) => item.orderUnitId)
       .filter((v): v is string => Boolean(v))
     if (pulledUnitIds.length > 0) {
       await db
         .update(orderUnits)
-        .set({ status: "assigned", updatedAt: Date.now() })
+        .set({
+          status: "assigned",
+          currentRequestId: id,
+          currentCustomerId: data.customerId,
+          updatedAt: Date.now(),
+        })
         .where(inArray(orderUnits.id, pulledUnitIds))
+      for (const unitId of pulledUnitIds) {
+        await recordAssetEvent({
+          assetId: unitId,
+          type: "assigned",
+          toStatus: "assigned",
+          requestId: id,
+          customerId: data.customerId,
+          byUserId: session.user.id,
+        })
+      }
     }
   }
 

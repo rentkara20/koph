@@ -19,6 +19,29 @@ const STATEMENTS: string[] = [
   `CREATE INDEX IF NOT EXISTS request_customer_idx ON request (customer_id)`,
   `CREATE INDEX IF NOT EXISTS request_status_idx ON request (status)`,
   `CREATE INDEX IF NOT EXISTS customer_contact_customer_idx ON customer_contact (customer_id)`,
+  // ── Asset module (order_unit → full asset entity) ─────────────────────────
+  `ALTER TABLE order_unit ADD COLUMN purchase_date integer`,
+  `ALTER TABLE order_unit ADD COLUMN warranty_end integer`,
+  `ALTER TABLE order_unit ADD COLUMN asset_tag text`,
+  `ALTER TABLE order_unit ADD COLUMN location text NOT NULL DEFAULT 'main_warehouse'`,
+  `ALTER TABLE order_unit ADD COLUMN current_request_id text`,
+  `ALTER TABLE order_unit ADD COLUMN current_customer_id text`,
+  `ALTER TABLE order_unit ADD COLUMN retired_at integer`,
+  `ALTER TABLE order_unit ADD COLUMN retirement_reason text`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS order_unit_asset_tag_idx ON order_unit (asset_tag)`,
+  `CREATE TABLE IF NOT EXISTS asset_event (
+    id text PRIMARY KEY,
+    asset_id text NOT NULL REFERENCES order_unit(id) ON DELETE CASCADE,
+    type text NOT NULL,
+    from_status text,
+    to_status text,
+    request_id text,
+    customer_id text,
+    notes text,
+    by_user_id text,
+    created_at integer NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS asset_event_asset_idx ON asset_event (asset_id, created_at)`,
 ]
 
 export async function POST(): Promise<Response> {

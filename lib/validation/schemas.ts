@@ -100,7 +100,7 @@ export const orderUnitInputSchema = z.object({
   serialNumber: z.string().trim().max(120).optional(),
   supplierId: z.string().trim().max(60).optional(),
   purchaseCost: z.number().min(0).max(100_000_000).optional(),
-  status: z.enum(["in_stock", "assigned", "delivered", "returned", "damaged"]).optional(),
+  status: z.enum(["in_stock", "reserved", "assigned", "delivered", "returned", "maintenance", "damaged", "retired", "sold", "lost"]).optional(),
   notes: z.string().trim().max(1000).optional(),
 })
 

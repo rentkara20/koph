@@ -11,7 +11,8 @@
     "tasks": "My Tasks",
     "logout": "Log out",
     "orders": "Customer Orders",
-    "suppliers": "Suppliers"
+    "suppliers": "Suppliers",
+    "assets": "Assets"
   },
   "common": {
     "save": "Save",
@@ -48,7 +49,9 @@
     "previous": "Previous",
     "page": "Page",
     "of": "of",
-    "showing": "Showing {from}–{to} of {total}"
+    "showing": "Showing {from}–{to} of {total}",
+    "pagination": "Pagination",
+    "request": "Request"
   },
   "auth": {
     "login": "Log in",
@@ -505,5 +508,81 @@
     "linkedRequests": "Operations from this order",
     "linkedRequestsDescription": "Delivery, collection, and other operations created by pulling devices from this order.",
     "noLinkedRequests": "No operations created from this order yet."
+  },
+  "assets": {
+    "title": "Assets",
+    "subtitle": "Every device KARA owns, its status and history",
+    "searchPlaceholder": "Search by tag, serial, model…",
+    "all": "All",
+    "assetTag": "Asset Tag",
+    "device": "Device",
+    "serial": "Serial",
+    "status": "Status",
+    "location": "Location",
+    "customer": "Customer",
+    "supplier": "Supplier",
+    "order": "Order",
+    "cost": "Cost",
+    "warranty": "Warranty",
+    "warrantyUntil": "Warranty until {date}",
+    "warrantyExpired": "Warranty expired",
+    "noWarranty": "No warranty on file",
+    "generateTags": "Generate missing tags",
+    "tagsGenerated": "{count} tags generated",
+    "timeline": "Timeline",
+    "details": "Details",
+    "actions": "Actions",
+    "purchaseDate": "Purchase date",
+    "purchaseCost": "Purchase cost",
+    "addNote": "Add note",
+    "notePlaceholder": "Write a note about this device…",
+    "save": "Save",
+    "qrHint": "Scan to open this asset page",
+    "noEvents": "No events recorded yet",
+    "confirmAction": "Confirm: {action}?",
+    "actionNotes": "Notes (optional)",
+    "editDetails": "Edit details",
+    "counts": {
+      "total": "Total"
+    },
+    "statuses": {
+      "in_stock": "In stock",
+      "reserved": "Reserved",
+      "assigned": "Assigned",
+      "delivered": "With customer",
+      "returned": "Returned",
+      "maintenance": "Maintenance",
+      "damaged": "Damaged",
+      "retired": "Retired",
+      "sold": "Sold",
+      "lost": "Lost"
+    },
+    "actionLabels": {
+      "reserve": "Reserve",
+      "unreserve": "Cancel reservation",
+      "assign": "Assign",
+      "unassign": "Unassign",
+      "deliver": "Mark delivered",
+      "return": "Mark returned",
+      "restock": "Return to stock",
+      "send_maintenance": "Send to maintenance",
+      "repair_done": "Repair done",
+      "mark_damaged": "Mark damaged",
+      "retire": "Retire",
+      "sell": "Mark sold",
+      "mark_lost": "Mark lost",
+      "found": "Found"
+    },
+    "eventTypes": {
+      "status_change": "Status changed",
+      "assigned": "Assigned to request",
+      "delivered": "Delivered",
+      "returned": "Returned",
+      "note": "Note",
+      "maintenance": "Maintenance",
+      "created": "Asset tagged",
+      "retired": "Retired",
+      "correction": "Manual correction"
+    }
   }
 }

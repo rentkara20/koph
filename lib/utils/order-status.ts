@@ -29,10 +29,15 @@ export const unitStatusVariant: Record<string, Variant> = {
 
 export const unitStatuses = [
   "in_stock",
+  "reserved",
   "assigned",
   "delivered",
   "returned",
+  "maintenance",
   "damaged",
+  "retired",
+  "sold",
+  "lost",
 ] as const
 
 type OrderStatus = (typeof orderStatuses)[number]

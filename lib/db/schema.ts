@@ -1,4 +1,4 @@
-import { index, integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -682,11 +682,32 @@ export const orderUnits = sqliteTable(
       onDelete: "set null",
     }),
     purchaseCost: real("purchase_cost"),
+    purchaseDate: integer("purchase_date"),
+    warrantyEnd: integer("warranty_end"),
+    // KARA asset tag (KARA-00001). Nullable until back-filled; unique when set.
+    assetTag: text("asset_tag"),
     status: text("status", {
-      enum: ["in_stock", "assigned", "delivered", "returned", "damaged"],
+      enum: [
+        "in_stock",
+        "reserved",
+        "assigned",
+        "delivered",
+        "returned",
+        "maintenance",
+        "damaged",
+        "retired",
+        "sold",
+        "lost",
+      ],
     })
       .notNull()
       .default("in_stock"),
+    location: text("location").notNull().default("main_warehouse"),
+    // Where the asset currently is when out of the warehouse.
+    currentRequestId: text("current_request_id"),
+    currentCustomerId: text("current_customer_id"),
+    retiredAt: integer("retired_at"),
+    retirementReason: text("retirement_reason"),
     notes: text("notes"),
     createdAt: integer("created_at").notNull().$defaultFn(now),
     updatedAt: integer("updated_at").notNull().$defaultFn(now),
@@ -696,7 +717,32 @@ export const orderUnits = sqliteTable(
     index("order_unit_line_idx").on(t.orderLineId),
     index("order_unit_status_idx").on(t.status),
     index("order_unit_serial_idx").on(t.serialNumber),
+    uniqueIndex("order_unit_asset_tag_idx").on(t.assetTag),
   ]
+)
+
+// ─── Asset events (timeline / passport of each device) ──────────────────────
+// One row per lifecycle event: status changes, assignments, notes, maintenance.
+
+export const assetEvents = sqliteTable(
+  "asset_event",
+  {
+    id: text("id").primaryKey(),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => orderUnits.id, { onDelete: "cascade" }),
+    type: text("type", {
+      enum: ["status_change", "assigned", "delivered", "returned", "note", "maintenance", "created", "retired", "correction"],
+    }).notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    requestId: text("request_id"),
+    customerId: text("customer_id"),
+    notes: text("notes"),
+    byUserId: text("by_user_id"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("asset_event_asset_idx").on(t.assetId, t.createdAt)]
 )
 
 export type Supplier = typeof suppliers.$inferSelect

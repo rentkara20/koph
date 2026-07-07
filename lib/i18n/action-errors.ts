@@ -63,6 +63,12 @@ const AR: Record<string, string> = {
   "Paid items cannot be held": "لا يمكن تعليق بنود مدفوعة",
   "Invalid unit price": "سعر وحدة غير صالح",
 
+  // Assets
+  "Asset not found": "الأصل غير موجود",
+  "Invalid action for current asset status": "إجراء غير صالح لحالة الأصل الحالية",
+  "Invalid note": "ملاحظة غير صالحة",
+  "Invalid input": "مدخلات غير صالحة",
+
   // Orders / suppliers / customers
   "Order not found": "الطلبية غير موجودة",
   "Order number already exists": "رقم الطلبية موجود بالفعل",

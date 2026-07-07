@@ -11,7 +11,8 @@
     "tasks": "مهامي",
     "logout": "تسجيل الخروج",
     "orders": "طلبات العملاء",
-    "suppliers": "التجار"
+    "suppliers": "التجار",
+    "assets": "الأصول"
   },
   "common": {
     "save": "حفظ",
@@ -48,7 +49,9 @@
     "previous": "السابق",
     "page": "صفحة",
     "of": "من",
-    "showing": "عرض {from}–{to} من {total}"
+    "showing": "عرض {from}–{to} من {total}",
+    "pagination": "التنقل بين الصفحات",
+    "request": "الطلب"
   },
   "auth": {
     "login": "تسجيل الدخول",
@@ -505,5 +508,81 @@
     "linkedRequests": "العمليات من هذا الطلب",
     "linkedRequestsDescription": "التوصيل والاستلام وغيرها من العمليات المنشأة بسحب أجهزة من هذا الطلب.",
     "noLinkedRequests": "لا توجد عمليات منشأة من هذا الطلب بعد."
+  },
+  "assets": {
+    "title": "الأصول",
+    "subtitle": "كل جهاز تملكه كارا: حالته وتاريخه",
+    "searchPlaceholder": "ابحث برقم الأصل أو التسلسلي أو الموديل…",
+    "all": "الكل",
+    "assetTag": "رقم الأصل",
+    "device": "الجهاز",
+    "serial": "التسلسلي",
+    "status": "الحالة",
+    "location": "الموقع",
+    "customer": "العميل",
+    "supplier": "المورد",
+    "order": "الطلبية",
+    "cost": "التكلفة",
+    "warranty": "الضمان",
+    "warrantyUntil": "الضمان حتى {date}",
+    "warrantyExpired": "انتهى الضمان",
+    "noWarranty": "لا يوجد ضمان مسجل",
+    "generateTags": "توليد الأرقام الناقصة",
+    "tagsGenerated": "تم توليد {count} رقم",
+    "timeline": "السجل الزمني",
+    "details": "التفاصيل",
+    "actions": "العمليات",
+    "purchaseDate": "تاريخ الشراء",
+    "purchaseCost": "تكلفة الشراء",
+    "addNote": "إضافة ملاحظة",
+    "notePlaceholder": "اكتب ملاحظة عن هذا الجهاز…",
+    "save": "حفظ",
+    "qrHint": "امسح لفتح صفحة هذا الأصل",
+    "noEvents": "لا توجد أحداث بعد",
+    "confirmAction": "تأكيد: {action}؟",
+    "actionNotes": "ملاحظات (اختياري)",
+    "editDetails": "تعديل التفاصيل",
+    "counts": {
+      "total": "الإجمالي"
+    },
+    "statuses": {
+      "in_stock": "متوفر",
+      "reserved": "محجوز",
+      "assigned": "معيّن لطلب",
+      "delivered": "مع العميل",
+      "returned": "راجع",
+      "maintenance": "صيانة",
+      "damaged": "تالف",
+      "retired": "مسحوب",
+      "sold": "مباع",
+      "lost": "مفقود"
+    },
+    "actionLabels": {
+      "reserve": "حجز",
+      "unreserve": "إلغاء الحجز",
+      "assign": "تعيين",
+      "unassign": "إلغاء التعيين",
+      "deliver": "تم التسليم",
+      "return": "تم الاسترجاع",
+      "restock": "إرجاع للمخزون",
+      "send_maintenance": "إرسال للصيانة",
+      "repair_done": "انتهى الإصلاح",
+      "mark_damaged": "تحديد كتالف",
+      "retire": "سحب من الخدمة",
+      "sell": "تحديد كمباع",
+      "mark_lost": "تحديد كمفقود",
+      "found": "تم العثور عليه"
+    },
+    "eventTypes": {
+      "status_change": "تغيير حالة",
+      "assigned": "تعيين لطلب",
+      "delivered": "تسليم",
+      "returned": "استرجاع",
+      "note": "ملاحظة",
+      "maintenance": "صيانة",
+      "created": "ترقيم الأصل",
+      "retired": "سحب",
+      "correction": "تصحيح يدوي"
+    }
   }
 }

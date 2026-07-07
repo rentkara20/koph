@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import {
+  Laptop,
   LayoutDashboard,
   ClipboardList,
   PackageSearch,
@@ -21,6 +22,7 @@ import {
 const navItems = [
   { key: "dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { key: "orders", href: "/admin/orders", icon: PackageSearch },
+  { key: "assets", href: "/admin/assets", icon: Laptop },
   { key: "requests", href: "/admin/requests", icon: ClipboardList },
   { key: "customers", href: "/admin/customers", icon: Users },
   { key: "suppliers", href: "/admin/suppliers", icon: Store },
