@@ -181,7 +181,7 @@ export async function deletePartner(id: string): Promise<ActionResult> {
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(200),
-  password: z.string().min(8).max(100),
+  password: z.string().min(1).max(100),
 })
 
 /**
@@ -198,7 +198,7 @@ export async function createPartnerLogin(
   if (!session) return { error: "Unauthorized" }
 
   const parsed = loginSchema.safeParse({ email, password })
-  if (!parsed.success) return { error: "Invalid email or password (min 8 characters)" }
+  if (!parsed.success) return { error: "Invalid email or password" }
 
   const [partner] = await db.select().from(partners).where(eq(partners.id, partnerId))
   if (!partner) return { error: "Partner not found" }
@@ -280,7 +280,7 @@ export async function getPartnerByActivationToken(token: string) {
 
 const activateSchema = z.object({
   email: z.string().trim().email().max(200),
-  password: z.string().min(8).max(100),
+  password: z.string().min(1).max(100),
 })
 
 /**
@@ -293,7 +293,7 @@ export async function activatePartnerAccount(
   password: string
 ): Promise<ActionResult> {
   const parsed = activateSchema.safeParse({ email, password })
-  if (!parsed.success) return { error: "Invalid email or password (min 8 characters)" }
+  if (!parsed.success) return { error: "Invalid email or password" }
 
   const partner = await getPartnerByActivationToken(token)
   if (!partner) return { error: "Link expired or invalid" }
@@ -328,7 +328,7 @@ export async function activatePartnerAccount(
 // ─── Admin-triggered password reset ────────────────────────────────────────
 
 const resetPasswordSchema = z.object({
-  password: z.string().min(8).max(100),
+  password: z.string().min(1).max(100),
 })
 
 /**
@@ -341,7 +341,7 @@ export async function resetPartnerPassword(partnerId: string, password: string):
   if (!session) return { error: "Unauthorized" }
 
   const parsed = resetPasswordSchema.safeParse({ password })
-  if (!parsed.success) return { error: "Password must be at least 8 characters" }
+  if (!parsed.success) return { error: "Password is required" }
 
   const [partner] = await db.select({ userId: partners.userId }).from(partners).where(eq(partners.id, partnerId))
   if (!partner?.userId) return { error: "Partner has no login" }

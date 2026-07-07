@@ -99,12 +99,11 @@ export function PartnerLoginSection({
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   required
-                  minLength={8}
                   dir="ltr"
                   className="w-44 font-mono"
                 />
               </div>
-              <Button type="submit" variant="outline" disabled={resetLoading || newPassword.length < 8}>
+              <Button type="submit" variant="outline" disabled={resetLoading || newPassword.length < 1}>
                 {resetLoading && <Loader2 className="size-4 animate-spin" aria-hidden />}
                 {t("resetSubmit")}
               </Button>
@@ -163,12 +162,11 @@ export function PartnerLoginSection({
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    minLength={8}
                     dir="ltr"
                     className="w-44 font-mono"
                   />
                 </div>
-                <Button type="submit" disabled={loading || !email || password.length < 8}>
+                <Button type="submit" disabled={loading || !email || password.length < 1}>
                   {loading && <Loader2 className="size-4 animate-spin" aria-hidden />}
                   {t("create")}
                 </Button>

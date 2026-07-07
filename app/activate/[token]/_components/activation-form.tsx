@@ -84,7 +84,7 @@ export function ActivationForm({
               id="pa-password"
               type="password"
               autoComplete="new-password"
-              minLength={8}
+              
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -96,7 +96,7 @@ export function ActivationForm({
               id="pa-confirm"
               type="password"
               autoComplete="new-password"
-              minLength={8}
+              
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
