@@ -59,6 +59,9 @@ export type DeliveryNoteData = {
   signature: SignatureParty
   // Stage-2: authorised signatory (only when an admin requested it).
   authorized: SignatureParty
+  // Verification id for the authorised signatory's own certificate (distinct
+  // from the receiver's `verificationId` above).
+  authorizedVerificationId: string | null
   // A stage-2 request exists (show the second box even while pending).
   requiresAuthorized: boolean
   // Name of the flagged authorised signatory (for the pending box label).
@@ -209,6 +212,7 @@ export async function getDeliveryNoteData(
     items,
     signature: receiverParty,
     authorized: authorizedParty,
+    authorizedVerificationId: authorizedSig?.verificationId ?? null,
     requiresAuthorized: !!authorizedSig,
     authorizedName,
   }

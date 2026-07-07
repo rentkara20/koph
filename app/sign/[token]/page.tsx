@@ -115,13 +115,25 @@ export default async function SignPage({
             <div className="overflow-x-auto rounded-xl border border-border bg-card p-3">
               <DeliveryNoteView data={deliveryNote} />
             </div>
-            {deliveryNote.signature && (
-              <Certificate
-                signature={deliveryNote.signature}
-                verificationId={deliveryNote.verificationId}
-                documentName={t("deliveryNote")}
-              />
-            )}
+            {/* Certificate is scoped to whoever holds THIS token — the
+                receiver and the authorised signatory each get proof of
+                their own signature, not each other's. */}
+            {(() => {
+              const isAuthorizedHolder = sig.signatoryRole === "authorized"
+              const certificateParty = isAuthorizedHolder ? deliveryNote.authorized : deliveryNote.signature
+              const certificateVerificationId = isAuthorizedHolder
+                ? deliveryNote.authorizedVerificationId
+                : deliveryNote.verificationId
+              return (
+                certificateParty && (
+                  <Certificate
+                    signature={certificateParty}
+                    verificationId={certificateVerificationId}
+                    documentName={t("deliveryNote")}
+                  />
+                )
+              )
+            })()}
             <DownloadButton token={token} />
           </>
         ) : (
@@ -248,7 +260,13 @@ export default async function SignPage({
                 requireNationalId={sig.requireNationalId}
                 documentName={sig.documentName}
                 consentText={consentText}
-                items={items.map((i) => ({ id: i.id, description: i.description, quantity: i.quantity }))}
+                // Authorised signatory co-signs the record — they did not
+                // physically inspect the items, so no condition selector.
+                items={
+                  sig.signatoryRole === "authorized"
+                    ? []
+                    : items.map((i) => ({ id: i.id, description: i.description, quantity: i.quantity }))
+                }
               />
             )}
           </>
