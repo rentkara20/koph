@@ -23,8 +23,16 @@ export async function sendEmail(opts: {
     console.warn("sendEmail skipped: RESEND_API_KEY not configured", { to: opts.to, subject: opts.subject })
     return
   }
+
+  // While the rentkara.com sending domain isn't verified in Resend yet,
+  // route every send to a single inbox instead of real customers — remove
+  // EMAIL_TEST_RECIPIENT once the domain is verified to resume real delivery.
+  const testRecipient = process.env.EMAIL_TEST_RECIPIENT
+  const to = testRecipient || opts.to
+  const subject = testRecipient ? `[TEST → ${opts.to}] ${opts.subject}` : opts.subject
+
   try {
-    await getClient().emails.send({ from: FROM, to: opts.to, subject: opts.subject, html: opts.html })
+    await getClient().emails.send({ from: FROM, to, subject, html: opts.html })
   } catch (error) {
     // Email is a best-effort side channel — never let a delivery failure
     // break the signature/request flow that triggered it.
