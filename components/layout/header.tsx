@@ -50,7 +50,7 @@ export function Header({ userName, userRole }: HeaderProps) {
   return (
     <header className="flex h-14 items-center justify-between gap-2 border-b bg-background px-3 sm:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        <MobileNav />
+        <MobileNav role={userRole} />
         <form onSubmit={handleSearch} className="flex min-w-0 flex-1 items-center gap-1.5 sm:max-w-xs">
           <Search className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           <label htmlFor="admin-search" className="sr-only">

@@ -1,8 +1,27 @@
 import { headers } from "next/headers"
+import { eq } from "drizzle-orm"
 import { auth } from "./config"
+import { db } from "@/lib/db"
+import { users } from "@/lib/db/schema"
+import { roleCan, type Permission, type Role } from "./permissions"
 
+/**
+ * Returns the current session, or null. A DISABLED user is treated as logged
+ * out here — this is the authoritative deactivation gate. It covers both new
+ * and existing sessions (a revoke on deactivate handles the rest), with at
+ * most a ~5min lag for the cookie-cached path (see auth config cookieCache).
+ */
 export async function getSession() {
-  return auth.api.getSession({ headers: await headers() })
+  const session = await auth.api.getSession({ headers: await headers() })
+  if (!session) return null
+
+  const [row] = await db
+    .select({ disabledAt: users.disabledAt })
+    .from(users)
+    .where(eq(users.id, session.user.id))
+  if (row?.disabledAt) return null
+
+  return session
 }
 
 export async function requireSession() {
@@ -11,7 +30,7 @@ export async function requireSession() {
   return session
 }
 
-export type Role = "admin" | "finance" | "viewer" | "partner"
+export type { Role }
 
 /**
  * Session guard for server actions: returns the session only when the user
@@ -22,6 +41,19 @@ export async function getSessionWithRole(...roles: Role[]) {
   const session = await getSession()
   if (!session) return null
   if (!roles.includes(session.user.role as Role)) return null
+  return session
+}
+
+/**
+ * Permission-based guard — preferred over raw role checks for new code.
+ * Returns the session only if the user's role grants `permission`. Routes
+ * authorization through lib/auth/permissions.ts so future RBAC changes don't
+ * touch call sites.
+ */
+export async function getSessionWithPermission(permission: Permission) {
+  const session = await getSession()
+  if (!session) return null
+  if (!roleCan(session.user.role as Role, permission)) return null
   return session
 }
 

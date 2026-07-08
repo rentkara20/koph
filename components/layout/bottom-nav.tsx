@@ -7,16 +7,17 @@ import { useTranslations } from "next-intl"
 import { Menu } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet } from "@/components/ui/sheet"
-import { navItems, BOTTOM_NAV_KEYS } from "./nav-items"
+import { visibleNavItems, BOTTOM_NAV_KEYS } from "./nav-items"
 
 // Thumb-reachable bottom bar for the 4 most-used sections on phones, plus a
 // "more" trigger for everything else — avoids burying daily-use pages one
 // tap deeper behind the hamburger drawer.
-export function BottomNav() {
+export function BottomNav({ role }: { role?: string }) {
   const pathname = usePathname()
   const t = useTranslations("nav")
   const [moreOpen, setMoreOpen] = useState(false)
 
+  const navItems = visibleNavItems(role)
   const primary = BOTTOM_NAV_KEYS.map((key) => navItems.find((i) => i.key === key)!)
   const rest = navItems.filter((i) => !BOTTOM_NAV_KEYS.includes(i.key as (typeof BOTTOM_NAV_KEYS)[number]))
 

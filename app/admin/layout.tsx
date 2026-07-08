@@ -18,7 +18,7 @@ export default async function AdminLayout({
 
   return (
     <div className="flex h-svh overflow-hidden">
-      <Sidebar />
+      <Sidebar role={role} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
           userName={session.user.name}
@@ -28,7 +28,7 @@ export default async function AdminLayout({
           {children}
         </main>
       </div>
-      <BottomNav />
+      <BottomNav role={role} />
     </div>
   )
 }

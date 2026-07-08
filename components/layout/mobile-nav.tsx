@@ -8,12 +8,13 @@ import { useTranslations } from "next-intl"
 import { Menu } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Sheet } from "@/components/ui/sheet"
-import { navItems } from "./nav-items"
+import { visibleNavItems } from "./nav-items"
 
-export function MobileNav() {
+export function MobileNav({ role }: { role?: string }) {
   const pathname = usePathname()
   const t = useTranslations("nav")
   const [open, setOpen] = useState(false)
+  const navItems = visibleNavItems(role)
 
   return (
     <>

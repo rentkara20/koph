@@ -17,9 +17,30 @@ export const users = sqliteTable("user", {
     .notNull()
     .default("viewer"),
   lang: text("lang", { enum: ["en", "ar"] }).notNull().default("en"),
+  // Deactivation flag (distinct from deletedAt): a disabled user is blocked
+  // from signing in but is not deleted. Enforced in lib/auth/session.ts.
+  disabledAt: integer("disabled_at"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
   deletedAt: integer("deleted_at"),
+})
+
+// ─── User invites (generalized onboarding for every role) ───────────────────
+// Superset of the partner activation-token pattern. Admin creates a user row
+// (no credential account yet), an invite is generated; the user opens
+// /invite/[token], sets their own password (creates the credential account),
+// and the account becomes usable. Works for admin/finance/viewer/partner.
+
+export const userInvites = sqliteTable("user_invite", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  expiresAt: integer("expires_at").notNull(),
+  acceptedAt: integer("accepted_at"),
+  createdBy: text("created_by").references(() => users.id),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
 })
 
 export const sessions = sqliteTable("session", {
@@ -602,6 +623,7 @@ export type NewPartnerTask = typeof partnerTasks.$inferInsert
 export type ServicesCatalog = typeof servicesCatalog.$inferSelect
 export type FailureReason = typeof failureReasons.$inferSelect
 export type AppSetting = typeof appSettings.$inferSelect
+export type UserInvite = typeof userInvites.$inferSelect
 export type TaskService = typeof taskServices.$inferSelect
 export type SignatureRequest = typeof signatureRequests.$inferSelect
 export type NewSignatureRequest = typeof signatureRequests.$inferInsert

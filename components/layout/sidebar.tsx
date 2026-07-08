@@ -5,11 +5,12 @@ import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
-import { navItems } from "./nav-items"
+import { visibleNavItems } from "./nav-items"
 
-export function Sidebar() {
+export function Sidebar({ role }: { role?: string }) {
   const pathname = usePathname()
   const t = useTranslations("nav")
+  const navItems = visibleNavItems(role)
 
   return (
     <aside className="hidden h-full w-56 flex-col border-e bg-sidebar lg:flex">

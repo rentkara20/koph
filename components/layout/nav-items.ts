@@ -11,9 +11,17 @@ import {
   BarChart3,
   Settings,
   Wrench,
+  ShieldCheck,
 } from "lucide-react"
 
-export const navItems = [
+export type NavItem = {
+  key: string
+  href: string
+  icon: typeof LayoutDashboard
+  adminOnly?: boolean
+}
+
+export const navItems: readonly NavItem[] = [
   { key: "dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { key: "orders", href: "/admin/orders", icon: PackageSearch },
   { key: "assets", href: "/admin/assets", icon: Laptop },
@@ -25,8 +33,14 @@ export const navItems = [
   { key: "signatures", href: "/admin/signatures", icon: FileSignature },
   { key: "payments", href: "/admin/payments", icon: Coins },
   { key: "reports", href: "/admin/reports", icon: BarChart3 },
+  { key: "users", href: "/admin/users", icon: ShieldCheck, adminOnly: true },
   { key: "settings", href: "/admin/settings", icon: Settings },
 ] as const
+
+/** Nav items visible to a given role — hides admin-only entries from non-admins. */
+export function visibleNavItems(role?: string): readonly NavItem[] {
+  return navItems.filter((i) => !i.adminOnly || role === "admin")
+}
 
 // The 4 most-used sections, surfaced in the mobile bottom nav (5th slot is
 // the "more" drawer trigger, wired up in bottom-nav.tsx).
