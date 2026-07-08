@@ -1,6 +1,15 @@
+// Fixed timeZone (Riyadh, matches the business-month default in
+// lib/actions/settings.ts) is required, not cosmetic: without it, Node's
+// server clock (UTC) and a viewer's browser clock can format the same
+// timestamp as different calendar dates near midnight, which is a genuine
+// server/client output mismatch for any Client Component that calls this
+// during render (React hydration error #418, observed on /admin/users).
+const DISPLAY_TIME_ZONE = "Asia/Riyadh"
+
 export function formatDate(ts: number | null | undefined): string {
   if (!ts) return "—"
   return new Date(ts).toLocaleDateString("en-GB", {
+    timeZone: DISPLAY_TIME_ZONE,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -10,6 +19,7 @@ export function formatDate(ts: number | null | undefined): string {
 export function formatDateTime(ts: number | null | undefined): string {
   if (!ts) return "—"
   return new Date(ts).toLocaleString("en-GB", {
+    timeZone: DISPLAY_TIME_ZONE,
     year: "numeric",
     month: "short",
     day: "numeric",
