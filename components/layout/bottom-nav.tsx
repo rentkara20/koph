@@ -59,12 +59,13 @@ export function BottomNav({ role }: { role?: string }) {
         </div>
         <nav className="flex-1 overflow-y-auto px-2 py-3">
           <ul className="space-y-0.5">
-            {rest.map(({ key, href, icon: Icon }) => {
+            {rest.map(({ key, href, icon: Icon, prefetch }) => {
               const active = pathname.startsWith(href)
               return (
                 <li key={key}>
                   <Link
                     href={href}
+                    prefetch={prefetch}
                     onClick={() => setMoreOpen(false)}
                     className={cn(
                       "flex min-h-11 items-center gap-3 rounded-md px-3 py-2.5 text-base transition-colors",

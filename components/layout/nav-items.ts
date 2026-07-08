@@ -19,6 +19,17 @@ export type NavItem = {
   href: string
   icon: typeof LayoutDashboard
   adminOnly?: boolean
+  /**
+   * Set false to disable Next.js Link auto-prefetch for this item. The
+   * sidebar renders every item at once, so by default all ~13 routes
+   * prefetch concurrently on mount. A freshly-deployed, not-yet-warm route
+   * racing that prefetch against a real click has been observed to trigger
+   * a React "$RS ... parentNode" crash in production (Next.js App Router
+   * prefetch/Suspense-swap race, not reproducible locally where responses
+   * are near-instant). Opt heavy/new routes out until this is confirmed
+   * fixed upstream.
+   */
+  prefetch?: boolean
 }
 
 export const navItems: readonly NavItem[] = [
@@ -33,7 +44,7 @@ export const navItems: readonly NavItem[] = [
   { key: "signatures", href: "/admin/signatures", icon: FileSignature },
   { key: "payments", href: "/admin/payments", icon: Coins },
   { key: "reports", href: "/admin/reports", icon: BarChart3 },
-  { key: "users", href: "/admin/users", icon: ShieldCheck, adminOnly: true },
+  { key: "users", href: "/admin/users", icon: ShieldCheck, adminOnly: true, prefetch: false },
   { key: "settings", href: "/admin/settings", icon: Settings },
 ] as const
 
