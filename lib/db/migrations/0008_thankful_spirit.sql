@@ -1,0 +1,1 @@
+ALTER TABLE `request_type` ADD `proof_config` text;

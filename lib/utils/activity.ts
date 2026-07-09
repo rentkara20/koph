@@ -16,8 +16,13 @@ interface LogActivityOptions {
   ipAddress?: string
 }
 
-export async function logActivity(opts: LogActivityOptions) {
-  await db.insert(activityLogs).values({
+// Minimal shape shared by `db` and a transaction handle, so callers can write the
+// audit row inside the same transaction as the state change it records (OI-0:
+// state + audit must be atomic). Defaults to the top-level `db` connection.
+type DbLike = Pick<typeof db, "insert">
+
+export async function logActivity(opts: LogActivityOptions, executor: DbLike = db) {
+  await executor.insert(activityLogs).values({
     id: createId(),
     entityType: opts.entityType,
     entityId: opts.entityId,

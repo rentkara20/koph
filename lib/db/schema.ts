@@ -92,6 +92,10 @@ export const requestTypes = sqliteTable("request_type", {
   nameAr: text("name_ar").notNull(),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   sortOrder: integer("sort_order").notNull().default(0),
+  // Proof requirements for tasks of this type, as JSON ProofConfig
+  // ({ signature?: boolean, photos?: number }). Null = defer to system default.
+  // Resolved by lib/domain/proof.ts (see OI-0 / Master Roadmap Phase 1).
+  proofConfig: text("proof_config"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
 })
 

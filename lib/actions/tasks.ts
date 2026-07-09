@@ -16,6 +16,7 @@ import {
   requestItems,
   requests,
   requestTypes,
+  signatureRequests,
 } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
@@ -38,7 +39,13 @@ import { checkRateLimit } from "@/lib/utils/rate-limit"
 import { assetStatusAfter, canAssetTransition, type AssetStatus } from "@/lib/domain/asset-status"
 import { recordAssetEvent } from "@/lib/actions/assets"
 import { isValidActiveFailureReason } from "@/lib/actions/failure-reasons"
-import { getRequiredDeliveryPhotoCount, getTaskTokenTtlMs } from "@/lib/actions/settings"
+import {
+  getRequiredDeliveryPhotoCount,
+  getTaskTokenTtlMs,
+  isProofEnforcementEnabled,
+  getSystemDefaultProof,
+} from "@/lib/actions/settings"
+import { parseProofConfig, resolveProofRequirements } from "@/lib/domain/proof"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
@@ -195,7 +202,8 @@ export async function getTasksForRequest(requestId: string) {
 
 export async function signOffTask(
   taskId: string,
-  quantity?: number
+  quantity?: number,
+  noPaymentReason?: string
 ): Promise<ActionResult> {
   const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
@@ -233,6 +241,43 @@ export async function signOffTask(
   // unit — require an explicit number instead of guessing
   if (contract && requiresQuantity(contract.pricingModel as PricingModel) && !quantity) {
     return { error: "Quantity is required for this contract's pricing model" }
+  }
+
+  // OI-0 proof gate: when enforcement is enabled, a task whose resolved proof
+  // requirements include a customer signature cannot be closed until a signed
+  // signature request exists for it (or its parent request). Overrides — an
+  // admin rescuing a mistakenly-failed task — bypass the gate. Enforcement is
+  // OFF by default so operators can author proof config before it blocks.
+  if (!isOverride && (await isProofEnforcementEnabled())) {
+    const systemDefault = await getSystemDefaultProof()
+    const [reqTypeRow] = await db
+      .select({ proofConfig: requestTypes.proofConfig })
+      .from(requestTypes)
+      .where(eq(requestTypes.id, parentRequest.typeId))
+    const proof = resolveProofRequirements(
+      [parseProofConfig(reqTypeRow?.proofConfig)],
+      {},
+      systemDefault
+    )
+    if (proof.signature) {
+      const [signed] = await db
+        .select({ id: signatureRequests.id })
+        .from(signatureRequests)
+        .where(
+          and(
+            eq(signatureRequests.status, "signed"),
+            or(
+              eq(signatureRequests.partnerTaskId, taskId),
+              eq(signatureRequests.requestId, task.requestId)
+            )
+          )
+        )
+      if (!signed) {
+        return {
+          error: "A signed customer signature is required before this task can be closed",
+        }
+      }
+    }
   }
 
   try {
@@ -339,6 +384,19 @@ export async function signOffTask(
     i18nKey: isOverride ? "activity.taskForceCompleted" : "activity.taskSignedOff",
     performedBy: session.user.id,
   })
+
+  // OI-0: a task closed with no contract produces no partner payment. Record why,
+  // so a zero-payment close is an explicit, audited decision rather than silent.
+  if (!contract) {
+    await logActivity({
+      entityType: "request",
+      entityId: task.requestId,
+      action: "task_closed_no_payment",
+      i18nKey: "activity.taskClosedNoPayment",
+      i18nData: { reason: noPaymentReason ?? "no_contract" },
+      performedBy: session.user.id,
+    })
+  }
 
   await syncRequestStatus(task.requestId)
   revalidatePath(`/admin/requests/${task.requestId}`)

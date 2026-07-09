@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { appSettings } from "@/lib/db/schema"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
+import { SYSTEM_DEFAULT_PROOF, type ProofRequirements } from "@/lib/domain/proof"
 
 export type SettingsActionResult = { error?: string }
 
@@ -160,6 +161,61 @@ export async function updatePricingPaymentSettings(
 
   revalidatePath("/admin/settings/pricing-payments")
   revalidatePath("/admin/payments")
+  return {}
+}
+
+// ─── Proof & verification settings (OI-0) ────────────────────────────────────
+// Enforcement is OFF by default so operators can author per-request-type proof
+// config BEFORE the gate starts blocking sign-off. The system default is the
+// last link in the resolution chain (lib/domain/proof.ts).
+
+export type ProofSettings = {
+  enforcementEnabled: boolean
+  systemDefault: ProofRequirements
+}
+
+export async function isProofEnforcementEnabled(): Promise<boolean> {
+  return getSetting("proofEnforcementEnabled", false)
+}
+
+export async function getSystemDefaultProof(): Promise<ProofRequirements> {
+  const signature = await getSetting("proofDefaultSignature", SYSTEM_DEFAULT_PROOF.signature)
+  const photos = await getSetting("proofDefaultPhotos", SYSTEM_DEFAULT_PROOF.photos)
+  return {
+    signature: Boolean(signature),
+    photos: Math.min(10, Math.max(0, Math.floor(Number(photos)))),
+  }
+}
+
+export async function readProofSettingsForAdmin(): Promise<ProofSettings | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+  const [enforcementEnabled, systemDefault] = await Promise.all([
+    isProofEnforcementEnabled(),
+    getSystemDefaultProof(),
+  ])
+  return { enforcementEnabled, systemDefault }
+}
+
+export async function updateProofSettings(
+  input: Partial<{ enforcementEnabled: boolean; signature: boolean; photos: number }>
+): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  if (input.enforcementEnabled !== undefined) {
+    await setSetting("proofEnforcementEnabled", Boolean(input.enforcementEnabled), session.user.id)
+  }
+  if (input.signature !== undefined) {
+    await setSetting("proofDefaultSignature", Boolean(input.signature), session.user.id)
+  }
+  if (input.photos !== undefined) {
+    const n = input.photos
+    if (!Number.isInteger(n) || n < 0 || n > 10) return { error: "Photo count must be 0–10" }
+    await setSetting("proofDefaultPhotos", n, session.user.id)
+  }
+
+  revalidatePath("/admin/settings/proof")
   return {}
 }
 

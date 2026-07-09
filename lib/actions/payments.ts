@@ -15,8 +15,24 @@ import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { periodSchema, firstError } from "@/lib/validation/schemas"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 import { getBusinessMonthOffsetModifier } from "@/lib/actions/settings"
+import { logActivity } from "@/lib/utils/activity"
+import { sumBatchTotal } from "@/lib/domain/payments"
 
 export type PaymentActionResult = { error?: string; id?: string }
+
+// Recompute a batch's stored total from its current line items, inside the given
+// transaction. The batch total must always equal the sum of items still in it
+// (batched/paid); a held item is pulled out and must stop counting. Call after
+// any change to batch membership. Pure math lives in lib/domain/payments.ts.
+type TxLike = Parameters<Parameters<typeof db.transaction>[0]>[0]
+async function recalcBatchTotal(tx: TxLike, batchId: string): Promise<void> {
+  const lines = await tx
+    .select({ totalAmount: partnerPayments.totalAmount, status: partnerPayments.status })
+    .from(partnerPayments)
+    .where(eq(partnerPayments.batchId, batchId))
+  const total = sumBatchTotal(lines)
+  await tx.update(paymentBatches).set({ totalAmount: total }).where(eq(paymentBatches.id, batchId))
+}
 
 // ─── Get all payment batches ──────────────────────────────────────────────────
 
@@ -199,6 +215,18 @@ export async function generateBatch(
         .update(partnerPayments)
         .set({ batchId, status: "batched", updatedAt: Date.now() })
         .where(inArray(partnerPayments.id, payments.map((p) => p.id)))
+
+      await logActivity(
+        {
+          entityType: "payment_batch",
+          entityId: batchId,
+          action: "batch_generated",
+          i18nKey: "activity.batchGenerated",
+          i18nData: { count: payments.length, total: totalAmount, period },
+          performedBy: session.user.id,
+        },
+        tx
+      )
     })
   } catch (error) {
     if (error instanceof Error && error.message === "OPEN_BATCH_EXISTS") {
@@ -236,10 +264,22 @@ export async function approveBatch(batchId: string): Promise<PaymentActionResult
   if (!batch) return { error: "Not found" }
   if (batch.status !== "draft") return { error: "Only draft batches can be approved" }
 
-  await db
-    .update(paymentBatches)
-    .set({ status: "approved", approvedBy: session.user.id, approvedAt: Date.now() })
-    .where(eq(paymentBatches.id, batchId))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(paymentBatches)
+      .set({ status: "approved", approvedBy: session.user.id, approvedAt: Date.now() })
+      .where(eq(paymentBatches.id, batchId))
+    await logActivity(
+      {
+        entityType: "payment_batch",
+        entityId: batchId,
+        action: "batch_approved",
+        i18nKey: "activity.batchApproved",
+        performedBy: session.user.id,
+      },
+      tx
+    )
+  })
 
   revalidatePath(`/admin/payments/${batchId}`)
   revalidatePath("/admin/payments")
@@ -254,10 +294,22 @@ export async function markBatchSentToFinance(batchId: string): Promise<PaymentAc
   if (!batch) return { error: "Not found" }
   if (batch.status !== "approved") return { error: "Only approved batches can be sent to finance" }
 
-  await db
-    .update(paymentBatches)
-    .set({ status: "sent_to_finance", sentAt: Date.now() })
-    .where(eq(paymentBatches.id, batchId))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(paymentBatches)
+      .set({ status: "sent_to_finance", sentAt: Date.now() })
+      .where(eq(paymentBatches.id, batchId))
+    await logActivity(
+      {
+        entityType: "payment_batch",
+        entityId: batchId,
+        action: "batch_sent_to_finance",
+        i18nKey: "activity.batchSentToFinance",
+        performedBy: session.user.id,
+      },
+      tx
+    )
+  })
 
   revalidatePath(`/admin/payments/${batchId}`)
   revalidatePath("/admin/payments")
@@ -283,6 +335,18 @@ export async function markBatchPaid(batchId: string): Promise<PaymentActionResul
       .update(partnerPayments)
       .set({ status: "paid", updatedAt: Date.now() })
       .where(and(eq(partnerPayments.batchId, batchId), eq(partnerPayments.status, "batched")))
+
+    await logActivity(
+      {
+        entityType: "payment_batch",
+        entityId: batchId,
+        action: "batch_paid",
+        i18nKey: "activity.batchPaid",
+        i18nData: { total: batch.totalAmount },
+        performedBy: session.user.id,
+      },
+      tx
+    )
   })
 
   revalidatePath(`/admin/payments/${batchId}`)
@@ -302,12 +366,32 @@ export async function holdPayment(paymentId: string): Promise<PaymentActionResul
   if (!payment) return { error: "Not found" }
   if (payment.status === "paid") return { error: "Paid items cannot be held" }
 
-  await db
-    .update(partnerPayments)
-    .set({ status: "on_hold", batchId: null, updatedAt: Date.now() })
-    .where(eq(partnerPayments.id, paymentId))
+  const formerBatchId = payment.batchId
 
-  if (payment.batchId) revalidatePath(`/admin/payments/${payment.batchId}`)
+  await db.transaction(async (tx) => {
+    await tx
+      .update(partnerPayments)
+      .set({ status: "on_hold", batchId: null, updatedAt: Date.now() })
+      .where(eq(partnerPayments.id, paymentId))
+
+    // OI-0: recompute the former batch's total so the held amount stops counting.
+    if (formerBatchId) {
+      await recalcBatchTotal(tx, formerBatchId)
+      await logActivity(
+        {
+          entityType: "payment_batch",
+          entityId: formerBatchId,
+          action: "payment_held",
+          i18nKey: "activity.paymentHeld",
+          i18nData: { paymentId, amount: payment.totalAmount },
+          performedBy: session.user.id,
+        },
+        tx
+      )
+    }
+  })
+
+  if (formerBatchId) revalidatePath(`/admin/payments/${formerBatchId}`)
   revalidatePath("/admin/payments")
   return { id: paymentId }
 }
@@ -320,11 +404,24 @@ export async function releasePayment(paymentId: string): Promise<PaymentActionRe
   if (!payment) return { error: "Not found" }
   if (payment.status !== "on_hold") return { error: "Only held items can be released" }
 
-  // Back to pending so it gets picked up by the next batch generation for its period
-  await db
-    .update(partnerPayments)
-    .set({ status: "pending", updatedAt: Date.now() })
-    .where(eq(partnerPayments.id, paymentId))
+  await db.transaction(async (tx) => {
+    // Back to pending so it gets picked up by the next batch generation for its period
+    await tx
+      .update(partnerPayments)
+      .set({ status: "pending", updatedAt: Date.now() })
+      .where(eq(partnerPayments.id, paymentId))
+    await logActivity(
+      {
+        entityType: "payment_batch",
+        entityId: paymentId,
+        action: "payment_released",
+        i18nKey: "activity.paymentReleased",
+        i18nData: { paymentId, amount: payment.totalAmount },
+        performedBy: session.user.id,
+      },
+      tx
+    )
+  })
 
   revalidatePath("/admin/payments")
   return { id: paymentId }
