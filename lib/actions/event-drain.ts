@@ -8,6 +8,7 @@ import { db } from "@/lib/db"
 import { domainEvents, eventDeliveries } from "@/lib/db/schema"
 import { CONSUMERS, nextRetryDelayMs, isDead, type Consumer } from "@/lib/domain/domain-events"
 import { deliverNotificationsForEvent } from "@/lib/actions/notification-consumer"
+import { deliverNotionForEvent } from "@/lib/actions/notion-consumer"
 
 const DRAIN_BATCH_SIZE = 50
 
@@ -22,11 +23,12 @@ interface ConsumerEvent {
 }
 
 // The `notifications` consumer (P7) translates events into admin in-app
-// notifications. `projections` remains a verification-only no-op until the
-// projections work lands.
+// notifications. `notion` (P9) mirrors asset events into Notion. `projections`
+// remains a verification-only no-op until the projections work lands.
 const CONSUMER_HANDLERS: Record<Consumer, (event: ConsumerEvent) => Promise<void>> = {
   projections: async () => {},
   notifications: (event) => deliverNotificationsForEvent(db, event),
+  notion: (event) => deliverNotionForEvent(db, event),
 }
 
 export interface DrainResult {

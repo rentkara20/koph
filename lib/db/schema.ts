@@ -1329,7 +1329,7 @@ export const eventDeliveries = sqliteTable(
     eventId: text("event_id")
       .notNull()
       .references(() => domainEvents.id, { onDelete: "cascade" }),
-    consumer: text("consumer", { enum: ["projections", "notifications"] }).notNull(),
+    consumer: text("consumer", { enum: ["projections", "notifications", "notion"] }).notNull(),
     status: text("status", { enum: ["pending", "delivered", "failed", "dead"] })
       .notNull()
       .default("pending"),

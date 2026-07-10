@@ -2,7 +2,7 @@
 // retry backoff schedule, and dedupe-key construction. No I/O here — the
 // actual DB writes live in lib/actions/domain-events.ts.
 
-export const CONSUMERS = ["projections", "notifications"] as const
+export const CONSUMERS = ["projections", "notifications", "notion"] as const
 export type Consumer = (typeof CONSUMERS)[number]
 
 export const MAX_DELIVERY_ATTEMPTS = 6
