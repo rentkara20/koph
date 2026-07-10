@@ -134,6 +134,34 @@ describe("receivePurchaseOrderLineCore", () => {
     expect(after.length).toBe(before.length)
   })
 
+  test("procurement asset is visible via the assets list join (leftJoin + coalesced origin)", async () => {
+    const { receivePurchaseOrderLineCore } = await import("./procurement")
+    const { sql, eq, desc, and } = await import("drizzle-orm")
+    const { lineId } = await seedPurchaseOrder(1)
+
+    let assetId = ""
+    await db.transaction(async (tx) => {
+      const r = await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineId, serialNumber: "PO-VIS-1" }, "u1")
+      assetId = r.assetId
+    })
+
+    // Mirror the getAssets query: LEFT JOIN both origins + COALESCE description.
+    const rows = await db
+      .select({
+        id: schema.orderUnits.id,
+        orderLineId: schema.orderUnits.orderLineId,
+        description: sql<string>`coalesce(${schema.orderLines.description}, ${schema.purchaseOrderLines.itemDescription})`,
+      })
+      .from(schema.orderUnits)
+      .leftJoin(schema.orderLines, eq(schema.orderUnits.orderLineId, schema.orderLines.id))
+      .leftJoin(schema.purchaseOrderLines, eq(schema.orderUnits.purchaseOrderLineId, schema.purchaseOrderLines.id))
+      .where(eq(schema.orderUnits.id, assetId))
+
+    expect(rows.length).toBe(1) // was 0 with the old INNER JOIN on orderLineId
+    expect(rows[0].orderLineId).toBeNull()
+    expect(rows[0].description).toBe("IT laptop")
+  })
+
   test("rejects an unknown purchase order line, no row inserted", async () => {
     const { receivePurchaseOrderLineCore } = await import("./procurement")
     const before = await db.select().from(schema.orderUnits)

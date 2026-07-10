@@ -1,6 +1,6 @@
 "use server"
 
-import { and, count, desc, eq, isNull, like, or } from "drizzle-orm"
+import { and, count, desc, eq, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
@@ -10,6 +10,7 @@ import {
   orderLines,
   orders,
   orderUnits,
+  purchaseOrders,
   purchaseOrderLines,
   requests,
   suppliers,
@@ -60,11 +61,23 @@ export async function getAssets(filters: AssetFilters = {}) {
         like(orderUnits.assetTag, q),
         like(orderLines.description, q),
         like(orderLines.brand, q),
-        like(orderLines.model, q)
+        like(orderLines.model, q),
+        like(purchaseOrderLines.itemDescription, q),
+        like(purchaseOrderLines.brand, q),
+        like(purchaseOrderLines.model, q)
       )
     )
   }
   const where = conds.length ? and(...conds) : undefined
+
+  // An asset originates from EXACTLY ONE of a client order line OR a procurement
+  // PO line (order_unit_single_origin_chk). LEFT joins on both origins + a
+  // COALESCE so procurement-minted assets (orderLineId NULL) are not dropped
+  // from the list/count the way an INNER JOIN on orderLineId silently did.
+  const descriptionCol = sql<string>`coalesce(${orderLines.description}, ${purchaseOrderLines.itemDescription})`
+  const brandCol = sql<string | null>`coalesce(${orderLines.brand}, ${purchaseOrderLines.brand})`
+  const modelCol = sql<string | null>`coalesce(${orderLines.model}, ${purchaseOrderLines.model})`
+  const orderNumberCol = sql<string | null>`coalesce(${orders.orderNumber}, ${purchaseOrders.poNumber})`
 
   const [rows, [{ total }]] = await Promise.all([
     db
@@ -76,17 +89,19 @@ export async function getAssets(filters: AssetFilters = {}) {
         location: orderUnits.location,
         purchaseCost: orderUnits.purchaseCost,
         warrantyEnd: orderUnits.warrantyEnd,
-        description: orderLines.description,
-        brand: orderLines.brand,
-        model: orderLines.model,
-        orderNumber: orders.orderNumber,
+        description: descriptionCol,
+        brand: brandCol,
+        model: modelCol,
+        orderNumber: orderNumberCol,
         supplierName: suppliers.name,
         currentCustomerName: customers.name,
         updatedAt: orderUnits.updatedAt,
       })
       .from(orderUnits)
-      .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
-      .innerJoin(orders, eq(orderUnits.orderId, orders.id))
+      .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(orders, eq(orderUnits.orderId, orders.id))
+      .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+      .leftJoin(purchaseOrders, eq(orderUnits.purchaseOrderId, purchaseOrders.id))
       .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
       .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
       .where(where)
@@ -96,7 +111,8 @@ export async function getAssets(filters: AssetFilters = {}) {
     db
       .select({ total: count() })
       .from(orderUnits)
-      .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
       .where(where),
   ])
 
@@ -132,17 +148,21 @@ export async function getAsset(id: string) {
       currentRequestId: orderUnits.currentRequestId,
       currentCustomerId: orderUnits.currentCustomerId,
       createdAt: orderUnits.createdAt,
-      description: orderLines.description,
-      brand: orderLines.brand,
-      model: orderLines.model,
+      description: sql<string>`coalesce(${orderLines.description}, ${purchaseOrderLines.itemDescription})`,
+      brand: sql<string | null>`coalesce(${orderLines.brand}, ${purchaseOrderLines.brand})`,
+      model: sql<string | null>`coalesce(${orderLines.model}, ${purchaseOrderLines.model})`,
       orderId: orders.id,
-      orderNumber: orders.orderNumber,
+      orderNumber: sql<string | null>`coalesce(${orders.orderNumber}, ${purchaseOrders.poNumber})`,
       supplierName: suppliers.name,
       currentCustomerName: customers.name,
     })
     .from(orderUnits)
-    .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
-    .innerJoin(orders, eq(orderUnits.orderId, orders.id))
+    // LEFT joins on both origins so a procurement-minted asset (orderLineId
+    // NULL) still loads — an INNER JOIN on orderLineId returned null → 404.
+    .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+    .leftJoin(orders, eq(orderUnits.orderId, orders.id))
+    .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+    .leftJoin(purchaseOrders, eq(orderUnits.purchaseOrderId, purchaseOrders.id))
     .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
     .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
     .where(eq(orderUnits.id, id))

@@ -2,7 +2,7 @@
 
 import { count, desc, eq, sql, sum } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { orderLines, orderUnits, partners, partnerPayments, partnerTasks, paymentBatches, requests } from "@/lib/db/schema"
+import { orderLines, orderUnits, purchaseOrderLines, partners, partnerPayments, partnerTasks, paymentBatches, requests } from "@/lib/db/schema"
 import { getStaffSession } from "@/lib/auth/session"
 
 // ─── Inventory: on-hand counts by location and model ─────────────────────────
@@ -22,16 +22,22 @@ export async function getInventoryByModel() {
   const session = await getStaffSession()
   if (!session) return []
 
+  // COALESCE across both origins so procurement-minted assets (orderLineId
+  // NULL) are counted here too — an INNER JOIN on orderLineId dropped them,
+  // making this report disagree with getInventoryByLocation on fleet size.
+  const brandCol = sql<string | null>`coalesce(${orderLines.brand}, ${purchaseOrderLines.brand})`
+  const modelCol = sql<string | null>`coalesce(${orderLines.model}, ${purchaseOrderLines.model})`
   return db
     .select({
-      brand: orderLines.brand,
-      model: orderLines.model,
+      brand: brandCol,
+      model: modelCol,
       status: orderUnits.status,
       count: count(),
     })
     .from(orderUnits)
-    .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
-    .groupBy(orderLines.brand, orderLines.model, orderUnits.status)
+    .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+    .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+    .groupBy(brandCol, modelCol, orderUnits.status)
     .orderBy(desc(count()))
     .limit(100)
 }

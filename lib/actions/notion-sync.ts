@@ -1,8 +1,8 @@
 "use server"
 
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { customers, orderLines, orderUnits } from "@/lib/db/schema"
+import { customers, orderLines, orderUnits, purchaseOrderLines } from "@/lib/db/schema"
 import { getSessionWithRole } from "@/lib/auth/session"
 import { isNotionSyncEnabled, upsertAssetInNotion } from "@/lib/integrations/notion"
 
@@ -24,12 +24,14 @@ export async function syncAssetsToNotion(): Promise<SyncResult> {
       purchaseCost: orderUnits.purchaseCost,
       warrantyEnd: orderUnits.warrantyEnd,
       id: orderUnits.id,
-      brand: orderLines.brand,
-      model: orderLines.model,
+      brand: sql<string | null>`coalesce(${orderLines.brand}, ${purchaseOrderLines.brand})`,
+      model: sql<string | null>`coalesce(${orderLines.model}, ${purchaseOrderLines.model})`,
       currentCustomerName: customers.name,
     })
     .from(orderUnits)
-    .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+    // LEFT joins on both origins — procurement assets must sync to Notion too.
+    .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+    .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
     .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
