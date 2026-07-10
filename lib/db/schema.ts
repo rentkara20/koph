@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm"
-import { check, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import {
+  type AnySQLiteColumn,
+  check,
+  index,
+  integer,
+  real,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -853,11 +862,20 @@ export const purchaseOrders = sqliteTable(
     invoiceRef: text("invoice_ref"),
     orderedAt: integer("ordered_at"),
     notes: text("notes"),
+    // Commercial & Sourcing (M4.5): the operational anchor. Nullable for the
+    // additive rollout only — every PO (manual or commercial-flow) gets one at
+    // write time; a follow-up migration flips this NOT NULL once backfilled.
+    procurementCaseId: text("procurement_case_id").references(() => procurementCases.id, {
+      onDelete: "restrict",
+    }),
     createdBy: text("created_by").references(() => users.id),
     createdAt: integer("created_at").notNull().$defaultFn(now),
     updatedAt: integer("updated_at").notNull().$defaultFn(now),
   },
-  (t) => [index("purchase_order_supplier_idx").on(t.supplierId)]
+  (t) => [
+    index("purchase_order_supplier_idx").on(t.supplierId),
+    index("purchase_order_case_idx").on(t.procurementCaseId),
+  ]
 )
 
 export const purchaseOrderLines = sqliteTable(
@@ -879,6 +897,204 @@ export const purchaseOrderLines = sqliteTable(
   },
   (t) => [index("purchase_order_line_po_idx").on(t.purchaseOrderId)]
 )
+
+// ─── Commercial & Sourcing (M4.5) ────────────────────────────────────────────
+// KOPH owns Need→Sourcing→RFQ→Quotations→Evaluation→Approval→Procurement Case.
+// Zoho/Odoo own the PO itself onward (vendor bills, accounting, payments).
+// KOPH resumes ownership at Receiving (purchase_order/purchase_order_line
+// above, unchanged). Every node here is permanent: no delete action is ever
+// exposed, only status transitions to cancelled/superseded/closed. Past
+// commercial_approval / procurement_case creation / its ERP-PO link, those
+// rows are never updated again — a change is a new row that supersedes.
+
+export const sourcingRequests = sqliteTable(
+  "sourcing_request",
+  {
+    id: text("id").primaryKey(),
+    sourceType: text("source_type", {
+      enum: ["customer_order", "stock_replenishment", "operational_need"],
+    }).notNull(),
+    // Only set when sourceType = customer_order.
+    orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
+    orderLineId: text("order_line_id").references(() => orderLines.id, { onDelete: "set null" }),
+    description: text("description").notNull(),
+    status: text("status", {
+      enum: [
+        "draft",
+        "rfq_sent",
+        "quotes_received",
+        "under_evaluation",
+        "approved",
+        "rejected",
+        "handed_off",
+        "cancelled",
+        "closed",
+      ],
+    })
+      .notNull()
+      .default("draft"),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("sourcing_request_order_idx").on(t.orderId),
+    index("sourcing_request_status_idx").on(t.status),
+  ]
+)
+
+export const supplierRfqs = sqliteTable(
+  "supplier_rfq",
+  {
+    id: text("id").primaryKey(),
+    sourcingRequestId: text("sourcing_request_id")
+      .notNull()
+      .references(() => sourcingRequests.id),
+    supplierId: text("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
+    status: text("status", {
+      enum: ["sent", "responded", "declined", "expired", "cancelled"],
+    })
+      .notNull()
+      .default("sent"),
+    sentAt: integer("sent_at").notNull().$defaultFn(now),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("supplier_rfq_request_idx").on(t.sourcingRequestId),
+    index("supplier_rfq_supplier_idx").on(t.supplierId),
+  ]
+)
+
+export const supplierQuotations = sqliteTable(
+  "supplier_quotation",
+  {
+    id: text("id").primaryKey(),
+    rfqId: text("rfq_id")
+      .notNull()
+      .references(() => supplierRfqs.id),
+    validUntil: integer("valid_until"),
+    notes: text("notes"),
+    status: text("status", {
+      enum: ["submitted", "selected", "rejected", "superseded", "cancelled"],
+    })
+      .notNull()
+      .default("submitted"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("supplier_quotation_rfq_idx").on(t.rfqId)]
+)
+
+// Line items are leaf detail rows of a still-existing quotation — cascade
+// here is only ever a backstop, the app never deletes the parent quotation.
+export const supplierQuotationLines = sqliteTable(
+  "supplier_quotation_line",
+  {
+    id: text("id").primaryKey(),
+    quotationId: text("quotation_id")
+      .notNull()
+      .references(() => supplierQuotations.id, { onDelete: "cascade" }),
+    itemDescription: text("item_description").notNull(),
+    qty: integer("qty").notNull().default(1),
+    unitPrice: real("unit_price"),
+    leadTimeDays: integer("lead_time_days"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("supplier_quotation_line_quotation_idx").on(t.quotationId)]
+)
+
+export const commercialEvaluations = sqliteTable(
+  "commercial_evaluation",
+  {
+    id: text("id").primaryKey(),
+    sourcingRequestId: text("sourcing_request_id")
+      .notNull()
+      .references(() => sourcingRequests.id),
+    chosenQuotationId: text("chosen_quotation_id").references(() => supplierQuotations.id),
+    status: text("status", { enum: ["active", "superseded", "cancelled"] })
+      .notNull()
+      .default("active"),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("commercial_evaluation_request_idx").on(t.sourcingRequestId)]
+)
+
+// Append-only past creation (locked, 2026-07-10): a re-approval after a
+// change is a new row referencing a (possibly new) evaluation, never an edit.
+export const commercialApprovals = sqliteTable(
+  "commercial_approval",
+  {
+    id: text("id").primaryKey(),
+    evaluationId: text("evaluation_id")
+      .notNull()
+      .references(() => commercialEvaluations.id),
+    decision: text("decision", { enum: ["approved", "rejected"] }).notNull(),
+    approverId: text("approver_id")
+      .notNull()
+      .references(() => users.id),
+    notes: text("notes"),
+    decidedAt: integer("decided_at").notNull().$defaultFn(now),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("commercial_approval_evaluation_idx").on(t.evaluationId)]
+)
+
+// The single operational anchor (locked, 2026-07-10): every purchase belongs
+// to exactly one. source="system_manual" covers manual POs created without
+// going through the commercial flow — never a second procurement workflow.
+// Append-only past creation and past its ERP-PO link being set: a change is a
+// new row (previousCaseId → old) that supersedes the old one, never an edit.
+export const procurementCases = sqliteTable(
+  "procurement_case",
+  {
+    id: text("id").primaryKey(),
+    source: text("source", { enum: ["commercial_flow", "system_manual"] }).notNull(),
+    // Both null for source="system_manual".
+    sourcingRequestId: text("sourcing_request_id").references(() => sourcingRequests.id),
+    commercialApprovalId: text("commercial_approval_id").references(() => commercialApprovals.id),
+    status: text("status", {
+      enum: ["open", "handed_off", "po_linked", "closed", "cancelled", "superseded"],
+    })
+      .notNull()
+      .default("open"),
+    // ERP link-back — set once, never updated after (see note above).
+    erpSystem: text("erp_system", { enum: ["zoho", "odoo"] }),
+    externalPoRef: text("external_po_ref"),
+    externalPoCreatedAt: integer("external_po_created_at"),
+    previousCaseId: text("previous_case_id").references((): AnySQLiteColumn => procurementCases.id),
+    supersededByCaseId: text("superseded_by_case_id").references(
+      (): AnySQLiteColumn => procurementCases.id
+    ),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("procurement_case_sourcing_request_idx").on(t.sourcingRequestId),
+    index("procurement_case_status_idx").on(t.status),
+  ]
+)
+
+export type SourcingRequest = typeof sourcingRequests.$inferSelect
+export type NewSourcingRequest = typeof sourcingRequests.$inferInsert
+export type SupplierRfq = typeof supplierRfqs.$inferSelect
+export type NewSupplierRfq = typeof supplierRfqs.$inferInsert
+export type SupplierQuotation = typeof supplierQuotations.$inferSelect
+export type NewSupplierQuotation = typeof supplierQuotations.$inferInsert
+export type SupplierQuotationLine = typeof supplierQuotationLines.$inferSelect
+export type NewSupplierQuotationLine = typeof supplierQuotationLines.$inferInsert
+export type CommercialEvaluation = typeof commercialEvaluations.$inferSelect
+export type NewCommercialEvaluation = typeof commercialEvaluations.$inferInsert
+export type CommercialApproval = typeof commercialApprovals.$inferSelect
+export type NewCommercialApproval = typeof commercialApprovals.$inferInsert
+export type ProcurementCase = typeof procurementCases.$inferSelect
+export type NewProcurementCase = typeof procurementCases.$inferInsert
 
 // ─── Warranty (separate module — assigned to an Asset, not asset fields) ────
 

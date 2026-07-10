@@ -1,0 +1,236 @@
+"use server"
+
+// Procurement Case (Milestone 4.5 / P4a) — the single operational anchor.
+// Every purchase belongs to exactly one: created either from an approved
+// commercial-flow (source="commercial_flow") or auto-created for a manual PO
+// (source="system_manual") — never a second procurement workflow. Append-only
+// past creation and past its ERP-PO link being set (locked, 2026-07-10): a
+// change is a new row that supersedes the old one, never an edit.
+import { desc, eq } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
+import { z } from "zod"
+import { db } from "@/lib/db"
+import { commercialApprovals, procurementCases, purchaseOrders, sourcingRequests } from "@/lib/db/schema"
+import { createId } from "@/lib/utils/ids"
+import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
+import { emitDomainEvent } from "@/lib/actions/domain-events"
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+type ActionResult = { error?: string; id?: string }
+
+// ─── Create (called both by the manual-PO chokepoint and the commercial-flow
+// handoff — same function, one anchor) ───────────────────────────────────────
+
+const createCaseSchema = z.object({
+  source: z.enum(["commercial_flow", "system_manual"]),
+  sourcingRequestId: z.string().trim().min(1).optional(),
+  commercialApprovalId: z.string().trim().min(1).optional(),
+})
+
+export async function createProcurementCaseCore(
+  tx: Tx,
+  input: z.infer<typeof createCaseSchema>,
+  actorUserId: string | null
+): Promise<{ caseId: string }> {
+  const d = createCaseSchema.parse(input)
+  if (d.source === "commercial_flow" && !d.commercialApprovalId) {
+    throw new Error("commercial_flow case requires an approved commercialApprovalId")
+  }
+
+  const caseId = createId()
+  await tx.insert(procurementCases).values({
+    id: caseId,
+    source: d.source,
+    sourcingRequestId: d.sourcingRequestId ?? null,
+    commercialApprovalId: d.commercialApprovalId ?? null,
+    status: "open",
+    createdBy: actorUserId,
+  })
+
+  await emitDomainEvent(tx, {
+    aggregateType: "procurement_case",
+    aggregateId: caseId,
+    eventType: "ProcurementCaseCreated",
+    payload: { source: d.source, sourcingRequestId: d.sourcingRequestId ?? null },
+    dedupeKey: `procurement_case:${caseId}:ProcurementCaseCreated`,
+    actorUserId,
+  })
+
+  return { caseId }
+}
+
+// ─── Link the external ERP PO reference back onto the case ──────────────────
+// Set-once: throws if already linked, per the immutable-history rule — the
+// caller must supersede the case instead of editing the link.
+
+const linkExternalPoSchema = z.object({
+  procurementCaseId: z.string().trim().min(1),
+  erpSystem: z.enum(["zoho", "odoo"]),
+  externalPoRef: z.string().trim().min(1).max(120),
+})
+
+export async function linkExternalPoCore(
+  tx: Tx,
+  input: z.infer<typeof linkExternalPoSchema>,
+  actorUserId: string | null
+): Promise<void> {
+  const d = linkExternalPoSchema.parse(input)
+
+  const [existing] = await tx
+    .select({ externalPoRef: procurementCases.externalPoRef, status: procurementCases.status })
+    .from(procurementCases)
+    .where(eq(procurementCases.id, d.procurementCaseId))
+  if (!existing) throw new Error("Procurement case not found")
+  if (existing.status === "superseded") throw new Error("Procurement case is superseded — link the case that superseded it")
+  if (existing.externalPoRef) {
+    throw new Error("Procurement case already linked to an external PO — supersede the case to change it")
+  }
+
+  await tx
+    .update(procurementCases)
+    .set({
+      erpSystem: d.erpSystem,
+      externalPoRef: d.externalPoRef,
+      externalPoCreatedAt: Date.now(),
+      status: "po_linked",
+      updatedAt: Date.now(),
+    })
+    .where(eq(procurementCases.id, d.procurementCaseId))
+
+  await emitDomainEvent(tx, {
+    aggregateType: "procurement_case",
+    aggregateId: d.procurementCaseId,
+    eventType: "ProcurementCaseLinkedToExternalPo",
+    payload: { erpSystem: d.erpSystem, externalPoRef: d.externalPoRef },
+    dedupeKey: `procurement_case:${d.procurementCaseId}:ProcurementCaseLinkedToExternalPo`,
+    actorUserId,
+  })
+}
+
+export async function linkExternalPo(input: z.infer<typeof linkExternalPoSchema>): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = linkExternalPoSchema.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+
+  try {
+    await db.transaction(async (tx) => {
+      await linkExternalPoCore(tx, parsed.data, session.user.id)
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to link external PO" }
+  }
+
+  revalidatePath("/admin/procurement")
+  return { id: input.procurementCaseId }
+}
+
+// ─── Supersede — the only way to "change" a case past creation ──────────────
+
+const supersedeSchema = z.object({
+  caseId: z.string().trim().min(1),
+  reason: z.string().trim().min(1).max(2000),
+})
+
+// Exported separately so integration tests can exercise the atomic supersede
+// path directly, same rationale as createAssetCore/receivePurchaseOrderLineCore.
+export async function supersedeProcurementCaseCore(
+  tx: Tx,
+  input: z.infer<typeof supersedeSchema>,
+  actorUserId: string | null
+): Promise<{ caseId: string }> {
+  const d = supersedeSchema.parse(input)
+
+  const [old] = await tx.select().from(procurementCases).where(eq(procurementCases.id, d.caseId))
+  if (!old) throw new Error("Procurement case not found")
+  if (old.status === "superseded") throw new Error("Procurement case is already superseded")
+
+  const newCaseId = createId()
+  await tx.insert(procurementCases).values({
+    id: newCaseId,
+    source: old.source,
+    sourcingRequestId: old.sourcingRequestId,
+    commercialApprovalId: old.commercialApprovalId,
+    status: "open",
+    previousCaseId: old.id,
+    createdBy: actorUserId,
+  })
+  await tx
+    .update(procurementCases)
+    .set({ status: "superseded", supersededByCaseId: newCaseId, updatedAt: Date.now() })
+    .where(eq(procurementCases.id, old.id))
+
+  await emitDomainEvent(tx, {
+    aggregateType: "procurement_case",
+    aggregateId: newCaseId,
+    eventType: "ProcurementCaseSuperseded",
+    payload: { previousCaseId: old.id, reason: d.reason },
+    dedupeKey: `procurement_case:${old.id}:ProcurementCaseSuperseded:${newCaseId}`,
+    actorUserId,
+  })
+
+  return { caseId: newCaseId }
+}
+
+export async function supersedeProcurementCase(
+  input: z.infer<typeof supersedeSchema>
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = supersedeSchema.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+
+  let newCaseId = ""
+  try {
+    await db.transaction(async (tx) => {
+      const result = await supersedeProcurementCaseCore(tx, parsed.data, session.user.id)
+      newCaseId = result.caseId
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to supersede procurement case" }
+  }
+
+  revalidatePath("/admin/procurement")
+  return { id: newCaseId }
+}
+
+// ─── Queries ──────────────────────────────────────────────────────────────────
+
+export async function getProcurementCase(id: string) {
+  const session = await getStaffSession()
+  if (!session) return null
+
+  const [procurementCase] = await db.select().from(procurementCases).where(eq(procurementCases.id, id))
+  if (!procurementCase) return null
+
+  const [sourcingRequest] = procurementCase.sourcingRequestId
+    ? await db.select().from(sourcingRequests).where(eq(sourcingRequests.id, procurementCase.sourcingRequestId))
+    : [null]
+  const [approval] = procurementCase.commercialApprovalId
+    ? await db.select().from(commercialApprovals).where(eq(commercialApprovals.id, procurementCase.commercialApprovalId))
+    : [null]
+  const linkedPurchaseOrders = await db
+    .select({ id: purchaseOrders.id, poNumber: purchaseOrders.poNumber, status: purchaseOrders.status })
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.procurementCaseId, id))
+
+  return { procurementCase, sourcingRequest, approval, linkedPurchaseOrders }
+}
+
+// Latest non-superseded case for a sourcing request (a supersede copies
+// sourcingRequestId onto the new case, so more than one row can share it).
+export async function getProcurementCaseForSourcingRequest(sourcingRequestId: string) {
+  const session = await getStaffSession()
+  if (!session) return null
+
+  const cases = await db
+    .select()
+    .from(procurementCases)
+    .where(eq(procurementCases.sourcingRequestId, sourcingRequestId))
+    .orderBy(desc(procurementCases.createdAt))
+  if (cases.length === 0) return null
+
+  return cases.find((c) => c.status !== "superseded") ?? cases[0]
+}

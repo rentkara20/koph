@@ -20,7 +20,8 @@
     "menu": "القائمة",
     "openMenu": "فتح القائمة",
     "more": "المزيد",
-    "users": "المستخدمون والصلاحيات"
+    "users": "المستخدمون والصلاحيات",
+    "sourcing": "التوريد"
   },
   "common": {
     "save": "حفظ",
@@ -934,5 +935,85 @@
     "portalLink": "رابط بوابة العميل",
     "copyLink": "نسخ الرابط",
     "linkCopied": "تم نسخ الرابط"
+  },
+  "sourcing": {
+    "title": "التوريد",
+    "subtitle": "طلبات التوريد وطلبات عروض الأسعار وعروض الموردين",
+    "newRequest": "طلب توريد جديد",
+    "noRequests": "لا توجد طلبات توريد بعد",
+    "description": "الوصف",
+    "sourceType": "المصدر",
+    "sourceTypes": {
+      "customer_order": "طلب عميل",
+      "stock_replenishment": "تجديد المخزون",
+      "operational_need": "احتياج تشغيلي"
+    },
+    "orderId": "رقم الطلب",
+    "orderLineId": "رقم بند الطلب",
+    "save": "حفظ",
+    "requestCreated": "تم إنشاء طلب التوريد",
+    "statuses": {
+      "draft": "مسودة",
+      "rfq_sent": "تم إرسال طلب العرض",
+      "quotes_received": "تم استلام العروض",
+      "under_evaluation": "قيد التقييم",
+      "approved": "معتمد",
+      "rejected": "مرفوض",
+      "handed_off": "تم التسليم",
+      "cancelled": "ملغى",
+      "closed": "مغلق"
+    },
+    "rfqs": "طلبات عروض الأسعار للموردين",
+    "sendRfq": "إرسال طلب عرض سعر",
+    "rfqsSent": "تم إرسال طلب/طلبات العرض",
+    "rfqStatuses": {
+      "sent": "مرسل",
+      "responded": "تم الرد",
+      "declined": "مرفوض",
+      "expired": "منتهي",
+      "cancelled": "ملغى"
+    },
+    "submitQuotation": "إرسال عرض السعر",
+    "quotationSubmitted": "تم إرسال عرض السعر",
+    "quoteComparison": "مقارنة العروض",
+    "supplier": "المورد",
+    "itemDescription": "وصف الصنف",
+    "qty": "الكمية",
+    "unitPrice": "سعر الوحدة",
+    "leadTimeDays": "مدة التوريد (أيام)",
+    "addLine": "إضافة بند",
+    "createEvaluation": "إنشاء تقييم تجاري",
+    "evaluationCreated": "تم إنشاء التقييم التجاري",
+    "evaluationNotes": "ملاحظات التقييم",
+    "decideApproval": "الاعتماد التجاري",
+    "approve": "اعتماد",
+    "reject": "رفض",
+    "approvalDecided": "تم اتخاذ قرار الاعتماد",
+    "handoff": "تسليم إلى ملف المشتريات",
+    "handedOff": "تم التسليم إلى ملف المشتريات"
+  },
+  "procurementCase": {
+    "title": "ملف المشتريات",
+    "sources": {
+      "commercial_flow": "من مسار التوريد التجاري",
+      "system_manual": "أمر شراء يدوي"
+    },
+    "statuses": {
+      "open": "مفتوح",
+      "handed_off": "تم التسليم",
+      "po_linked": "مرتبط بأمر شراء",
+      "closed": "مغلق",
+      "cancelled": "ملغى",
+      "superseded": "تم استبداله"
+    },
+    "linkExternalPo": "ربط أمر الشراء الخارجي",
+    "linked": "تم ربط أمر الشراء الخارجي",
+    "erpSystem": "نظام تخطيط الموارد",
+    "externalPoRef": "رقم أمر الشراء الخارجي",
+    "linkedPurchaseOrders": "أوامر الشراء المرتبطة",
+    "supersede": "استبدال",
+    "supersedeReason": "سبب الاستبدال",
+    "superseded": "تم استبدال ملف المشتريات",
+    "supersededNote": "تم استبدال هذا الملف بملف أحدث."
   }
 }

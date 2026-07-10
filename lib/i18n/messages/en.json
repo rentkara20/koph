@@ -20,7 +20,8 @@
     "menu": "Menu",
     "openMenu": "Open menu",
     "more": "More",
-    "users": "Users & Roles"
+    "users": "Users & Roles",
+    "sourcing": "Sourcing"
   },
   "common": {
     "save": "Save",
@@ -934,5 +935,85 @@
     "portalLink": "Client portal link",
     "copyLink": "Copy link",
     "linkCopied": "Link copied"
+  },
+  "sourcing": {
+    "title": "Sourcing",
+    "subtitle": "Sourcing requests, RFQs, and supplier quotations",
+    "newRequest": "New sourcing request",
+    "noRequests": "No sourcing requests yet",
+    "description": "Description",
+    "sourceType": "Source",
+    "sourceTypes": {
+      "customer_order": "Customer order",
+      "stock_replenishment": "Stock replenishment",
+      "operational_need": "Operational need"
+    },
+    "orderId": "Order ID",
+    "orderLineId": "Order line ID",
+    "save": "Save",
+    "requestCreated": "Sourcing request created",
+    "statuses": {
+      "draft": "Draft",
+      "rfq_sent": "RFQ sent",
+      "quotes_received": "Quotes received",
+      "under_evaluation": "Under evaluation",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "handed_off": "Handed off",
+      "cancelled": "Cancelled",
+      "closed": "Closed"
+    },
+    "rfqs": "Supplier RFQs",
+    "sendRfq": "Send RFQ",
+    "rfqsSent": "RFQ(s) sent",
+    "rfqStatuses": {
+      "sent": "Sent",
+      "responded": "Responded",
+      "declined": "Declined",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    },
+    "submitQuotation": "Submit quotation",
+    "quotationSubmitted": "Quotation submitted",
+    "quoteComparison": "Quote comparison",
+    "supplier": "Supplier",
+    "itemDescription": "Item description",
+    "qty": "Qty",
+    "unitPrice": "Unit price",
+    "leadTimeDays": "Lead time (days)",
+    "addLine": "Add line",
+    "createEvaluation": "Create commercial evaluation",
+    "evaluationCreated": "Commercial evaluation created",
+    "evaluationNotes": "Evaluation notes",
+    "decideApproval": "Commercial approval",
+    "approve": "Approve",
+    "reject": "Reject",
+    "approvalDecided": "Approval decided",
+    "handoff": "Hand off to procurement case",
+    "handedOff": "Handed off to procurement case"
+  },
+  "procurementCase": {
+    "title": "Procurement Case",
+    "sources": {
+      "commercial_flow": "From commercial sourcing flow",
+      "system_manual": "Manual purchase order"
+    },
+    "statuses": {
+      "open": "Open",
+      "handed_off": "Handed off",
+      "po_linked": "PO linked",
+      "closed": "Closed",
+      "cancelled": "Cancelled",
+      "superseded": "Superseded"
+    },
+    "linkExternalPo": "Link external PO",
+    "linked": "External PO linked",
+    "erpSystem": "ERP system",
+    "externalPoRef": "External PO reference",
+    "linkedPurchaseOrders": "Linked purchase orders",
+    "supersede": "Supersede",
+    "supersedeReason": "Reason for superseding",
+    "superseded": "Procurement case superseded",
+    "supersededNote": "This case has been superseded by a newer one."
   }
 }

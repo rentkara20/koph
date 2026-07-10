@@ -2,7 +2,9 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import { getPurchaseOrder, getReceivedUnitsForLine } from "@/lib/actions/procurement"
+import { getProcurementCase } from "@/lib/actions/procurement-case"
 import { Badge } from "@/components/ui/badge"
+import { ProcurementCasePanel } from "@/components/procurement-case-panel"
 import { ReceiveLineForm } from "./_components/receive-line-form"
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
@@ -24,6 +26,8 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
   )
   const receivedMap = new Map(receivedByLine.map((r) => [r.lineId, r.units]))
 
+  const procurementCaseData = po.procurementCaseId ? await getProcurementCase(po.procurementCaseId) : null
+
   return (
     <div className="max-w-4xl space-y-6">
       <div className="flex items-center justify-between">
@@ -35,6 +39,10 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
         </div>
         <Badge variant={STATUS_VARIANT[po.status] ?? "secondary"}>{t(`statuses.${po.status}` as never)}</Badge>
       </div>
+
+      {procurementCaseData && (
+        <ProcurementCasePanel procurementCase={procurementCaseData.procurementCase} />
+      )}
 
       <div className="space-y-4">
         {lines.map((line) => {

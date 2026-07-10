@@ -15,6 +15,7 @@ import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { createAssetCore } from "@/lib/actions/assets"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
+import { createProcurementCaseCore } from "@/lib/actions/procurement-case"
 
 type ActionResult = { error?: string; id?: string }
 
@@ -53,6 +54,7 @@ export async function getPurchaseOrder(id: string) {
       notes: purchaseOrders.notes,
       supplierId: purchaseOrders.supplierId,
       supplierName: suppliers.name,
+      procurementCaseId: purchaseOrders.procurementCaseId,
     })
     .from(purchaseOrders)
     .innerJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
@@ -123,6 +125,13 @@ export async function createPurchaseOrder(
 
   let poId = ""
   await db.transaction(async (tx) => {
+    // Every purchase order belongs to exactly one procurement case (M4.5 —
+    // single operational anchor). Manual creation here never goes through the
+    // commercial flow, so it auto-creates a system_manual case in the same
+    // transaction — there is never a PO without an anchor, never a second
+    // procurement workflow.
+    const { caseId } = await createProcurementCaseCore(tx, { source: "system_manual" }, session.user.id)
+
     poId = createId()
     await tx.insert(purchaseOrders).values({
       id: poId,
@@ -132,6 +141,7 @@ export async function createPurchaseOrder(
       invoiceRef: d.invoiceRef,
       orderedAt: Date.now(),
       notes: d.notes,
+      procurementCaseId: caseId,
       createdBy: session.user.id,
     })
     for (const line of d.lines) {
