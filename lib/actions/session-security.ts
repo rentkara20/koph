@@ -3,11 +3,15 @@
 import { ne, count } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { sessions } from "@/lib/db/schema"
-import { getSessionWithRole } from "@/lib/auth/session"
+import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 
 export type SessionSecurityResult = { error?: string; revoked?: number }
 
 export async function getActiveSessionCount(): Promise<number> {
+  // Staff-only: this is an internal ops metric, not public. (Matches the guard
+  // convention used by revokeAllOtherSessions below and every other read.)
+  const session = await getStaffSession()
+  if (!session) return 0
   const [row] = await db.select({ value: count() }).from(sessions)
   return row?.value ?? 0
 }

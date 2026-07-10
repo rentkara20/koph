@@ -31,8 +31,17 @@ export async function getOrCreatePortalLink(customerId: string): Promise<ActionR
   if (existing) return { url: `/client/${existing.token}` }
 
   const token = generateToken()
-  await db.insert(customerPortalTokens).values({ id: createId(), customerId, token })
-  return { url: `/client/${token}` }
+  // customerId is unique — a concurrent/double-clicked mint would otherwise
+  // throw on the constraint. Swallow the conflict and return the winning row.
+  await db
+    .insert(customerPortalTokens)
+    .values({ id: createId(), customerId, token })
+    .onConflictDoNothing({ target: customerPortalTokens.customerId })
+  const [row] = await db
+    .select({ token: customerPortalTokens.token })
+    .from(customerPortalTokens)
+    .where(eq(customerPortalTokens.customerId, customerId))
+  return { url: `/client/${row?.token ?? token}` }
 }
 
 // ─── Public: read-only portal data for a customer ────────────────────────────

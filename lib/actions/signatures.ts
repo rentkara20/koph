@@ -1,7 +1,7 @@
 "use server"
 
 import { checkRateLimit } from "@/lib/utils/rate-limit"
-import { desc, eq, and } from "drizzle-orm"
+import { desc, eq, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { db } from "@/lib/db"
@@ -15,6 +15,7 @@ import {
   customers,
   partnerTasks,
   requests,
+  requestItems,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
@@ -31,6 +32,14 @@ import {
 
 // Statuses from which a signature request can never transition again
 const TERMINAL_SIGNATURE_STATUSES = ["signed", "rejected", "cancelled", "expired"]
+
+// Thrown inside a signing transaction when the guarded status UPDATE affects 0
+// rows — a concurrent submit already signed this request. Aborts the tx so the
+// duplicate customerSignatures row rolls back; the caller maps it to a message.
+class StaleSignatureError extends Error {}
+function assertSigned(result: unknown): void {
+  if (((result as { rowsAffected?: number }).rowsAffected ?? 0) === 0) throw new StaleSignatureError()
+}
 
 async function captureRequestMeta() {
   const h = await headers()
@@ -392,7 +401,29 @@ export async function submitSignature(
     userAgent,
   ])
 
-  await db.transaction(async (tx) => {
+  // Ownership check for per-item conditions: every requestItemId MUST belong to
+  // this signature's request. Without this a caller could plant fabricated
+  // "damaged"/"missing" condition rows against another customer's request items.
+  if (data.itemConditions && data.itemConditions.length > 0) {
+    if (!sig.requestId) return { error: "This signature has no request to attach item conditions to" }
+    const itemIds = [...new Set(data.itemConditions.map((c) => c.requestItemId))]
+    const owned = await db
+      .select({ id: requestItems.id })
+      .from(requestItems)
+      .where(and(inArray(requestItems.id, itemIds), eq(requestItems.requestId, sig.requestId)))
+    if (owned.length !== itemIds.length) return { error: "Invalid item in signature" }
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+    // Guarded status flip FIRST: if a concurrent submit already signed this
+    // request (double-tap / two tabs), 0 rows → abort so we don't persist a
+    // second customerSignatures row for the same request.
+    assertSigned(await tx
+      .update(signatureRequests)
+      .set({ status: "signed", updatedAt: now })
+      .where(and(eq(signatureRequests.id, sig.id), eq(signatureRequests.status, sig.status))))
+
     await tx.insert(customerSignatures).values({
       id,
       signatureRequestId: sig.id,
@@ -408,11 +439,6 @@ export async function submitSignature(
       userAgent,
       auditDataHash,
     })
-
-    await tx
-      .update(signatureRequests)
-      .set({ status: "signed", updatedAt: now })
-      .where(eq(signatureRequests.id, sig.id))
 
     await tx.insert(signatureEvents).values({
       id: createId(),
@@ -430,7 +456,7 @@ export async function submitSignature(
       dedupeKey: `signature_request:${sig.id}:SignatureCompleted`,
     })
 
-    // Per-item acknowledgement of received condition.
+    // Per-item acknowledgement of received condition (ownership validated above).
     if (data.itemConditions && data.itemConditions.length > 0) {
       await tx.insert(signatureItemConditions).values(
         data.itemConditions.map((c) => ({
@@ -443,7 +469,11 @@ export async function submitSignature(
         }))
       )
     }
-  })
+    })
+  } catch (e) {
+    if (e instanceof StaleSignatureError) return { error: "This request is no longer active" }
+    throw e
+  }
 
   if (sig.requestId) {
     await logActivity({
@@ -716,7 +746,15 @@ export async function signOnSiteByTaskToken(
     userAgent,
   ])
 
-  await db.transaction(async (tx) => {
+  try {
+    await db.transaction(async (tx) => {
+    // Guarded status flip first — abort on a concurrent double-submit so a
+    // second signature record is never persisted for the same request.
+    assertSigned(await tx
+      .update(signatureRequests)
+      .set({ status: "signed", updatedAt: now })
+      .where(and(eq(signatureRequests.id, sigReq.id), eq(signatureRequests.status, sigReq.status))))
+
     await tx.insert(customerSignatures).values({
       id,
       signatureRequestId: sigReq.id,
@@ -732,11 +770,6 @@ export async function signOnSiteByTaskToken(
       auditDataHash,
     })
 
-    await tx
-      .update(signatureRequests)
-      .set({ status: "signed", updatedAt: now })
-      .where(eq(signatureRequests.id, sigReq.id))
-
     await tx.insert(signatureEvents).values({
       id: createId(),
       signatureRequestId: sigReq.id,
@@ -750,7 +783,11 @@ export async function signOnSiteByTaskToken(
       payload: { requestId: sigReq.requestId ?? null, signatoryRole: sigReq.signatoryRole },
       dedupeKey: `signature_request:${sigReq.id}:SignatureCompleted`,
     })
-  })
+    })
+  } catch (e) {
+    if (e instanceof StaleSignatureError) return { error: "This document is already signed or cancelled" }
+    throw e
+  }
 
   await logActivity({
     entityType: "signature_request",

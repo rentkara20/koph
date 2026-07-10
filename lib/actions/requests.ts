@@ -305,6 +305,14 @@ export async function updateRequestStatus(
   if (!session) return { error: "Unauthorized" }
 
   const [before] = await db.select({ status: requests.status }).from(requests).where(eq(requests.id, id))
+  if (!before) return { error: "Not found" }
+  if (before.status === status) return { id } // no-op, avoids churn + duplicate events
+  // A completed request has closed tasks and (typically) generated partner
+  // payments; manually forcing it to cancelled/failed would leave those
+  // payments flowing while the request reads cancelled. Block it.
+  if (before.status === "completed") {
+    return { error: "A completed request cannot be changed" }
+  }
 
   await db.transaction(async (tx) => {
     await tx.update(requests).set({ status, updatedAt: Date.now() }).where(eq(requests.id, id))
