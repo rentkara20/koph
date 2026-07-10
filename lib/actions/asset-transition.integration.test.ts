@@ -298,3 +298,100 @@ describe("applyAssetStatusCorrection", () => {
     expect(await eventCount(unitId)).toBe(0)
   })
 })
+
+// ─── OI-2 closure: every asset action emits its mapped domain event ───────
+
+describe("domain event coverage for every asset action", () => {
+  async function domainEventTypesFor(assetId: string) {
+    const rows = await db.select().from(schema.domainEvents).where(eq(schema.domainEvents.aggregateId, assetId))
+    return rows.map((r) => r.eventType)
+  }
+
+  test("reserve/unreserve emit AssetReserved/AssetUnreserved", async () => {
+    const { unitId } = await seedAsset("in_stock")
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "reserve", {})
+    })
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "unreserve", {})
+    })
+    expect(await domainEventTypesFor(unitId)).toEqual(["AssetReserved", "AssetUnreserved"])
+  })
+
+  test("unassign emits AssetUnassigned", async () => {
+    const { unitId } = await seedAsset("assigned")
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "unassign", {})
+    })
+    expect(await domainEventTypesFor(unitId)).toEqual(["AssetUnassigned"])
+  })
+
+  test("restock emits AssetRestocked", async () => {
+    const { unitId } = await seedAsset("returned")
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "restock", {})
+    })
+    expect(await domainEventTypesFor(unitId)).toEqual(["AssetRestocked"])
+  })
+
+  test("mark_damaged emits AssetDamaged", async () => {
+    const { unitId } = await seedAsset("returned")
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "mark_damaged", {})
+    })
+    expect(await domainEventTypesFor(unitId)).toEqual(["AssetDamaged"])
+  })
+
+  test("mark_lost then found emit AssetLost then AssetFound", async () => {
+    const { unitId } = await seedAsset("delivered")
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "mark_lost", {})
+    })
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "found", {})
+    })
+    expect(await domainEventTypesFor(unitId)).toEqual(["AssetLost", "AssetFound"])
+  })
+
+  test("sell emits AssetSold", async () => {
+    const { unitId } = await seedAsset("in_stock")
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "sell", {})
+    })
+    expect(await domainEventTypesFor(unitId)).toEqual(["AssetSold"])
+  })
+
+  test("an unmapped correction emits AssetStatusCorrected exactly once", async () => {
+    const { unitId } = await seedAsset("reserved")
+    await db.transaction(async (tx) => {
+      await applyAssetStatusCorrection(tx, unitId, "damaged", { notes: "manual fix" })
+    })
+    expect(await domainEventTypesFor(unitId)).toEqual(["AssetStatusCorrected"])
+  })
+
+  test("an invalid transition writes no domain event", async () => {
+    const { unitId } = await seedAsset("retired")
+    await expect(
+      db.transaction(async (tx) => {
+        await applyAssetTransition(tx, unitId, "assign", {})
+      })
+    ).rejects.toThrow(AssetTransitionError)
+    expect(await domainEventTypesFor(unitId)).toEqual([])
+  })
+
+  test("a duplicate emit (same underlying asset_event id via re-running the same tx logic) never happens — each transition gets its own dedupeKey", async () => {
+    const { unitId } = await seedAsset("in_stock")
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "reserve", {})
+    })
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "unreserve", {})
+    })
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, unitId, "reserve", {})
+    })
+    const rows = await db.select().from(schema.domainEvents).where(eq(schema.domainEvents.aggregateId, unitId))
+    const dedupeKeys = rows.map((r) => r.dedupeKey)
+    expect(new Set(dedupeKeys).size).toBe(dedupeKeys.length)
+  })
+})

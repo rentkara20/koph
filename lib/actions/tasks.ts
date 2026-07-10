@@ -45,6 +45,7 @@ import {
 } from "@/lib/actions/settings"
 import { parseProofConfig, resolveProofRequirements } from "@/lib/domain/proof"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
+import { domainEventTypeForTaskAction } from "@/lib/domain/domain-events"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
@@ -442,17 +443,31 @@ export async function cancelTask(taskId: string): Promise<ActionResult> {
   if (task.status === "closed") return { error: "Closed tasks cannot be cancelled" }
   if (task.status === "cancelled") return { error: "Task is already cancelled" }
 
-  await db
-    .update(partnerTasks)
-    .set({ status: "cancelled", taskTokenExpiresAt: Date.now(), updatedAt: Date.now() })
-    .where(eq(partnerTasks.id, taskId))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(partnerTasks)
+      .set({ status: "cancelled", taskTokenExpiresAt: Date.now(), updatedAt: Date.now() })
+      .where(eq(partnerTasks.id, taskId))
 
-  await logActivity({
-    entityType: "request",
-    entityId: task.requestId,
-    action: "task_cancelled",
-    i18nKey: "activity.taskCancelled",
-    performedBy: session.user.id,
+    await logActivity(
+      {
+        entityType: "request",
+        entityId: task.requestId,
+        action: "task_cancelled",
+        i18nKey: "activity.taskCancelled",
+        performedBy: session.user.id,
+      },
+      tx
+    )
+
+    await emitDomainEvent(tx, {
+      aggregateType: "task",
+      aggregateId: taskId,
+      eventType: "TaskCancelled",
+      payload: { fromStatus: task.status, toStatus: "cancelled" },
+      dedupeKey: `task:${taskId}:TaskCancelled`,
+      actorUserId: session.user.id,
+    })
   })
 
   await syncRequestStatus(task.requestId)
@@ -604,22 +619,40 @@ export async function updateTaskByToken(
 
   // Guard on the status we validated above — a double-tap or two tabs racing
   // the same magic link would otherwise both pass canTransition and both write.
-  const updateResult = await db
-    .update(partnerTasks)
-    .set(updates)
-    .where(and(eq(partnerTasks.taskToken, token), eq(partnerTasks.status, task.status)))
-  const rowsChanged = (updateResult as { rowsAffected?: number }).rowsAffected ?? 1
+  let rowsChanged = 0
+  await db.transaction(async (tx) => {
+    const updateResult = await tx
+      .update(partnerTasks)
+      .set(updates)
+      .where(and(eq(partnerTasks.taskToken, token), eq(partnerTasks.status, task.status)))
+    rowsChanged = (updateResult as { rowsAffected?: number }).rowsAffected ?? 1
+    if (rowsChanged === 0) return
+
+    await logActivity(
+      {
+        entityType: "request",
+        entityId: task.requestId,
+        action: `task_${action}`,
+        i18nKey: `activity.task_${action}`,
+        performedAs: "partner_link",
+      },
+      tx
+    )
+
+    const domainEventType = domainEventTypeForTaskAction(action)
+    if (domainEventType) {
+      await emitDomainEvent(tx, {
+        aggregateType: "task",
+        aggregateId: task.id,
+        eventType: domainEventType,
+        payload: { fromStatus: task.status, toStatus: newStatus },
+        dedupeKey: `task:${task.id}:${domainEventType}:${createId()}`,
+      })
+    }
+  })
   if (rowsChanged === 0) {
     return { error: "Task status changed. Please refresh and try again." }
   }
-
-  await logActivity({
-    entityType: "request",
-    entityId: task.requestId,
-    action: `task_${action}`,
-    i18nKey: `activity.task_${action}`,
-    performedAs: "partner_link",
-  })
 
   await syncRequestStatus(task.requestId)
   revalidatePath(`/task/${token}`)

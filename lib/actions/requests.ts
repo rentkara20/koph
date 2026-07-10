@@ -304,8 +304,19 @@ export async function updateRequestStatus(
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
+  const [before] = await db.select({ status: requests.status }).from(requests).where(eq(requests.id, id))
+
   await db.transaction(async (tx) => {
     await tx.update(requests).set({ status, updatedAt: Date.now() }).where(eq(requests.id, id))
+
+    await emitDomainEvent(tx, {
+      aggregateType: "request",
+      aggregateId: id,
+      eventType: "RequestStatusChanged",
+      payload: { fromStatus: before?.status ?? null, toStatus: status },
+      dedupeKey: `request:${id}:RequestStatusChanged:${createId()}`,
+      actorUserId: session.user.id,
+    })
 
     // Cancelling/failing a request must stop its partner tasks too — otherwise
     // partners keep working dead jobs via still-live magic links, and later
@@ -372,18 +383,32 @@ export async function resumeRequest(id: string): Promise<ActionResult> {
           ? "assigned"
           : "draft"
 
-  await db
-    .update(requests)
-    .set({ status: derived as typeof request.status, updatedAt: Date.now() })
-    .where(eq(requests.id, id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(requests)
+      .set({ status: derived as typeof request.status, updatedAt: Date.now() })
+      .where(eq(requests.id, id))
 
-  await logActivity({
-    entityType: "request",
-    entityId: id,
-    action: "status_changed",
-    i18nKey: "activity.statusChanged",
-    i18nData: { status: derived },
-    performedBy: session.user.id,
+    await logActivity(
+      {
+        entityType: "request",
+        entityId: id,
+        action: "status_changed",
+        i18nKey: "activity.statusChanged",
+        i18nData: { status: derived },
+        performedBy: session.user.id,
+      },
+      tx
+    )
+
+    await emitDomainEvent(tx, {
+      aggregateType: "request",
+      aggregateId: id,
+      eventType: "RequestStatusChanged",
+      payload: { fromStatus: request.status, toStatus: derived },
+      dedupeKey: `request:${id}:RequestStatusChanged:${createId()}`,
+      actorUserId: session.user.id,
+    })
   })
 
   revalidatePath(`/admin/requests/${id}`)

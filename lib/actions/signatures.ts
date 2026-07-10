@@ -175,6 +175,15 @@ export async function markSignatureAsSent(id: string): Promise<SignatureActionRe
       signatureRequestId: id,
       eventType: "sent",
     })
+
+    await emitDomainEvent(tx, {
+      aggregateType: "signature_request",
+      aggregateId: id,
+      eventType: "SignatureSent",
+      payload: { requestId: sig.requestId ?? null },
+      dedupeKey: `signature_request:${id}:SignatureSent`,
+      actorUserId: session.user.id,
+    })
   })
 
   if (sig.requestId) {
@@ -202,10 +211,21 @@ export async function cancelSignatureRequest(id: string): Promise<SignatureActio
 
   if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) return { error: "Cannot cancel a completed request" }
 
-  await db
-    .update(signatureRequests)
-    .set({ status: "cancelled", updatedAt: Date.now() })
-    .where(eq(signatureRequests.id, id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(signatureRequests)
+      .set({ status: "cancelled", updatedAt: Date.now() })
+      .where(eq(signatureRequests.id, id))
+
+    await emitDomainEvent(tx, {
+      aggregateType: "signature_request",
+      aggregateId: id,
+      eventType: "SignatureCancelled",
+      payload: { requestId: sig.requestId ?? null, fromStatus: sig.status },
+      dedupeKey: `signature_request:${id}:SignatureCancelled`,
+      actorUserId: session.user.id,
+    })
+  })
 
   if (sig.requestId) {
     await logActivity({
@@ -829,6 +849,14 @@ export async function rejectSignature(
       signatureRequestId: sig.id,
       eventType: "rejected",
       ipAddress: ipAddress ?? null,
+    })
+
+    await emitDomainEvent(tx, {
+      aggregateType: "signature_request",
+      aggregateId: sig.id,
+      eventType: "SignatureRejected",
+      payload: { requestId: sig.requestId ?? null },
+      dedupeKey: `signature_request:${sig.id}:SignatureRejected`,
     })
   })
 

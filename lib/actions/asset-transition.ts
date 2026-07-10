@@ -159,14 +159,24 @@ export async function applyAssetStatusCorrection(
     .set({ status: toStatus, updatedAt: Date.now() })
     .where(eq(orderUnits.id, assetId))
 
+  const correctionEventId = createId()
   await tx.insert(assetEvents).values({
-    id: createId(),
+    id: correctionEventId,
     assetId,
     type: "correction",
     fromStatus: from,
     toStatus,
     notes: context.notes ?? null,
     byUserId: context.byUserId ?? null,
+  })
+
+  await emitDomainEvent(tx, {
+    aggregateType: "asset",
+    aggregateId: assetId,
+    eventType: "AssetStatusCorrected",
+    payload: { fromStatus: from, toStatus, notes: context.notes ?? null },
+    dedupeKey: `asset:${assetId}:AssetStatusCorrected:${correctionEventId}`,
+    actorUserId: context.byUserId ?? null,
   })
 
   return { assetId, fromStatus: from, toStatus }

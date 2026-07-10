@@ -4,6 +4,7 @@ import {
   nextRetryDelayMs,
   isDead,
   domainEventTypeForAssetAction,
+  domainEventTypeForTaskAction,
   MAX_DELIVERY_ATTEMPTS,
 } from "./domain-events"
 
@@ -57,10 +58,32 @@ describe("domainEventTypeForAssetAction", () => {
     expect(domainEventTypeForAssetAction("retire")).toBe("AssetRetired")
   })
 
-  it("returns null for actions not yet wired to a domain event", () => {
-    expect(domainEventTypeForAssetAction("reserve")).toBeNull()
-    expect(domainEventTypeForAssetAction("unassign")).toBeNull()
-    expect(domainEventTypeForAssetAction("mark_lost")).toBeNull()
-    expect(domainEventTypeForAssetAction("sell")).toBeNull()
+  it("maps every remaining asset action (OI-2 coverage closure)", () => {
+    expect(domainEventTypeForAssetAction("reserve")).toBe("AssetReserved")
+    expect(domainEventTypeForAssetAction("unreserve")).toBe("AssetUnreserved")
+    expect(domainEventTypeForAssetAction("unassign")).toBe("AssetUnassigned")
+    expect(domainEventTypeForAssetAction("restock")).toBe("AssetRestocked")
+    expect(domainEventTypeForAssetAction("mark_damaged")).toBe("AssetDamaged")
+    expect(domainEventTypeForAssetAction("mark_lost")).toBe("AssetLost")
+    expect(domainEventTypeForAssetAction("found")).toBe("AssetFound")
+    expect(domainEventTypeForAssetAction("sell")).toBe("AssetSold")
+  })
+
+  it("returns null for an action string outside the known AssetAction set", () => {
+    expect(domainEventTypeForAssetAction("not_a_real_action")).toBeNull()
+  })
+})
+
+describe("domainEventTypeForTaskAction", () => {
+  it("maps every partner task action to its domain event type", () => {
+    expect(domainEventTypeForTaskAction("accept")).toBe("TaskAccepted")
+    expect(domainEventTypeForTaskAction("start")).toBe("TaskStarted")
+    expect(domainEventTypeForTaskAction("mark_done")).toBe("TaskPendingSignoff")
+    expect(domainEventTypeForTaskAction("reject")).toBe("TaskRejected")
+    expect(domainEventTypeForTaskAction("mark_failed")).toBe("TaskFailed")
+  })
+
+  it("returns null for an action string outside the known PartnerAction set", () => {
+    expect(domainEventTypeForTaskAction("not_a_real_action")).toBeNull()
   })
 })

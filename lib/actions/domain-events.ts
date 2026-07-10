@@ -7,10 +7,33 @@
 //   3. never partially applied — event + all delivery rows land together or
 //      the whole transaction (including the caller's state change) rolls back
 import { eq } from "drizzle-orm"
+import { after } from "next/server"
 import { db } from "@/lib/db"
 import { domainEvents, eventDeliveries } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { CONSUMERS, type DomainEventType } from "@/lib/domain/domain-events"
+
+// Best-effort immediate drain (OI-2 closure item 4). `after()` runs once the
+// response has been sent, keeping the serverless function alive just long
+// enough to drain — so notifications don't wait for the daily cron in the
+// common case. The daily cron remains the ONLY reliability guarantee: this
+// trigger is fire-and-forget and must never delay or fail the emit itself.
+// Outside a request scope (tests, one-off scripts) `after()` throws
+// synchronously — swallowed here since those callers rely on the cron path.
+function triggerImmediateDrainBestEffort() {
+  try {
+    after(async () => {
+      try {
+        const { drainEventDeliveries } = await import("@/lib/actions/event-drain")
+        await drainEventDeliveries()
+      } catch (error) {
+        console.error("domain-events: best-effort drain failed, daily cron will retry", error)
+      }
+    })
+  } catch {
+    // no request scope (test/script context) — the daily cron covers it
+  }
+}
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
@@ -63,6 +86,8 @@ export async function emitDomainEvent(tx: Tx, event: EmitDomainEventInput): Prom
       status: "pending",
     })
   }
+
+  triggerImmediateDrainBestEffort()
 
   return { eventId, created: true }
 }

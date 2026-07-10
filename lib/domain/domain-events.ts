@@ -27,36 +27,79 @@ export function buildDedupeKey(aggregateType: string, aggregateId: string, event
 }
 
 const ASSET_ACTION_EVENT_TYPE: Partial<Record<string, string>> = {
+  reserve: "AssetReserved",
+  unreserve: "AssetUnreserved",
   assign: "AssetAssigned",
+  unassign: "AssetUnassigned",
   deliver: "AssetDelivered",
   return: "AssetReturned",
+  restock: "AssetRestocked",
   send_maintenance: "AssetMaintenanceOpened",
   repair_done: "AssetMaintenanceClosed",
+  mark_damaged: "AssetDamaged",
   retire: "AssetRetired",
+  sell: "AssetSold",
+  mark_lost: "AssetLost",
+  found: "AssetFound",
 }
 
-// Only the highest-value asset actions (OI-2B scope) map to a domain event —
-// returns null for actions like reserve/unassign/mark_lost that aren't wired yet.
+// Every asset action now maps to a domain event (OI-2 coverage closure) —
+// null is only possible for an action string outside the known AssetAction set.
 export function domainEventTypeForAssetAction(action: string): DomainEventType | null {
   const type = ASSET_ACTION_EVENT_TYPE[action]
   return (type as DomainEventType) ?? null
 }
 
+const TASK_ACTION_EVENT_TYPE: Partial<Record<string, string>> = {
+  accept: "TaskAccepted",
+  start: "TaskStarted",
+  mark_done: "TaskPendingSignoff",
+  reject: "TaskRejected",
+  mark_failed: "TaskFailed",
+}
+
+export function domainEventTypeForTaskAction(action: string): DomainEventType | null {
+  const type = TASK_ACTION_EVENT_TYPE[action]
+  return (type as DomainEventType) ?? null
+}
+
 export const DOMAIN_EVENT_TYPES = [
+  "AssetReserved",
+  "AssetUnreserved",
   "AssetAssigned",
+  "AssetUnassigned",
   "AssetDelivered",
   "AssetReturned",
+  "AssetRestocked",
   "AssetMaintenanceOpened",
   "AssetMaintenanceClosed",
+  "AssetDamaged",
   "AssetRetired",
+  "AssetSold",
+  "AssetLost",
+  "AssetFound",
+  "AssetStatusCorrected",
   "RequestCreated",
   "RequestAssigned",
   "RequestCompleted",
+  "RequestStatusChanged",
   "TaskClosed",
+  "TaskAccepted",
+  "TaskStarted",
+  "TaskPendingSignoff",
+  "TaskRejected",
+  "TaskFailed",
+  "TaskCancelled",
+  "SignatureSent",
   "SignatureCompleted",
+  "SignatureRejected",
+  "SignatureCancelled",
   "PartnerPaymentCreated",
+  "PaymentBatchGenerated",
   "PaymentBatchApproved",
   "PaymentBatchSent",
   "PaymentBatchPaid",
+  "PaymentHeld",
+  "PaymentReleased",
 ] as const
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]

@@ -228,6 +228,15 @@ export async function generateBatch(
         },
         tx
       )
+
+      await emitDomainEvent(tx, {
+        aggregateType: "payment_batch",
+        aggregateId: batchId,
+        eventType: "PaymentBatchGenerated",
+        payload: { partnerId, period, totalAmount, paymentCount: payments.length },
+        dedupeKey: `payment_batch:${batchId}:PaymentBatchGenerated`,
+        actorUserId: session.user.id,
+      })
     })
   } catch (error) {
     if (error instanceof Error && error.message === "OPEN_BATCH_EXISTS") {
@@ -426,6 +435,15 @@ export async function holdPayment(paymentId: string, reason?: string): Promise<P
         tx
       )
     }
+
+    await emitDomainEvent(tx, {
+      aggregateType: "partner_payment",
+      aggregateId: paymentId,
+      eventType: "PaymentHeld",
+      payload: { fromStatus, toStatus: "on_hold", reason: reason ?? null },
+      dedupeKey: `partner_payment:${paymentId}:PaymentHeld:${createId()}`,
+      actorUserId: session.user.id,
+    })
   })
 
   if (formerBatchId) revalidatePath(`/admin/payments/${formerBatchId}`)
@@ -468,6 +486,15 @@ export async function releasePayment(paymentId: string, reason?: string): Promis
       },
       tx
     )
+
+    await emitDomainEvent(tx, {
+      aggregateType: "partner_payment",
+      aggregateId: paymentId,
+      eventType: "PaymentReleased",
+      payload: { fromStatus: "on_hold", toStatus: "pending", reason: reason ?? null },
+      dedupeKey: `partner_payment:${paymentId}:PaymentReleased:${createId()}`,
+      actorUserId: session.user.id,
+    })
   })
 
   revalidatePath("/admin/payments")
