@@ -519,17 +519,29 @@ export const notifications = sqliteTable("notification", {
 export const attachments = sqliteTable("attachment", {
   id: text("id").primaryKey(),
   entityType: text("entity_type", {
-    enum: ["request", "partner_task", "signature_request"],
+    enum: ["request", "partner_task", "signature_request", "asset"],
   }).notNull(),
   entityId: text("entity_id").notNull(),
   fileName: text("file_name").notNull(),
-  fileUrl: text("file_url").notNull(), // Vercel Blob URL
+  fileUrl: text("file_url").notNull(), // Vercel Blob URL (kept for existing readers)
   fileType: text("file_type").notNull(), // image/jpeg | image/png | image/heic
   fileSize: integer("file_size").notNull(), // bytes
   uploadedBy: text("uploaded_by"), // user_id or partner task context
   uploadSource: text("upload_source", { enum: ["admin", "partner_link"] })
     .notNull()
     .default("admin"),
+  // Provider-neutral document storage abstraction (Milestone 2 / B1). Only
+  // "vercel_blob" is implemented; the enum leaves room for future adapters
+  // (e.g. "google_drive") without new provider-specific columns.
+  provider: text("provider", { enum: ["vercel_blob", "google_drive"] })
+    .notNull()
+    .default("vercel_blob"),
+  providerFileId: text("provider_file_id"), // provider's native object/file id, if any
+  providerUrl: text("provider_url"), // provider's canonical URL (mirrors fileUrl for blob today)
+  storagePath: text("storage_path"), // logical path/key within the provider, if applicable
+  sensitivity: text("sensitivity", { enum: ["sensitive", "operational"] })
+    .notNull()
+    .default("sensitive"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
 })
 

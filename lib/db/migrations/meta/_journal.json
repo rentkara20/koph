@@ -71,6 +71,13 @@
       "when": 1783669642371,
       "tag": "0009_slow_johnny_blaze",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1783671551054,
+      "tag": "0010_clean_kulan_gath",
+      "breakpoints": true
     }
   ]
 }
