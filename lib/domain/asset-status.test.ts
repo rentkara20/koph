@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import {
+  actionForTransition,
   assetActionsFor,
   assetStatusAfter,
   canAssetTransition,
@@ -59,5 +60,22 @@ describe("assetActionsFor", () => {
 
   test("sold offers nothing", () => {
     expect(assetActionsFor("sold")).toEqual([])
+  })
+})
+
+describe("actionForTransition", () => {
+  test("finds the action for a valid (from, to) pair", () => {
+    expect(actionForTransition("in_stock", "reserved")).toBe("reserve")
+    expect(actionForTransition("assigned", "delivered")).toBe("deliver")
+    expect(actionForTransition("maintenance", "in_stock")).toBe("repair_done")
+  })
+
+  test("returns null for a pair with no matching action (illegal jump)", () => {
+    expect(actionForTransition("in_stock", "delivered")).toBeNull()
+    expect(actionForTransition("sold", "in_stock")).toBeNull()
+  })
+
+  test("returns null when from === to (not a transition)", () => {
+    expect(actionForTransition("in_stock", "in_stock")).toBeNull()
   })
 })

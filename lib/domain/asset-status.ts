@@ -67,6 +67,17 @@ export function assetActionsFor(status: AssetStatus): AssetAction[] {
   )
 }
 
+// Reverse lookup for callers that only know a (from, to) pair (e.g. a bulk
+// data-entry form) rather than the action name. Returns null when no single
+// action covers that exact pair — the caller must not silently apply the
+// status jump, since it isn't a validated business transition.
+export function actionForTransition(from: AssetStatus, to: AssetStatus): AssetAction | null {
+  const action = (Object.keys(TRANSITIONS) as AssetAction[]).find(
+    (a) => TRANSITIONS[a].to === to && TRANSITIONS[a].from.includes(from)
+  )
+  return action ?? null
+}
+
 // Statuses counted as "available to rent" in inventory views.
 export const AVAILABLE_ASSET_STATUSES: AssetStatus[] = ["in_stock"]
 // Statuses meaning the device is out with a customer.

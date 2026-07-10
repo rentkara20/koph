@@ -15,12 +15,8 @@ import {
 } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
-import {
-  type AssetAction,
-  type AssetStatus,
-  assetStatusAfter,
-  canAssetTransition,
-} from "@/lib/domain/asset-status"
+import { type AssetAction, type AssetStatus } from "@/lib/domain/asset-status"
+import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
 
 type ActionResult = { error?: string; id?: string }
 
@@ -214,6 +210,8 @@ const transitionSchema = z.object({
   notes: z.string().trim().max(1000).optional(),
 })
 
+// Thin wrapper around the OI-1 chokepoint (lib/actions/asset-transition.ts)
+// for the admin-triggered single-asset action button.
 export async function transitionAsset(
   id: string,
   action: AssetAction,
@@ -225,43 +223,17 @@ export async function transitionAsset(
   const parsed = transitionSchema.safeParse({ action, notes })
   if (!parsed.success) return { error: "Invalid action" }
 
-  const [unit] = await db.select().from(orderUnits).where(eq(orderUnits.id, id))
-  if (!unit) return { error: "Asset not found" }
-
-  if (!canAssetTransition(unit.status as AssetStatus, action)) {
-    return { error: "Invalid action for current asset status" }
-  }
-  const to = assetStatusAfter(action)
-
-  await db.transaction(async (tx) => {
-    const clearAssignment = ["restock", "unassign", "return", "repair_done"].includes(action)
-    await tx
-      .update(orderUnits)
-      .set({
-        status: to,
-        updatedAt: Date.now(),
-        ...(clearAssignment ? { currentRequestId: null, currentCustomerId: null } : {}),
-        ...(action === "restock" || action === "repair_done"
-          ? { location: "main_warehouse" }
-          : {}),
-        ...(action === "retire" || action === "sell"
-          ? { retiredAt: Date.now(), retirementReason: parsed.data.notes ?? null }
-          : {}),
+  try {
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, id, parsed.data.action, {
+        notes: parsed.data.notes,
+        byUserId: session.user.id,
       })
-      .where(eq(orderUnits.id, id))
-
-    await tx.insert(assetEvents).values({
-      id: createId(),
-      assetId: id,
-      type: "status_change",
-      fromStatus: unit.status,
-      toStatus: to,
-      requestId: unit.currentRequestId,
-      customerId: unit.currentCustomerId,
-      notes: parsed.data.notes ?? null,
-      byUserId: session.user.id,
     })
-  })
+  } catch (error) {
+    if (error instanceof AssetTransitionError) return { error: error.message }
+    throw error
+  }
 
   revalidatePath("/admin/assets")
   revalidatePath(`/admin/assets/${id}`)

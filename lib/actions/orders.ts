@@ -15,6 +15,7 @@ import {
 } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
+import { applyAssetStatusCorrection } from "@/lib/actions/asset-transition"
 import {
   createOrderSchema,
   firstError,
@@ -253,6 +254,7 @@ export async function saveOrderUnits(
     .from(orderUnits)
     .where(eq(orderUnits.orderId, orderId))
   const existingIds = new Set(existing.map((u) => u.id))
+  const existingStatusById = new Map(existing.map((u) => [u.id, u.status]))
   const keptIds = new Set(d.units.map((u) => u.id).filter((v): v is string => Boolean(v)))
 
   // Do not delete units already consumed by a request (assigned/delivered).
@@ -270,6 +272,11 @@ export async function saveOrderUnits(
     const toInsert: (typeof orderUnits.$inferInsert)[] = []
     for (const u of d.units) {
       if (u.id && existingIds.has(u.id)) {
+        // Status changes go through the OI-1 chokepoint (via the correction
+        // path, since this bulk editor works from a target status rather than
+        // a named business action) so every status change on an existing unit
+        // still gets a validated transition and an atomic asset_event — no
+        // direct status write remains for this caller.
         await tx
           .update(orderUnits)
           .set({
@@ -277,11 +284,16 @@ export async function saveOrderUnits(
             serialNumber: u.serialNumber || null,
             supplierId: u.supplierId || null,
             purchaseCost: u.purchaseCost ?? null,
-            status: u.status ?? "in_stock",
             notes: u.notes || null,
             updatedAt: Date.now(),
           })
           .where(eq(orderUnits.id, u.id))
+
+        const nextStatus = u.status ?? "in_stock"
+        const currentStatus = existingStatusById.get(u.id)
+        if (currentStatus && nextStatus !== currentStatus) {
+          await applyAssetStatusCorrection(tx, u.id, nextStatus, { byUserId: session.user.id })
+        }
       } else {
         toInsert.push({
           id: createId(),

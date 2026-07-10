@@ -8,6 +8,7 @@ import { maintenanceOrders, orderUnits } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { firstError } from "@/lib/validation/schemas"
+import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
 
 type ActionResult = { error?: string; id?: string }
 
@@ -28,26 +29,22 @@ export async function openMaintenanceOrder(
   const parsed = openSchema.safeParse({ assetId, issue })
   if (!parsed.success) return { error: firstError(parsed.error) }
 
-  const [asset] = await db.select().from(orderUnits).where(eq(orderUnits.id, assetId))
-  if (!asset) return { error: "Asset not found" }
-  if (!["in_stock", "returned", "damaged"].includes(asset.status)) {
-    return { error: "Invalid action for current asset status" }
-  }
-
   const id = createId()
-  await db.transaction(async (tx) => {
-    await tx.insert(maintenanceOrders).values({
-      id,
-      assetId,
-      issue: parsed.data.issue,
-      status: "open",
-      openedBy: session.user.id,
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(maintenanceOrders).values({
+        id,
+        assetId,
+        issue: parsed.data.issue,
+        status: "open",
+        openedBy: session.user.id,
+      })
+      await applyAssetTransition(tx, assetId, "send_maintenance", { byUserId: session.user.id })
     })
-    await tx
-      .update(orderUnits)
-      .set({ status: "maintenance", updatedAt: Date.now() })
-      .where(eq(orderUnits.id, assetId))
-  })
+  } catch (error) {
+    if (error instanceof AssetTransitionError) return { error: error.message }
+    throw error
+  }
 
   revalidatePath("/admin/maintenance")
   revalidatePath(`/admin/assets/${assetId}`)
@@ -92,24 +89,26 @@ export async function closeMaintenanceOrder(
     return { error: "Invalid action for current asset status" }
   }
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(maintenanceOrders)
-      .set({
-        status: outcome,
-        cost: parsed.data.cost ?? null,
-        vendorNotes: parsed.data.vendorNotes || null,
-        closedAt: Date.now(),
-      })
-      .where(eq(maintenanceOrders.id, id))
-
-    if (outcome === "done") {
+  try {
+    await db.transaction(async (tx) => {
       await tx
-        .update(orderUnits)
-        .set({ status: "in_stock", location: "main_warehouse", updatedAt: Date.now() })
-        .where(eq(orderUnits.id, order.assetId))
-    }
-  })
+        .update(maintenanceOrders)
+        .set({
+          status: outcome,
+          cost: parsed.data.cost ?? null,
+          vendorNotes: parsed.data.vendorNotes || null,
+          closedAt: Date.now(),
+        })
+        .where(eq(maintenanceOrders.id, id))
+
+      if (outcome === "done") {
+        await applyAssetTransition(tx, order.assetId, "repair_done", { byUserId: session.user.id })
+      }
+    })
+  } catch (error) {
+    if (error instanceof AssetTransitionError) return { error: error.message }
+    throw error
+  }
 
   revalidatePath("/admin/maintenance")
   revalidatePath(`/admin/assets/${order.assetId}`)

@@ -11,7 +11,6 @@ import {
   partners,
   partnerContracts,
   partnerPayments,
-  orderUnits,
   partnerTasks,
   requestItems,
   requests,
@@ -36,8 +35,7 @@ import {
 import { deriveRequestStatus } from "@/lib/domain/request-status"
 import { computePayment, requiresQuantity, type PricingModel } from "@/lib/domain/pricing"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
-import { assetStatusAfter, canAssetTransition, type AssetStatus } from "@/lib/domain/asset-status"
-import { recordAssetEvent } from "@/lib/actions/assets"
+import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
 import { isValidActiveFailureReason } from "@/lib/actions/failure-reasons"
 import {
   getRequiredDeliveryPhotoCount,
@@ -318,20 +316,16 @@ export async function signOffTask(
         status: "pending",
       })
     }
-  })
-  } catch (error) {
-    if (error instanceof Error && error.message === "TASK_STATUS_CHANGED") {
-      return { error: "Task status changed since you loaded this page. Please refresh and retry." }
-    }
-    throw error
-  }
 
-  // Move the request's pulled devices through the asset lifecycle:
-  // delivery-type sign-off -> delivered (with customer); collection-type ->
-  // returned (back for inspection). Best-effort: asset sync must never block
-  // the sign-off itself.
-  try {
-    const [reqType] = await db
+    // OI-1: move the request's pulled devices through the asset lifecycle in
+    // the SAME transaction as the task close — delivery-type sign-off ->
+    // delivered (with customer); collection-type -> returned (back for
+    // inspection). Previously this ran best-effort AFTER the tx committed, so
+    // a crash between the two could close a task with no matching asset
+    // movement, or write an asset_event with no corresponding status change.
+    // A unit already in an unexpected status (e.g. an earlier manual
+    // override) is skipped, not fatal — it must not block the sign-off itself.
+    const [reqType] = await tx
       .select({ slug: requestTypes.slug })
       .from(requestTypes)
       .where(eq(requestTypes.id, parentRequest.typeId))
@@ -342,39 +336,33 @@ export async function signOffTask(
       : null
 
     if (assetAction) {
-      const pulled = await db
+      const pulled = await tx
         .select({ orderUnitId: requestItems.orderUnitId })
         .from(requestItems)
         .where(and(eq(requestItems.requestId, task.requestId), isNotNull(requestItems.orderUnitId)))
       const unitIds = pulled.map((r) => r.orderUnitId).filter((v): v is string => Boolean(v))
 
       for (const unitId of unitIds) {
-        const [unit] = await db.select().from(orderUnits).where(eq(orderUnits.id, unitId))
-        if (!unit || !canAssetTransition(unit.status as AssetStatus, assetAction)) continue
-        const to = assetStatusAfter(assetAction)
-        await db
-          .update(orderUnits)
-          .set({
-            status: to,
-            updatedAt: Date.now(),
-            ...(assetAction === "return"
-              ? { currentRequestId: null, currentCustomerId: null }
-              : {}),
+        try {
+          await applyAssetTransition(tx, unitId, assetAction, {
+            requestId: task.requestId,
+            customerId: parentRequest.customerId,
+            byUserId: session.user.id,
           })
-          .where(eq(orderUnits.id, unitId))
-        await recordAssetEvent({
-          assetId: unitId,
-          type: assetAction === "return" ? "returned" : "delivered",
-          fromStatus: unit.status,
-          toStatus: to,
-          requestId: task.requestId,
-          customerId: parentRequest.customerId,
-          byUserId: session.user.id,
-        })
+        } catch (error) {
+          if (!(error instanceof AssetTransitionError)) throw error
+          // NOT_FOUND / INVALID_TRANSITION: unit isn't in the expected state
+          // for this action (e.g. already moved by an earlier override) —
+          // skip it rather than fail the whole sign-off.
+        }
       }
     }
+  })
   } catch (error) {
-    console.error("asset sync on signOffTask failed", error)
+    if (error instanceof Error && error.message === "TASK_STATUS_CHANGED") {
+      return { error: "Task status changed since you loaded this page. Please refresh and retry." }
+    }
+    throw error
   }
 
   await logActivity({

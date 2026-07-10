@@ -1,6 +1,6 @@
 "use server"
 
-import { recordAssetEvent } from "@/lib/actions/assets"
+import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
 import { and, count, desc, eq, inArray, isNull, like, notInArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
@@ -90,45 +90,30 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
         }))
       )
 
-      // Mark pulled order units as assigned so they are not double-booked.
-      // The status guard + affected-row check closes the race where two
-      // concurrent requests both read the same "in_stock" unit as available.
-      if (pulledUnitIds.length > 0) {
-        const result = await tx
-          .update(orderUnits)
-          .set({
-            status: "assigned",
-            currentRequestId: id,
-            currentCustomerId: data.customerId,
-            updatedAt: Date.now(),
-          })
-          .where(and(inArray(orderUnits.id, pulledUnitIds), eq(orderUnits.status, "in_stock")))
-
-        const claimed = (result as { rowsAffected?: number }).rowsAffected ?? pulledUnitIds.length
-        if (claimed !== pulledUnitIds.length) {
-          throw new Error("UNIT_ALREADY_COMMITTED")
-        }
+      // Mark pulled order units as assigned so they are not double-booked. Each
+      // goes through the OI-1 chokepoint — its own concurrency-safe status
+      // guard closes the race where two concurrent requests both read the same
+      // "in_stock" unit as available, and the asset_event is written in the
+      // SAME transaction as the request (was a best-effort post-tx call before).
+      for (const unitId of pulledUnitIds) {
+        await applyAssetTransition(tx, unitId, "assign", {
+          requestId: id,
+          customerId: data.customerId,
+          byUserId: session.user.id,
+        })
       }
     }
   })
   } catch (error) {
-    if (error instanceof Error && error.message === "UNIT_ALREADY_COMMITTED") {
-      return { error: "One or more selected devices were just claimed by another request. Please re-select available units." }
+    if (error instanceof AssetTransitionError) {
+      return {
+        error:
+          error.code === "CONCURRENT_MODIFICATION" || error.code === "INVALID_TRANSITION"
+            ? "One or more selected devices were just claimed by another request. Please re-select available units."
+            : error.message,
+      }
     }
     throw error
-  }
-
-  if (pulledUnitIds.length > 0) {
-    for (const unitId of pulledUnitIds) {
-      await recordAssetEvent({
-        assetId: unitId,
-        type: "assigned",
-        toStatus: "assigned",
-        requestId: id,
-        customerId: data.customerId,
-        byUserId: session.user.id,
-      })
-    }
   }
 
   await logActivity({
@@ -286,12 +271,20 @@ async function releaseUnitsForRequest(
   const unitIds = items.map((i) => i.orderUnitId).filter((v): v is string => Boolean(v))
   if (unitIds.length === 0) return []
 
-  await tx
-    .update(orderUnits)
-    .set({ status: "in_stock", currentRequestId: null, currentCustomerId: null, updatedAt: Date.now() })
-    .where(and(inArray(orderUnits.id, unitIds), eq(orderUnits.status, "assigned")))
+  const released: string[] = []
+  for (const unitId of unitIds) {
+    // Only assigned units are releasable (matches the previous conditional
+    // update's guard) — a unit already delivered/returned elsewhere is left
+    // alone rather than forced back to in_stock.
+    try {
+      await applyAssetTransition(tx, unitId, "unassign", { requestId, byUserId })
+      released.push(unitId)
+    } catch (error) {
+      if (!(error instanceof AssetTransitionError && error.code === "INVALID_TRANSITION")) throw error
+    }
+  }
 
-  return unitIds
+  return released
 }
 
 export async function updateRequestStatus(
@@ -301,7 +294,6 @@ export async function updateRequestStatus(
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  let releasedUnitIds: string[] = []
   await db.transaction(async (tx) => {
     await tx.update(requests).set({ status, updatedAt: Date.now() }).where(eq(requests.id, id))
 
@@ -318,19 +310,11 @@ export async function updateRequestStatus(
             notInArray(partnerTasks.status, ["closed", "cancelled", "rejected", "failed"])
           )
         )
-      releasedUnitIds = await releaseUnitsForRequest(tx, id, session.user.id)
+      // Asset events for released units are written atomically inside
+      // releaseUnitsForRequest — no separate post-tx event pass needed.
+      await releaseUnitsForRequest(tx, id, session.user.id)
     }
   })
-
-  for (const unitId of releasedUnitIds) {
-    await recordAssetEvent({
-      assetId: unitId,
-      type: "status_change",
-      toStatus: "in_stock",
-      requestId: id,
-      byUserId: session.user.id,
-    })
-  }
 
   await logActivity({
     entityType: "request",
@@ -477,21 +461,12 @@ export async function deleteRequestItem(
 
   if (await itemsAreFrozen(requestId)) return { error: ITEMS_FROZEN_ERROR }
 
-  let releasedUnitIds: string[] = []
   await db.transaction(async (tx) => {
-    releasedUnitIds = await releaseUnitsForRequest(tx, requestId, session.user.id, [itemId])
+    // Asset events for released units are written atomically inside
+    // releaseUnitsForRequest — no separate post-tx event pass needed.
+    await releaseUnitsForRequest(tx, requestId, session.user.id, [itemId])
     await tx.delete(requestItems).where(eq(requestItems.id, itemId))
   })
-
-  for (const unitId of releasedUnitIds) {
-    await recordAssetEvent({
-      assetId: unitId,
-      type: "status_change",
-      toStatus: "in_stock",
-      requestId,
-      byUserId: session.user.id,
-    })
-  }
 
   revalidatePath(`/admin/requests/${requestId}`)
   return {}
@@ -611,7 +586,6 @@ export async function deleteRequest(id: string): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  let releasedUnitIds: string[] = []
   await db.transaction(async (tx) => {
     await tx.update(requests).set({ deletedAt: Date.now() }).where(eq(requests.id, id))
 
@@ -626,18 +600,10 @@ export async function deleteRequest(id: string): Promise<ActionResult> {
           notInArray(partnerTasks.status, ["closed", "cancelled", "rejected", "failed"])
         )
       )
-    releasedUnitIds = await releaseUnitsForRequest(tx, id, session.user.id)
+    // Asset events for released units are written atomically inside
+    // releaseUnitsForRequest — no separate post-tx event pass needed.
+    await releaseUnitsForRequest(tx, id, session.user.id)
   })
-
-  for (const unitId of releasedUnitIds) {
-    await recordAssetEvent({
-      assetId: unitId,
-      type: "status_change",
-      toStatus: "in_stock",
-      requestId: id,
-      byUserId: session.user.id,
-    })
-  }
 
   revalidatePath("/admin/requests")
   return {}
