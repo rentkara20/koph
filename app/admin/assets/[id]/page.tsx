@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import { getLocale, getTranslations } from "next-intl/server"
 import { ArrowRight, QrCode } from "lucide-react"
 import { getAsset } from "@/lib/actions/assets"
+import { getAssetDocuments } from "@/lib/actions/asset-documents"
 import { assetActionsFor, type AssetStatus } from "@/lib/domain/asset-status"
 import { qrDataUrl } from "@/lib/utils/qr"
 import { formatDate } from "@/lib/utils/format"
@@ -12,6 +13,7 @@ import { ASSET_STATUS_VARIANT } from "../status-variant"
 import { AssetActions } from "./_components/asset-actions"
 import { OpenMaintenanceButton } from "./_components/open-maintenance-button"
 import { AssetNoteForm } from "./_components/asset-note-form"
+import { AssetDocuments } from "./_components/asset-documents"
 
 export default async function AssetPage({
   params,
@@ -19,11 +21,12 @@ export default async function AssetPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [t, tCommon, data, locale] = await Promise.all([
+  const [t, tCommon, data, locale, documents] = await Promise.all([
     getTranslations("assets"),
     getTranslations("common"),
     getAsset(id),
     getLocale(),
+    getAssetDocuments(id),
   ])
 
   if (!data) notFound()
@@ -212,6 +215,9 @@ export default async function AssetPage({
           </ol>
         )}
       </section>
+
+      {/* Documents */}
+      <AssetDocuments assetId={asset.id} documents={documents} />
     </div>
   )
 }

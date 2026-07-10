@@ -71,6 +71,10 @@ const AR: Record<string, string> = {
   "Order line not found": "بند الطلبية غير موجود",
   "Asset tag already in use": "رقم الأصل مستخدم بالفعل",
   "Failed to create asset": "تعذر إنشاء الأصل",
+  "No file provided": "لم يتم إرفاق ملف",
+  "Unsupported file type": "نوع الملف غير مدعوم",
+  "File too large": "حجم الملف كبير جداً",
+  "Document not found": "المستند غير موجود",
 
   // Partner login
   "Partner not found": "الشريك غير موجود",
