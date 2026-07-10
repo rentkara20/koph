@@ -12,6 +12,9 @@ import {
   Settings,
   Wrench,
   ShieldCheck,
+  PackagePlus,
+  BadgeCheck,
+  Cable,
 } from "lucide-react"
 
 export type NavItem = {
@@ -36,6 +39,9 @@ export const navItems: readonly NavItem[] = [
   { key: "dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
   { key: "orders", href: "/admin/orders", icon: PackageSearch },
   { key: "assets", href: "/admin/assets", icon: Laptop },
+  { key: "procurement", href: "/admin/procurement", icon: PackagePlus, prefetch: false },
+  { key: "warranty", href: "/admin/warranty", icon: BadgeCheck, prefetch: false },
+  { key: "accessories", href: "/admin/accessories", icon: Cable, prefetch: false },
   { key: "maintenance", href: "/admin/maintenance", icon: Wrench },
   { key: "requests", href: "/admin/requests", icon: ClipboardList },
   { key: "customers", href: "/admin/customers", icon: Users },

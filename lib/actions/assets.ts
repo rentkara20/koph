@@ -10,6 +10,7 @@ import {
   orderLines,
   orders,
   orderUnits,
+  purchaseOrderLines,
   requests,
   suppliers,
 } from "@/lib/db/schema"
@@ -334,15 +335,23 @@ export async function searchOrderLinesForAssetCreation(query: string) {
 // dedicated, atomic creation path: validate the source line, validate/generate
 // the serial + tag, insert the row, and emit AssetCreated — all in one tx.
 
-const createAssetSchema = z.object({
-  orderLineId: z.string().trim().min(1).max(60),
-  serialNumber: z.string().trim().min(1).max(120),
-  assetTag: z.string().trim().max(40).optional(),
-})
+const createAssetSchema = z
+  .object({
+    orderLineId: z.string().trim().min(1).max(60).optional(),
+    purchaseOrderLineId: z.string().trim().min(1).max(60).optional(),
+    serialNumber: z.string().trim().min(1).max(120),
+    assetTag: z.string().trim().max(40).optional(),
+  })
+  .refine((d) => Boolean(d.orderLineId) !== Boolean(d.purchaseOrderLineId), {
+    message: "Exactly one source (order line or purchase order line) is required",
+  })
 
 // Exported separately from the session-gated wrapper below so integration
 // tests can exercise the atomic creation path directly (the wrapper depends
 // on next/headers via getSessionWithRole and cannot run outside a request).
+// Origin is exactly one of orderLineId (client order) or purchaseOrderLineId
+// (procurement, Milestone 3 / P4) — enforced here and by a DB CHECK
+// constraint on order_unit (order_unit_single_origin_chk).
 export async function createAssetCore(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   input: z.infer<typeof createAssetSchema>,
@@ -350,11 +359,34 @@ export async function createAssetCore(
 ): Promise<{ assetId: string }> {
   const d = createAssetSchema.parse(input)
 
-  const [line] = await tx
-    .select({ id: orderLines.id, orderId: orderLines.orderId })
-    .from(orderLines)
-    .where(eq(orderLines.id, d.orderLineId))
-  if (!line) throw new Error("Order line not found")
+  let orderLineId: string | null = null
+  let orderId: string | null = null
+  let purchaseOrderLineId: string | null = null
+  let purchaseOrderId: string | null = null
+
+  if (d.orderLineId) {
+    const [line] = await tx
+      .select({ id: orderLines.id, orderId: orderLines.orderId })
+      .from(orderLines)
+      .where(eq(orderLines.id, d.orderLineId))
+    if (!line) throw new Error("Order line not found")
+    orderLineId = line.id
+    orderId = line.orderId
+  } else {
+    const [line] = await tx
+      .select({ id: purchaseOrderLines.id, purchaseOrderId: purchaseOrderLines.purchaseOrderId })
+      .from(purchaseOrderLines)
+      .where(eq(purchaseOrderLines.id, d.purchaseOrderLineId!))
+    if (!line) throw new Error("Purchase order line not found")
+    purchaseOrderLineId = line.id
+    purchaseOrderId = line.purchaseOrderId
+  }
+
+  const [serialClash] = await tx
+    .select({ id: orderUnits.id })
+    .from(orderUnits)
+    .where(eq(orderUnits.serialNumber, d.serialNumber))
+  if (serialClash) throw new Error("Serial number already in use")
 
   if (d.assetTag) {
     const [clash] = await tx
@@ -368,8 +400,10 @@ export async function createAssetCore(
   const assetId = createId()
   await tx.insert(orderUnits).values({
     id: assetId,
-    orderLineId: line.id,
-    orderId: line.orderId,
+    orderLineId,
+    orderId,
+    purchaseOrderLineId,
+    purchaseOrderId,
     serialNumber: d.serialNumber,
     assetTag,
     status: "in_stock",
@@ -388,7 +422,7 @@ export async function createAssetCore(
     aggregateType: "asset",
     aggregateId: assetId,
     eventType: "AssetCreated",
-    payload: { orderLineId: line.id, orderId: line.orderId, serialNumber: d.serialNumber, assetTag },
+    payload: { orderLineId, orderId, purchaseOrderLineId, purchaseOrderId, serialNumber: d.serialNumber, assetTag },
     dedupeKey: `asset:${assetId}:AssetCreated`,
     actorUserId,
   })

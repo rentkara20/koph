@@ -11,7 +11,17 @@ export type TaskServiceResult = { error?: string; id?: string; isCompleted?: boo
 
 // ─── Get services for a single task ──────────────────────────────────────────
 
-export async function getServicesForTask(taskId: string) {
+// Token-scoped: ownership is proven by holding the task magic-link token, not
+// by passing a raw taskId (arbitrary ids would be an IDOR — cross-partner task
+// service checklists could be enumerated).
+export async function getServicesForTaskToken(token: string) {
+  const [task] = await db
+    .select({ id: partnerTasks.id })
+    .from(partnerTasks)
+    .where(eq(partnerTasks.taskToken, token))
+
+  if (!task) return []
+
   return db
     .select({
       id: taskServices.id,
@@ -23,7 +33,7 @@ export async function getServicesForTask(taskId: string) {
     })
     .from(taskServices)
     .innerJoin(servicesCatalog, eq(taskServices.serviceId, servicesCatalog.id))
-    .where(eq(taskServices.partnerTaskId, taskId))
+    .where(eq(taskServices.partnerTaskId, task.id))
     .orderBy(asc(servicesCatalog.sortOrder))
 }
 
@@ -31,7 +41,7 @@ export async function getServicesForTask(taskId: string) {
 
 export async function getTaskServicesForRequest(requestId: string) {
   const session = await getStaffSession()
-  if (!session) return {} as Record<string, Awaited<ReturnType<typeof getServicesForTask>>>
+  if (!session) return {} as Record<string, Awaited<ReturnType<typeof getServicesForTaskToken>>>
 
   const rows = await db
     .select({

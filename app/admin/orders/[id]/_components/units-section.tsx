@@ -55,7 +55,7 @@ export function UnitsSection({
     initialUnits.map((u) => ({
       key: nextKey++,
       dbId: u.id,
-      orderLineId: u.orderLineId,
+      orderLineId: u.orderLineId ?? defaultLineId,
       serialNumber: u.serialNumber ?? "",
       supplierId: u.supplierId ?? "",
       purchaseCost: u.purchaseCost != null ? String(u.purchaseCost) : "",

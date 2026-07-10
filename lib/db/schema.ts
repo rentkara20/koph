@@ -1,4 +1,5 @@
-import { index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
+import { check, index, integer, real, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core"
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -510,16 +511,23 @@ export const notifications = sqliteTable("notification", {
   linkUrl: text("link_url"), // where clicking the notification navigates
   entityType: text("entity_type"),
   entityId: text("entity_id"),
+  // Idempotency key for event-driven notifications: `${eventId}:${userId}`.
+  // The outbox drain can retry a delivery, so the consumer inserts with
+  // onConflictDoNothing on this key. Null for legacy/direct notifications.
+  dedupeKey: text("dedupe_key"),
   readAt: integer("read_at"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
-}, (t) => [index("notification_user_idx").on(t.userId, t.readAt)])
+}, (t) => [
+  index("notification_user_idx").on(t.userId, t.readAt),
+  uniqueIndex("notification_dedupe_key_idx").on(t.dedupeKey),
+])
 
 // ─── Attachments ─────────────────────────────────────────────────────────────
 
 export const attachments = sqliteTable("attachment", {
   id: text("id").primaryKey(),
   entityType: text("entity_type", {
-    enum: ["request", "partner_task", "signature_request", "asset"],
+    enum: ["request", "partner_task", "signature_request", "asset", "purchase_order", "warranty_assignment"],
   }).notNull(),
   entityId: text("entity_id").notNull(),
   fileName: text("file_name").notNull(),
@@ -739,13 +747,17 @@ export const orderUnits = sqliteTable(
   "order_unit",
   {
     id: text("id").primaryKey(),
-    orderLineId: text("order_line_id")
-      .notNull()
-      .references(() => orderLines.id, { onDelete: "cascade" }),
+    // Exactly one origin: a client order-line OR a purchase-order-line, never
+    // both/neither — enforced by CHECK constraint below (Milestone 3 / P4).
+    orderLineId: text("order_line_id").references(() => orderLines.id, { onDelete: "cascade" }),
     // Denormalised for easy per-order queries without a join through lines.
-    orderId: text("order_id")
-      .notNull()
-      .references(() => orders.id, { onDelete: "cascade" }),
+    orderId: text("order_id").references(() => orders.id, { onDelete: "cascade" }),
+    purchaseOrderLineId: text("purchase_order_line_id").references(() => purchaseOrderLines.id, {
+      onDelete: "restrict",
+    }),
+    purchaseOrderId: text("purchase_order_id").references(() => purchaseOrders.id, {
+      onDelete: "restrict",
+    }),
     serialNumber: text("serial_number"),
     supplierId: text("supplier_id").references(() => suppliers.id, {
       onDelete: "set null",
@@ -784,9 +796,14 @@ export const orderUnits = sqliteTable(
   (t) => [
     index("order_unit_order_idx").on(t.orderId),
     index("order_unit_line_idx").on(t.orderLineId),
+    index("order_unit_po_line_idx").on(t.purchaseOrderLineId),
     index("order_unit_status_idx").on(t.status),
     index("order_unit_serial_idx").on(t.serialNumber),
     uniqueIndex("order_unit_asset_tag_idx").on(t.assetTag),
+    check(
+      "order_unit_single_origin_chk",
+      sql`(${t.orderLineId} IS NOT NULL AND ${t.purchaseOrderLineId} IS NULL) OR (${t.orderLineId} IS NULL AND ${t.purchaseOrderLineId} IS NOT NULL)`
+    ),
   ]
 )
 
@@ -812,6 +829,193 @@ export const assetEvents = sqliteTable(
     createdAt: integer("created_at").notNull().$defaultFn(now),
   },
   (t) => [index("asset_event_asset_idx").on(t.assetId, t.createdAt)]
+)
+
+// ─── Purchase orders (procurement layer — feeds Asset creation) ─────────────
+// Distinct from "order" (client commercial order). A purchase order is what
+// we buy from a supplier; receiving a line creates an Asset (order_unit row)
+// via the same createAssetCore used by the existing minimal-entry flow.
+
+export const purchaseOrders = sqliteTable(
+  "purchase_order",
+  {
+    id: text("id").primaryKey(),
+    supplierId: text("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
+    poNumber: text("po_number").notNull().unique(),
+    status: text("status", {
+      enum: ["draft", "ordered", "partially_received", "received", "cancelled"],
+    })
+      .notNull()
+      .default("draft"),
+    invoiceRef: text("invoice_ref"),
+    orderedAt: integer("ordered_at"),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("purchase_order_supplier_idx").on(t.supplierId)]
+)
+
+export const purchaseOrderLines = sqliteTable(
+  "purchase_order_line",
+  {
+    id: text("id").primaryKey(),
+    purchaseOrderId: text("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    itemDescription: text("item_description").notNull(),
+    brand: text("brand"),
+    model: text("model"),
+    requiresSerial: integer("requires_serial", { mode: "boolean" }).notNull().default(true),
+    qtyOrdered: integer("qty_ordered").notNull(),
+    qtyReceived: integer("qty_received").notNull().default(0),
+    unitCost: real("unit_cost"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("purchase_order_line_po_idx").on(t.purchaseOrderId)]
+)
+
+// ─── Warranty (separate module — assigned to an Asset, not asset fields) ────
+
+export const warrantyProducts = sqliteTable("warranty_product", {
+  id: text("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  durationMonths: integer("duration_months").notNull(),
+  providerName: text("provider_name"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+})
+
+export const warrantyBatches = sqliteTable(
+  "warranty_batch",
+  {
+    id: text("id").primaryKey(),
+    warrantyProductId: text("warranty_product_id")
+      .notNull()
+      .references(() => warrantyProducts.id),
+    source: text("source", {
+      enum: ["with_device", "separate", "other_supplier", "bulk"],
+    }).notNull(),
+    purchaseOrderId: text("purchase_order_id").references(() => purchaseOrders.id, {
+      onDelete: "set null",
+    }),
+    invoiceRef: text("invoice_ref"),
+    unitsCovered: integer("units_covered").notNull().default(1),
+    unitsAssigned: integer("units_assigned").notNull().default(0),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("warranty_batch_product_idx").on(t.warrantyProductId)]
+)
+
+export const warrantyAssignments = sqliteTable(
+  "warranty_assignment",
+  {
+    id: text("id").primaryKey(),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => orderUnits.id, { onDelete: "cascade" }),
+    warrantyBatchId: text("warranty_batch_id")
+      .notNull()
+      .references(() => warrantyBatches.id),
+    status: text("status", {
+      enum: [
+        "purchased_not_assigned",
+        "assigned_not_activated",
+        "activation_pending",
+        "active",
+        "expired",
+        "cancelled",
+        "unknown",
+      ],
+    })
+      .notNull()
+      .default("assigned_not_activated"),
+    activationDueAt: integer("activation_due_at"),
+    startAt: integer("start_at"),
+    endAt: integer("end_at"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("warranty_assignment_asset_idx").on(t.assetId),
+    index("warranty_assignment_status_idx").on(t.status),
+  ]
+)
+
+// ─── Accessories (serialized / trackable / non-serialized by quantity) ─────
+
+export const accessoryItems = sqliteTable("accessory_item", {
+  id: text("id").primaryKey(),
+  nameAr: text("name_ar").notNull(),
+  nameEn: text("name_en").notNull(),
+  category: text("category", {
+    enum: ["serialized_asset", "trackable", "non_serialized"],
+  }).notNull(),
+  requiresSerial: integer("requires_serial", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+})
+
+export const accessoryUnits = sqliteTable(
+  "accessory_unit",
+  {
+    id: text("id").primaryKey(),
+    accessoryItemId: text("accessory_item_id")
+      .notNull()
+      .references(() => accessoryItems.id),
+    serialNumber: text("serial_number"),
+    status: text("status", {
+      enum: ["in_stock", "assigned", "returned", "missing", "damaged", "retired"],
+    })
+      .notNull()
+      .default("in_stock"),
+    location: text("location").notNull().default("main_warehouse"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("accessory_unit_item_idx").on(t.accessoryItemId)]
+)
+
+export const accessoryStock = sqliteTable(
+  "accessory_stock",
+  {
+    id: text("id").primaryKey(),
+    accessoryItemId: text("accessory_item_id")
+      .notNull()
+      .references(() => accessoryItems.id),
+    location: text("location").notNull().default("main_warehouse"),
+    qty: integer("qty").notNull().default(0),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [uniqueIndex("accessory_stock_item_location_idx").on(t.accessoryItemId, t.location)]
+)
+
+export const accessoryAttachments = sqliteTable(
+  "accessory_attachment",
+  {
+    id: text("id").primaryKey(),
+    entityType: text("entity_type", { enum: ["request", "asset"] }).notNull(),
+    entityId: text("entity_id").notNull(),
+    accessoryItemId: text("accessory_item_id")
+      .notNull()
+      .references(() => accessoryItems.id),
+    accessoryUnitId: text("accessory_unit_id").references(() => accessoryUnits.id, {
+      onDelete: "set null",
+    }),
+    qty: integer("qty"),
+    checklistState: text("checklist_state", {
+      enum: ["delivered", "collected", "missing", "damaged"],
+    })
+      .notNull()
+      .default("delivered"),
+    notes: text("notes"),
+    byUserId: text("by_user_id"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("accessory_attachment_entity_idx").on(t.entityType, t.entityId)]
 )
 
 // ─── Maintenance orders (work orders for an asset's repair cycle) ───────────
@@ -939,3 +1143,22 @@ export type OrderUnit = typeof orderUnits.$inferSelect
 export type NewOrderUnit = typeof orderUnits.$inferInsert
 export type MaintenanceOrder = typeof maintenanceOrders.$inferSelect
 export type NewMaintenanceOrder = typeof maintenanceOrders.$inferInsert
+
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect
+export type NewPurchaseOrder = typeof purchaseOrders.$inferInsert
+export type PurchaseOrderLine = typeof purchaseOrderLines.$inferSelect
+export type NewPurchaseOrderLine = typeof purchaseOrderLines.$inferInsert
+export type WarrantyProduct = typeof warrantyProducts.$inferSelect
+export type NewWarrantyProduct = typeof warrantyProducts.$inferInsert
+export type WarrantyBatch = typeof warrantyBatches.$inferSelect
+export type NewWarrantyBatch = typeof warrantyBatches.$inferInsert
+export type WarrantyAssignment = typeof warrantyAssignments.$inferSelect
+export type NewWarrantyAssignment = typeof warrantyAssignments.$inferInsert
+export type AccessoryItem = typeof accessoryItems.$inferSelect
+export type NewAccessoryItem = typeof accessoryItems.$inferInsert
+export type AccessoryUnit = typeof accessoryUnits.$inferSelect
+export type NewAccessoryUnit = typeof accessoryUnits.$inferInsert
+export type AccessoryStock = typeof accessoryStock.$inferSelect
+export type NewAccessoryStock = typeof accessoryStock.$inferInsert
+export type AccessoryAttachment = typeof accessoryAttachments.$inferSelect
+export type NewAccessoryAttachment = typeof accessoryAttachments.$inferInsert

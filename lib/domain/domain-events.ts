@@ -102,5 +102,12 @@ export const DOMAIN_EVENT_TYPES = [
   "PaymentBatchPaid",
   "PaymentHeld",
   "PaymentReleased",
+  "PurchaseOrderCreated",
+  "PurchaseOrderLineReceived",
+  "WarrantyAssigned",
+  "WarrantyActivated",
+  "WarrantyExpired",
+  "AccessoryAttached",
+  "AccessoryReturned",
 ] as const
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number]

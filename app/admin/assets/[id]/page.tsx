@@ -5,6 +5,8 @@ import { getLocale, getTranslations } from "next-intl/server"
 import { ArrowRight, QrCode } from "lucide-react"
 import { getAsset } from "@/lib/actions/assets"
 import { getAssetDocuments } from "@/lib/actions/asset-documents"
+import { getWarrantyForAsset, getWarrantyBatches } from "@/lib/actions/warranty"
+import { getAccessoriesForEntity, getAccessoryItems } from "@/lib/actions/accessories"
 import { assetActionsFor, type AssetStatus } from "@/lib/domain/asset-status"
 import { qrDataUrl } from "@/lib/utils/qr"
 import { formatDate } from "@/lib/utils/format"
@@ -14,6 +16,8 @@ import { AssetActions } from "./_components/asset-actions"
 import { OpenMaintenanceButton } from "./_components/open-maintenance-button"
 import { AssetNoteForm } from "./_components/asset-note-form"
 import { AssetDocuments } from "./_components/asset-documents"
+import { WarrantyCard } from "./_components/warranty-card"
+import { AssetAccessories } from "./_components/asset-accessories"
 
 export default async function AssetPage({
   params,
@@ -21,16 +25,24 @@ export default async function AssetPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [t, tCommon, data, locale, documents] = await Promise.all([
-    getTranslations("assets"),
-    getTranslations("common"),
-    getAsset(id),
-    getLocale(),
-    getAssetDocuments(id),
-  ])
+  const [t, tCommon, data, locale, documents, warranty, warrantyBatches, attachedAccessories, accessoryItems] =
+    await Promise.all([
+      getTranslations("assets"),
+      getTranslations("common"),
+      getAsset(id),
+      getLocale(),
+      getAssetDocuments(id),
+      getWarrantyForAsset(id),
+      getWarrantyBatches(),
+      getAccessoriesForEntity("asset", id),
+      getAccessoryItems(),
+    ])
 
   if (!data) notFound()
   const { asset, currentRequestNumber, events } = data
+  const availableBatches = warrantyBatches
+    .filter((b) => b.unitsAssigned < b.unitsCovered)
+    .map((b) => ({ id: b.id, productNameEn: b.productNameEn, unitsCovered: b.unitsCovered, unitsAssigned: b.unitsAssigned }))
 
   const assetUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? "https://koph.vercel.app"}/admin/assets/${asset.id}`
   const qr = await qrDataUrl(assetUrl)
@@ -215,6 +227,12 @@ export default async function AssetPage({
           </ol>
         )}
       </section>
+
+      {/* Warranty */}
+      <WarrantyCard assetId={asset.id} warranty={warranty} batches={availableBatches} />
+
+      {/* Accessories */}
+      <AssetAccessories assetId={asset.id} attached={attachedAccessories} availableItems={accessoryItems} />
 
       {/* Documents */}
       <AssetDocuments assetId={asset.id} documents={documents} />

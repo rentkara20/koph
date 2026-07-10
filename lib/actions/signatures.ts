@@ -13,14 +13,12 @@ import {
   customerContacts,
   consentVersions,
   customers,
-  partners,
   partnerTasks,
   requests,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { logActivity } from "@/lib/utils/activity"
-import { notify, notifyAdmins } from "@/lib/utils/notify"
 import { sendEmail } from "@/lib/email/resend"
 import { deliveryNoteSignedEmail } from "@/lib/email/templates"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
@@ -482,46 +480,15 @@ type PostSignatureCtx = {
 }
 
 async function handlePostSignature(ctx: PostSignatureCtx) {
-  const { sig, requestNumber, signerName } = ctx
+  const { sig, requestNumber } = ctx
 
-  // 1) Notify the assigned partner (if they have a portal login) + all admins.
+  // In-app notifications for signing (customer_signed / fully_signed) are now
+  // event-driven: the SignatureCompleted domain event emitted inside the
+  // signing transaction is turned into admin notifications by the outbox
+  // notification consumer. This hook only sends the best-effort customer email
+  // with the signed delivery-note link. No-ops when RESEND_API_KEY isn't
+  // configured (see lib/email/resend.ts).
   if (sig.requestId) {
-    const [task] = await db
-      .select({ partnerId: partnerTasks.partnerId })
-      .from(partnerTasks)
-      .where(eq(partnerTasks.requestId, sig.requestId))
-      .orderBy(desc(partnerTasks.createdAt))
-      .limit(1)
-
-    if (task?.partnerId) {
-      const [partner] = await db
-        .select({ userId: partners.userId })
-        .from(partners)
-        .where(eq(partners.id, task.partnerId))
-      if (partner?.userId) {
-        await notify({
-          userId: partner.userId,
-          type: "customer_signed",
-          i18nKey: "notifications.customerSigned",
-          i18nData: { customerName: signerName, requestNumber },
-          linkUrl: `/admin/requests/${sig.requestId}`,
-          entityType: "signature_request",
-          entityId: sig.id,
-        })
-      }
-    }
-
-    await notifyAdmins({
-      type: "customer_signed",
-      i18nKey: "notifications.customerSigned",
-      i18nData: { customerName: signerName, requestNumber },
-      linkUrl: `/admin/requests/${sig.requestId}`,
-      entityType: "signature_request",
-      entityId: sig.id,
-    })
-
-    // Best-effort email to the customer with the signed delivery note link.
-    // No-ops when RESEND_API_KEY isn't configured (see lib/email/resend.ts).
     const [customerRow] = await db
       .select({ name: customers.name, email: customers.email })
       .from(customers)
@@ -536,25 +503,6 @@ async function handlePostSignature(ctx: PostSignatureCtx) {
       await sendEmail({ to: customerRow.email, subject, html })
     }
   }
-
-  // 2) Two-stage signatory chaining.
-  if (sig.signatoryRole === "authorized") {
-    // Final stage signed → the delivery note is now fully signed.
-    if (sig.requestId) {
-      await notifyAdmins({
-        type: "fully_signed",
-        i18nKey: "notifications.fullySigned",
-        i18nData: { requestNumber },
-        linkUrl: `/admin/requests/${sig.requestId}`,
-        entityType: "signature_request",
-        entityId: sig.id,
-      })
-    }
-    return
-  }
-
-  // Stage-2 (authorised sign-off) is now admin-triggered via
-  // requestAuthorizedSignoff — never created automatically here.
 }
 
 // ─── Admin: request authorised sign-off (stage-2) ────────────────────────────

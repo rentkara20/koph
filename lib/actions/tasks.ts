@@ -542,11 +542,21 @@ export async function getTaskByToken(token: string) {
   }
 }
 
-export async function getTaskPhotos(taskId: string) {
+// Token-scoped: the caller proves ownership by holding the task's magic-link
+// token, never by passing a raw taskId (which would be an IDOR — any id could
+// be enumerated to read another partner's delivery photos).
+export async function getTaskPhotosByToken(token: string) {
+  const [task] = await db
+    .select({ id: partnerTasks.id })
+    .from(partnerTasks)
+    .where(eq(partnerTasks.taskToken, token))
+
+  if (!task) return []
+
   return db
     .select()
     .from(attachments)
-    .where(and(eq(attachments.entityId, taskId), eq(attachments.entityType, "partner_task")))
+    .where(and(eq(attachments.entityId, task.id), eq(attachments.entityType, "partner_task")))
 }
 
 // ─── Public: update task via magic link ───────────────────────────────────────

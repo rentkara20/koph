@@ -124,10 +124,28 @@ export async function requestCallback(
   const [customer] = await db.select().from(customers).where(eq(customers.id, portal.customerId))
   if (!customer) return { error: "Not found" }
 
+  // Constrain requestId to this token's customer — a caller must not be able to
+  // attach a callback to another customer's request (IDOR / notification spoof).
+  let scopedRequestId: string | null = null
+  if (parsed.data.requestId) {
+    const [ownedRequest] = await db
+      .select({ id: requests.id })
+      .from(requests)
+      .where(
+        and(
+          eq(requests.id, parsed.data.requestId),
+          eq(requests.customerId, portal.customerId),
+          isNull(requests.deletedAt)
+        )
+      )
+    if (!ownedRequest) return { error: "Not found" }
+    scopedRequestId = ownedRequest.id
+  }
+
   await db.insert(customerCallbackRequests).values({
     id: createId(),
     customerId: portal.customerId,
-    requestId: parsed.data.requestId || null,
+    requestId: scopedRequestId,
     kind: parsed.data.kind,
     message: parsed.data.message || null,
   })
@@ -138,7 +156,7 @@ export async function requestCallback(
     i18nData: { customerName: customer.name, kind: parsed.data.kind },
     linkUrl: `/admin/customers/${customer.id}`,
     entityType: "request",
-    entityId: parsed.data.requestId ?? customer.id,
+    entityId: scopedRequestId ?? customer.id,
   })
 
   return {}

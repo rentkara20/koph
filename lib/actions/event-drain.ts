@@ -7,15 +7,26 @@ import { and, asc, eq, lte } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { domainEvents, eventDeliveries } from "@/lib/db/schema"
 import { CONSUMERS, nextRetryDelayMs, isDead, type Consumer } from "@/lib/domain/domain-events"
+import { deliverNotificationsForEvent } from "@/lib/actions/notification-consumer"
 
 const DRAIN_BATCH_SIZE = 50
 
-// Both consumers are no-op/verification-only for OI-2 — they exist so the
-// delivery fan-out and retry machinery can be proven end-to-end before the
-// real Notification Hub / projections work is built (out of scope here).
-const CONSUMER_HANDLERS: Record<Consumer, (payload: unknown, eventType: string) => Promise<void>> = {
+// Normalized domain event handed to each consumer handler.
+interface ConsumerEvent {
+  id: string
+  eventType: string
+  aggregateType: string
+  aggregateId: string
+  actorUserId: string | null
+  payload: Record<string, unknown>
+}
+
+// The `notifications` consumer (P7) translates events into admin in-app
+// notifications. `projections` remains a verification-only no-op until the
+// projections work lands.
+const CONSUMER_HANDLERS: Record<Consumer, (event: ConsumerEvent) => Promise<void>> = {
   projections: async () => {},
-  notifications: async () => {},
+  notifications: (event) => deliverNotificationsForEvent(db, event),
 }
 
 export interface DrainResult {
@@ -49,6 +60,9 @@ export async function drainEventDeliveries(): Promise<DrainResult> {
       attempts: eventDeliveries.attempts,
       eventId: eventDeliveries.eventId,
       eventType: domainEvents.eventType,
+      aggregateType: domainEvents.aggregateType,
+      aggregateId: domainEvents.aggregateId,
+      actorUserId: domainEvents.actorUserId,
       payload: domainEvents.payload,
     })
     .from(eventDeliveries)
@@ -64,7 +78,14 @@ export async function drainEventDeliveries(): Promise<DrainResult> {
   for (const row of claimable) {
     const handler = CONSUMER_HANDLERS[row.consumer as Consumer]
     try {
-      await handler(JSON.parse(row.payload), row.eventType)
+      await handler({
+        id: row.eventId,
+        eventType: row.eventType,
+        aggregateType: row.aggregateType,
+        aggregateId: row.aggregateId,
+        actorUserId: row.actorUserId,
+        payload: JSON.parse(row.payload) as Record<string, unknown>,
+      })
       await db
         .update(eventDeliveries)
         .set({ status: "delivered", deliveredAt: Date.now(), attempts: row.attempts + 1 })

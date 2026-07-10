@@ -1,9 +1,9 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import { getLocale, getTranslations } from "next-intl/server"
-import { getTaskByToken, getTaskPhotos } from "@/lib/actions/tasks"
+import { getTaskByToken, getTaskPhotosByToken } from "@/lib/actions/tasks"
 import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
-import { getServicesForTask } from "@/lib/actions/task-services"
+import { getServicesForTaskToken } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { formatDate } from "@/lib/utils/format"
@@ -37,8 +37,8 @@ export default async function TaskPage({
   const { task, request, customer, requestType, items, isExpired, linkedContact } = data
 
   const [photos, taskServices, allContacts, sigData, failureReasons] = await Promise.all([
-    getTaskPhotos(task.id),
-    getServicesForTask(task.id),
+    getTaskPhotosByToken(token),
+    getServicesForTaskToken(token),
     customer && !linkedContact ? getCustomerContacts(customer.id) : Promise.resolve([]),
     getSignatureForTaskToken(token),
     getActiveFailureReasons(),
