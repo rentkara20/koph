@@ -64,6 +64,7 @@ export function domainEventTypeForTaskAction(action: string): DomainEventType | 
 }
 
 export const DOMAIN_EVENT_TYPES = [
+  "AssetCreated",
   "AssetReserved",
   "AssetUnreserved",
   "AssetAssigned",

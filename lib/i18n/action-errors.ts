@@ -68,6 +68,9 @@ const AR: Record<string, string> = {
   "Invalid action for current asset status": "إجراء غير صالح لحالة الأصل الحالية",
   "Invalid note": "ملاحظة غير صالحة",
   "Invalid input": "مدخلات غير صالحة",
+  "Order line not found": "بند الطلبية غير موجود",
+  "Asset tag already in use": "رقم الأصل مستخدم بالفعل",
+  "Failed to create asset": "تعذر إنشاء الأصل",
 
   // Partner login
   "Partner not found": "الشريك غير موجود",

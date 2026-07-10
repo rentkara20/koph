@@ -17,6 +17,7 @@ import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { type AssetAction, type AssetStatus } from "@/lib/domain/asset-status"
 import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
+import { emitDomainEvent } from "@/lib/actions/domain-events"
 
 type ActionResult = { error?: string; id?: string }
 
@@ -296,6 +297,126 @@ export async function updateAssetDetails(
   revalidatePath(`/admin/assets/${id}`)
   revalidatePath("/admin/assets")
   return { id }
+}
+
+// Search source order lines for the minimal-entry creation form.
+export async function searchOrderLinesForAssetCreation(query: string) {
+  const session = await getStaffSession()
+  if (!session) return []
+  const q = query.trim()
+  if (!q) return []
+
+  return db
+    .select({
+      orderLineId: orderLines.id,
+      orderNumber: orders.orderNumber,
+      description: orderLines.description,
+      brand: orderLines.brand,
+      model: orderLines.model,
+    })
+    .from(orderLines)
+    .innerJoin(orders, eq(orderLines.orderId, orders.id))
+    .where(
+      or(
+        like(orders.orderNumber, `%${q}%`),
+        like(orderLines.description, `%${q}%`),
+        like(orderLines.brand, `%${q}%`),
+        like(orderLines.model, `%${q}%`)
+      )
+    )
+    .orderBy(desc(orderLines.createdAt))
+    .limit(20)
+}
+
+// ─── Minimal asset creation (Milestone 2 / B3) ───────────────────────────────
+// Not an asset transition — the asset doesn't exist yet, so applyAssetTransition
+// (which requires an existing order_unit row) does not apply. This is a
+// dedicated, atomic creation path: validate the source line, validate/generate
+// the serial + tag, insert the row, and emit AssetCreated — all in one tx.
+
+const createAssetSchema = z.object({
+  orderLineId: z.string().trim().min(1).max(60),
+  serialNumber: z.string().trim().min(1).max(120),
+  assetTag: z.string().trim().max(40).optional(),
+})
+
+// Exported separately from the session-gated wrapper below so integration
+// tests can exercise the atomic creation path directly (the wrapper depends
+// on next/headers via getSessionWithRole and cannot run outside a request).
+export async function createAssetCore(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  input: z.infer<typeof createAssetSchema>,
+  actorUserId: string | null
+): Promise<{ assetId: string }> {
+  const d = createAssetSchema.parse(input)
+
+  const [line] = await tx
+    .select({ id: orderLines.id, orderId: orderLines.orderId })
+    .from(orderLines)
+    .where(eq(orderLines.id, d.orderLineId))
+  if (!line) throw new Error("Order line not found")
+
+  if (d.assetTag) {
+    const [clash] = await tx
+      .select({ id: orderUnits.id })
+      .from(orderUnits)
+      .where(eq(orderUnits.assetTag, d.assetTag))
+    if (clash) throw new Error("Asset tag already in use")
+  }
+  const assetTag = d.assetTag || (await nextAssetTag(tx))
+
+  const assetId = createId()
+  await tx.insert(orderUnits).values({
+    id: assetId,
+    orderLineId: line.id,
+    orderId: line.orderId,
+    serialNumber: d.serialNumber,
+    assetTag,
+    status: "in_stock",
+  })
+
+  await tx.insert(assetEvents).values({
+    id: createId(),
+    assetId,
+    type: "created",
+    toStatus: "in_stock",
+    notes: assetTag,
+    byUserId: actorUserId,
+  })
+
+  await emitDomainEvent(tx, {
+    aggregateType: "asset",
+    aggregateId: assetId,
+    eventType: "AssetCreated",
+    payload: { orderLineId: line.id, orderId: line.orderId, serialNumber: d.serialNumber, assetTag },
+    dedupeKey: `asset:${assetId}:AssetCreated`,
+    actorUserId,
+  })
+
+  return { assetId }
+}
+
+export async function createAsset(
+  input: z.infer<typeof createAssetSchema>
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = createAssetSchema.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+
+  let assetId = ""
+  try {
+    await db.transaction(async (tx) => {
+      const result = await createAssetCore(tx, parsed.data, session.user.id)
+      assetId = result.assetId
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to create asset" }
+  }
+
+  revalidatePath("/admin/assets")
+  return { id: assetId }
 }
 
 // Back-fills KARA tags for all untagged units, oldest first. Idempotent.

@@ -63,6 +63,12 @@ export default async function AssetsPage({
         <div className="flex gap-2">
           <SyncNotionButton />
           <GenerateTagsButton />
+          <Link
+            href="/admin/assets/new"
+            className="inline-flex h-9 items-center rounded-md bg-kara-purple px-3 text-sm font-medium text-white hover:opacity-90"
+          >
+            {t("createAsset")}
+          </Link>
         </div>
       </div>
 
