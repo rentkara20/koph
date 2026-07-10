@@ -4,6 +4,8 @@ import {
   getPaymentSummaryByMonth,
   getPendingPaymentsSummary,
   getInventoryByModel,
+  getSourcingRequestsByStatus,
+  getProcurementCasesByStatus,
 } from "@/lib/actions/reports"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,14 +29,18 @@ const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "suc
 }
 
 export default async function ReportsPage() {
-  const [statusRows, partnerPerf, paymentSummary, pendingSummary, inventoryByModel] =
+  const [statusRows, partnerPerf, paymentSummary, pendingSummary, inventoryByModel, sourcingByStatus, casesByStatus] =
     await Promise.all([
       getRequestsByStatus(),
       getPartnerPerformance(),
       getPaymentSummaryByMonth(),
       getPendingPaymentsSummary(),
       getInventoryByModel(),
+      getSourcingRequestsByStatus(),
+      getProcurementCasesByStatus(),
     ])
+
+  const totalSourcing = sourcingByStatus.reduce((s, r) => s + r.count, 0)
 
   const totalRequests = statusRows.reduce((s, r) => s + r.count, 0)
 
@@ -117,6 +123,72 @@ export default async function ReportsPage() {
                 )
               })}
             </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Sourcing requests by status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Sourcing requests by status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sourcingByStatus.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No sourcing requests yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {sourcingByStatus.map((row) => {
+                const pct = totalSourcing > 0 ? (row.count / totalSourcing) * 100 : 0
+                return (
+                  <div key={row.status} className="flex items-center gap-3">
+                    <div className="w-32 shrink-0">
+                      <Badge variant="outline">{row.status.replace(/_/g, " ")}</Badge>
+                    </div>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-foreground/20" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-sm tabular-nums font-medium w-8 text-right">{row.count}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Procurement cases by status / source */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Procurement cases by status
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {casesByStatus.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">No procurement cases yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Status</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Source</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Count</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {casesByStatus.map((row, idx) => (
+                  <tr key={idx}>
+                    <td className="px-4 py-3">
+                      <Badge variant="outline">{row.status.replace(/_/g, " ")}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{row.source.replace(/_/g, " ")}</td>
+                    <td className="px-4 py-3 tabular-nums">{row.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </CardContent>
       </Card>

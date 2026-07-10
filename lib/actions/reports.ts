@@ -2,7 +2,18 @@
 
 import { count, desc, eq, sql, sum } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { orderLines, orderUnits, purchaseOrderLines, partners, partnerPayments, partnerTasks, paymentBatches, requests } from "@/lib/db/schema"
+import {
+  orderLines,
+  orderUnits,
+  purchaseOrderLines,
+  partners,
+  partnerPayments,
+  partnerTasks,
+  paymentBatches,
+  requests,
+  sourcingRequests,
+  procurementCases,
+} from "@/lib/db/schema"
 import { getStaffSession } from "@/lib/auth/session"
 
 // ─── Inventory: on-hand counts by location and model ─────────────────────────
@@ -112,6 +123,30 @@ export async function getPaymentSummaryByMonth() {
     .from(paymentBatches)
     .groupBy(paymentBatches.period, paymentBatches.status)
     .orderBy(desc(paymentBatches.period))
+}
+
+// ─── Commercial & Sourcing (M4.5) ─────────────────────────────────────────────
+
+export async function getSourcingRequestsByStatus() {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  return db
+    .select({ status: sourcingRequests.status, count: count() })
+    .from(sourcingRequests)
+    .groupBy(sourcingRequests.status)
+    .orderBy(sourcingRequests.status)
+}
+
+export async function getProcurementCasesByStatus() {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  return db
+    .select({ status: procurementCases.status, source: procurementCases.source, count: count() })
+    .from(procurementCases)
+    .groupBy(procurementCases.status, procurementCases.source)
+    .orderBy(procurementCases.status)
 }
 
 // ─── Pending payments summary ─────────────────────────────────────────────────
