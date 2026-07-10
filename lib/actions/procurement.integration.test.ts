@@ -31,12 +31,17 @@ async function seedPurchaseOrder(qtyOrdered = 1) {
   const supplierId = createId()
   const poId = createId()
   const lineId = createId()
+  const procurementCaseId = createId()
   await db.insert(schema.suppliers).values({ id: supplierId, name: "IT_SUPPLIER" })
+  // Every purchase_order requires a procurement_case (M4.5 anchor) — seed a
+  // bare system_manual case directly, this suite isn't testing that wiring.
+  await db.insert(schema.procurementCases).values({ id: procurementCaseId, source: "system_manual" })
   await db.insert(schema.purchaseOrders).values({
     id: poId,
     supplierId,
     poNumber: "PO-" + lineId.slice(-8),
     status: "ordered",
+    procurementCaseId,
   })
   await db.insert(schema.purchaseOrderLines).values({
     id: lineId,

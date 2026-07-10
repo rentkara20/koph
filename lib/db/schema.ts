@@ -862,12 +862,12 @@ export const purchaseOrders = sqliteTable(
     invoiceRef: text("invoice_ref"),
     orderedAt: integer("ordered_at"),
     notes: text("notes"),
-    // Commercial & Sourcing (M4.5): the operational anchor. Nullable for the
-    // additive rollout only — every PO (manual or commercial-flow) gets one at
-    // write time; a follow-up migration flips this NOT NULL once backfilled.
-    procurementCaseId: text("procurement_case_id").references(() => procurementCases.id, {
-      onDelete: "restrict",
-    }),
+    // Commercial & Sourcing (M4.5): the operational anchor. Every PO (manual
+    // or commercial-flow) gets one at write time — enforced NOT NULL since
+    // prod had 0 purchase_order rows at rollout, so no backfill was needed.
+    procurementCaseId: text("procurement_case_id")
+      .notNull()
+      .references(() => procurementCases.id, { onDelete: "restrict" }),
     createdBy: text("created_by").references(() => users.id),
     createdAt: integer("created_at").notNull().$defaultFn(now),
     updatedAt: integer("updated_at").notNull().$defaultFn(now),
