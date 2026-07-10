@@ -21,6 +21,8 @@ import {
   type AssetStatus,
 } from "@/lib/domain/asset-status"
 import { planAssetFieldUpdate, eventTypeForAction, type TransitionContext } from "@/lib/domain/asset-transition-plan"
+import { domainEventTypeForAssetAction } from "@/lib/domain/domain-events"
+import { emitDomainEvent } from "@/lib/actions/domain-events"
 
 export type AssetTransitionErrorCode = "NOT_FOUND" | "INVALID_TRANSITION" | "CONCURRENT_MODIFICATION"
 
@@ -102,8 +104,9 @@ export async function applyAssetTransition(
     )
   }
 
+  const assetEventId = createId()
   await tx.insert(assetEvents).values({
-    id: createId(),
+    id: assetEventId,
     assetId,
     type: eventTypeForAction(action),
     fromStatus: from,
@@ -113,6 +116,18 @@ export async function applyAssetTransition(
     notes: context.notes ?? null,
     byUserId: context.byUserId ?? null,
   })
+
+  const domainEventType = domainEventTypeForAssetAction(action)
+  if (domainEventType) {
+    await emitDomainEvent(tx, {
+      aggregateType: "asset",
+      aggregateId: assetId,
+      eventType: domainEventType,
+      payload: { fromStatus: from, toStatus: plan.status, requestId: context.requestId ?? null, customerId: context.customerId ?? null },
+      dedupeKey: `asset:${assetId}:${action}:${assetEventId}`,
+      actorUserId: context.byUserId ?? null,
+    })
+  }
 
   return { assetId, fromStatus: from, toStatus: plan.status }
 }

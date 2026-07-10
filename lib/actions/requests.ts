@@ -10,6 +10,7 @@ import { generateRequestNumber } from "@/lib/utils/request-number"
 import { logActivity } from "@/lib/utils/activity"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { createRequestSchema, itemInputSchema, firstError } from "@/lib/validation/schemas"
+import { emitDomainEvent } from "@/lib/actions/domain-events"
 
 export type ActionResult = { error?: string; id?: string }
 
@@ -72,6 +73,15 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
       notes: data.notes || null,
       status: "draft",
       createdBy: session.user.id,
+    })
+
+    await emitDomainEvent(tx, {
+      aggregateType: "request",
+      aggregateId: id,
+      eventType: "RequestCreated",
+      payload: { requestNumber, typeId: data.typeId, customerId: data.customerId },
+      dedupeKey: `request:${id}:RequestCreated`,
+      actorUserId: session.user.id,
     })
 
     if (data.items.length > 0) {

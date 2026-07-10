@@ -44,6 +44,7 @@ import {
   getSystemDefaultProof,
 } from "@/lib/actions/settings"
 import { parseProofConfig, resolveProofRequirements } from "@/lib/domain/proof"
+import { emitDomainEvent } from "@/lib/actions/domain-events"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
@@ -63,18 +64,36 @@ async function syncRequestStatus(requestId: string) {
   const newStatus = deriveRequestStatus(request.status, tasks.map((t) => t.status))
 
   if (newStatus) {
-    await db
-      .update(requests)
-      .set({ status: newStatus as typeof request.status, updatedAt: Date.now() })
-      .where(eq(requests.id, requestId))
+    await db.transaction(async (tx) => {
+      const result = await tx
+        .update(requests)
+        .set({ status: newStatus as typeof request.status, updatedAt: Date.now() })
+        .where(and(eq(requests.id, requestId), eq(requests.status, request.status)))
+      const changed = (result as { rowsAffected?: number }).rowsAffected ?? 1
+      if (changed === 0) return // status already moved concurrently — skip event, nothing to report
 
-    await logActivity({
-      entityType: "request",
-      entityId: requestId,
-      action: "status_changed",
-      i18nKey: "activity.statusChanged",
-      i18nData: { status: newStatus },
-      performedAs: "system",
+      await logActivity(
+        {
+          entityType: "request",
+          entityId: requestId,
+          action: "status_changed",
+          i18nKey: "activity.statusChanged",
+          i18nData: { status: newStatus },
+          performedAs: "system",
+        },
+        tx
+      )
+
+      const domainEventType = newStatus === "assigned" ? "RequestAssigned" : newStatus === "completed" ? "RequestCompleted" : null
+      if (domainEventType) {
+        await emitDomainEvent(tx, {
+          aggregateType: "request",
+          aggregateId: requestId,
+          eventType: domainEventType,
+          payload: { fromStatus: request.status, toStatus: newStatus },
+          dedupeKey: `request:${requestId}:${domainEventType}:${createId()}`,
+        })
+      }
     })
   }
 }
@@ -297,6 +316,15 @@ export async function signOffTask(
     const changed = (result as { rowsAffected?: number }).rowsAffected ?? 1
     if (changed === 0) throw new Error("TASK_STATUS_CHANGED")
 
+    await emitDomainEvent(tx, {
+      aggregateType: "task",
+      aggregateId: taskId,
+      eventType: "TaskClosed",
+      payload: { requestId: task.requestId, isOverride, quantity: quantity ?? null },
+      dedupeKey: `task:${taskId}:TaskClosed`,
+      actorUserId: session.user.id,
+    })
+
     // Auto-create partner_payment when task has a contract
     if (contract) {
       const { quantity: finalQty, totalAmount } = computePayment(
@@ -305,8 +333,9 @@ export async function signOffTask(
         quantity
       )
 
+      const paymentId = createId()
       await tx.insert(partnerPayments).values({
-        id: createId(),
+        id: paymentId,
         partnerId: task.partnerId,
         partnerTaskId: task.id,
         pricingModel: contract.pricingModel,
@@ -314,6 +343,15 @@ export async function signOffTask(
         unitPrice: contract.unitPrice,
         totalAmount,
         status: "pending",
+      })
+
+      await emitDomainEvent(tx, {
+        aggregateType: "partner_payment",
+        aggregateId: paymentId,
+        eventType: "PartnerPaymentCreated",
+        payload: { partnerId: task.partnerId, partnerTaskId: task.id, totalAmount },
+        dedupeKey: `partner_payment:${paymentId}:PartnerPaymentCreated`,
+        actorUserId: session.user.id,
       })
     }
 

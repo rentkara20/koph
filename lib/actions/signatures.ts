@@ -18,6 +18,7 @@ import {
   requests,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
+import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { logActivity } from "@/lib/utils/activity"
 import { notify, notifyAdmins } from "@/lib/utils/notify"
 import { sendEmail } from "@/lib/email/resend"
@@ -403,6 +404,14 @@ export async function submitSignature(
       userAgent,
     })
 
+    await emitDomainEvent(tx, {
+      aggregateType: "signature_request",
+      aggregateId: sig.id,
+      eventType: "SignatureCompleted",
+      payload: { requestId: sig.requestId ?? null, signatoryRole: sig.signatoryRole },
+      dedupeKey: `signature_request:${sig.id}:SignatureCompleted`,
+    })
+
     // Per-item acknowledgement of received condition.
     if (data.itemConditions && data.itemConditions.length > 0) {
       await tx.insert(signatureItemConditions).values(
@@ -764,6 +773,14 @@ export async function signOnSiteByTaskToken(
       id: createId(),
       signatureRequestId: sigReq.id,
       eventType: "signed",
+    })
+
+    await emitDomainEvent(tx, {
+      aggregateType: "signature_request",
+      aggregateId: sigReq.id,
+      eventType: "SignatureCompleted",
+      payload: { requestId: sigReq.requestId ?? null, signatoryRole: sigReq.signatoryRole },
+      dedupeKey: `signature_request:${sigReq.id}:SignatureCompleted`,
     })
   })
 

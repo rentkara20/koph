@@ -17,6 +17,7 @@ import { checkRateLimit } from "@/lib/utils/rate-limit"
 import { getBusinessMonthOffsetModifier } from "@/lib/actions/settings"
 import { logActivity } from "@/lib/utils/activity"
 import { sumBatchTotal } from "@/lib/domain/payments"
+import { emitDomainEvent } from "@/lib/actions/domain-events"
 
 export type PaymentActionResult = { error?: string; id?: string }
 
@@ -279,6 +280,14 @@ export async function approveBatch(batchId: string): Promise<PaymentActionResult
       },
       tx
     )
+    await emitDomainEvent(tx, {
+      aggregateType: "payment_batch",
+      aggregateId: batchId,
+      eventType: "PaymentBatchApproved",
+      payload: { partnerId: batch.partnerId, totalAmount: batch.totalAmount },
+      dedupeKey: `payment_batch:${batchId}:PaymentBatchApproved`,
+      actorUserId: session.user.id,
+    })
   })
 
   revalidatePath(`/admin/payments/${batchId}`)
@@ -309,6 +318,14 @@ export async function markBatchSentToFinance(batchId: string): Promise<PaymentAc
       },
       tx
     )
+    await emitDomainEvent(tx, {
+      aggregateType: "payment_batch",
+      aggregateId: batchId,
+      eventType: "PaymentBatchSent",
+      payload: { partnerId: batch.partnerId, totalAmount: batch.totalAmount },
+      dedupeKey: `payment_batch:${batchId}:PaymentBatchSent`,
+      actorUserId: session.user.id,
+    })
   })
 
   revalidatePath(`/admin/payments/${batchId}`)
@@ -347,6 +364,14 @@ export async function markBatchPaid(batchId: string): Promise<PaymentActionResul
       },
       tx
     )
+    await emitDomainEvent(tx, {
+      aggregateType: "payment_batch",
+      aggregateId: batchId,
+      eventType: "PaymentBatchPaid",
+      payload: { partnerId: batch.partnerId, totalAmount: batch.totalAmount },
+      dedupeKey: `payment_batch:${batchId}:PaymentBatchPaid`,
+      actorUserId: session.user.id,
+    })
   })
 
   revalidatePath(`/admin/payments/${batchId}`)

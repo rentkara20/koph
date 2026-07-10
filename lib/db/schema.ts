@@ -859,6 +859,64 @@ export const customerCallbackRequests = sqliteTable(
   (t) => [index("customer_callback_customer_idx").on(t.customerId)]
 )
 
+// ─── Domain events (transactional outbox, OI-2) ──────────────────────────────
+// One row per business-significant event, written in the SAME transaction as
+// the state change it describes. dedupeKey enforces idempotent emit (a retry
+// of the same business operation must not create a second event row).
+
+export const domainEvents = sqliteTable(
+  "domain_event",
+  {
+    id: text("id").primaryKey(),
+    aggregateType: text("aggregate_type").notNull(), // e.g. "asset", "request", "task", "signature_request", "payment_batch", "partner_payment"
+    aggregateId: text("aggregate_id").notNull(),
+    eventType: text("event_type").notNull(), // e.g. "AssetDelivered", "RequestCreated"
+    payload: text("payload").notNull(), // JSON
+    dedupeKey: text("dedupe_key").notNull().unique(),
+    actorUserId: text("actor_user_id"),
+    occurredAt: integer("occurred_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("domain_event_aggregate_idx").on(t.aggregateType, t.aggregateId),
+    index("domain_event_type_idx").on(t.eventType),
+  ]
+)
+
+// ─── Event deliveries (per-consumer outbox rows) ─────────────────────────────
+// One row per (event, consumer). The cron drain claims pending rows, invokes
+// the consumer, and advances status. A unique index on (eventId, consumer)
+// makes emit idempotent per consumer even if emitDomainEvent were ever called
+// twice for the same dedupeKey (it won't insert a second domain_event, but
+// this also guards the delivery fan-out itself).
+
+export const eventDeliveries = sqliteTable(
+  "event_delivery",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => domainEvents.id, { onDelete: "cascade" }),
+    consumer: text("consumer", { enum: ["projections", "notifications"] }).notNull(),
+    status: text("status", { enum: ["pending", "delivered", "failed", "dead"] })
+      .notNull()
+      .default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: integer("next_attempt_at").notNull().$defaultFn(now),
+    lastError: text("last_error"),
+    deliveredAt: integer("delivered_at"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex("event_delivery_event_consumer_idx").on(t.eventId, t.consumer),
+    index("event_delivery_status_next_idx").on(t.status, t.nextAttemptAt),
+  ]
+)
+
+export type DomainEvent = typeof domainEvents.$inferSelect
+export type NewDomainEvent = typeof domainEvents.$inferInsert
+export type EventDelivery = typeof eventDeliveries.$inferSelect
+export type NewEventDelivery = typeof eventDeliveries.$inferInsert
+
 export type Supplier = typeof suppliers.$inferSelect
 export type NewSupplier = typeof suppliers.$inferInsert
 export type Order = typeof orders.$inferSelect

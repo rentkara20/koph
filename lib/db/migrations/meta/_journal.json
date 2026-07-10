@@ -64,6 +64,13 @@
       "when": 1783633410700,
       "tag": "0008_thankful_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1783669642371,
+      "tag": "0009_slow_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }
