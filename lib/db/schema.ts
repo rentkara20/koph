@@ -799,6 +799,7 @@ export const orderUnits = sqliteTable(
     index("order_unit_po_line_idx").on(t.purchaseOrderLineId),
     index("order_unit_status_idx").on(t.status),
     index("order_unit_serial_idx").on(t.serialNumber),
+    index("order_unit_current_customer_idx").on(t.currentCustomerId),
     uniqueIndex("order_unit_asset_tag_idx").on(t.assetTag),
     check(
       "order_unit_single_origin_chk",

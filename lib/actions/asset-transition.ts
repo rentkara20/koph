@@ -10,7 +10,7 @@
 // the admin-triggered single-asset action. Business workflows (request
 // creation, task close, maintenance, etc.) call applyAssetTransition directly
 // so they can pass request/customer context and stay inside their own tx.
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { orderUnits, assetEvents } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
@@ -93,7 +93,7 @@ export async function applyAssetTransition(
       ...(plan.location !== undefined ? { location: plan.location } : {}),
       ...(plan.retiredAt !== undefined ? { retiredAt: plan.retiredAt, retirementReason: plan.retirementReason } : {}),
     })
-    .where(eq(orderUnits.id, assetId))
+    .where(and(eq(orderUnits.id, assetId), eq(orderUnits.status, from)))
 
   const changed = (result as { rowsAffected?: number }).rowsAffected ?? 1
   if (changed === 0) {

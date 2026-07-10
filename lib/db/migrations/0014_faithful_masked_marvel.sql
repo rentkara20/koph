@@ -1,0 +1,1 @@
+CREATE INDEX `order_unit_current_customer_idx` ON `order_unit` (`current_customer_id`);

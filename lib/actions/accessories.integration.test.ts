@@ -129,4 +129,37 @@ describe("attachAccessoryCore / updateAccessoryChecklistCore", () => {
     const [unit] = await db.select().from(schema.accessoryUnits).where(eq(schema.accessoryUnits.id, unitId))
     expect(unit.status).toBe("damaged")
   })
+
+  test("double-collect of the same attachment restocks qty only once (no inflation)", async () => {
+    const { attachAccessoryCore, updateAccessoryChecklistCore } = await import("./accessories")
+    const itemId = createId()
+    await db.insert(schema.accessoryItems).values({ id: itemId, nameAr: "سلك", nameEn: "Cord", category: "non_serialized", requiresSerial: false })
+    await db.insert(schema.accessoryStock).values({ id: createId(), accessoryItemId: itemId, location: "main_warehouse", qty: 3 })
+
+    let attachmentId = ""
+    await db.transaction(async (tx) => {
+      const r = await attachAccessoryCore(tx, { entityType: "asset", entityId: "asset-6", accessoryItemId: itemId, qty: 2 }, "u1")
+      attachmentId = r.id
+    })
+    // 3 - 2 = 1 in stock, 2 out
+    const [afterAttach] = await db.select().from(schema.accessoryStock).where(eq(schema.accessoryStock.accessoryItemId, itemId))
+    expect(afterAttach.qty).toBe(1)
+
+    await db.transaction(async (tx) => {
+      await updateAccessoryChecklistCore(tx, { attachmentId, checklistState: "collected" }, "u1")
+    })
+    // second collect (double-click) must be a no-op, not another +2
+    await db.transaction(async (tx) => {
+      await updateAccessoryChecklistCore(tx, { attachmentId, checklistState: "collected" }, "u1")
+    })
+
+    const [afterCollect] = await db.select().from(schema.accessoryStock).where(eq(schema.accessoryStock.accessoryItemId, itemId))
+    expect(afterCollect.qty).toBe(3) // restored to 3, NOT 5
+
+    const returnEvents = await db
+      .select({ eventType: schema.domainEvents.eventType })
+      .from(schema.domainEvents)
+      .where(eq(schema.domainEvents.aggregateId, "asset-6"))
+    expect(returnEvents.filter((e) => e.eventType === "AccessoryReturned").length).toBe(1)
+  })
 })

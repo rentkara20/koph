@@ -21,6 +21,15 @@ import { emitDomainEvent } from "@/lib/actions/domain-events"
 
 export type PaymentActionResult = { error?: string; id?: string }
 
+// Thrown inside a transaction when a guarded status UPDATE affects 0 rows —
+// i.e. a concurrent writer already moved the batch/payment out of the status we
+// validated against. Aborts the transaction so no event/audit is written; the
+// caller maps it back to the user-facing "wrong status" message.
+class StaleStatusError extends Error {}
+function assertChanged(result: unknown): void {
+  if (((result as { rowsAffected?: number }).rowsAffected ?? 0) === 0) throw new StaleStatusError()
+}
+
 // Recompute a batch's stored total from its current line items, inside the given
 // transaction. The batch total must always equal the sum of items still in it
 // (batched/paid); a held item is pulled out and must stop counting. Call after
@@ -274,11 +283,12 @@ export async function approveBatch(batchId: string): Promise<PaymentActionResult
   if (!batch) return { error: "Not found" }
   if (batch.status !== "draft") return { error: "Only draft batches can be approved" }
 
-  await db.transaction(async (tx) => {
-    await tx
+  try {
+    await db.transaction(async (tx) => {
+    assertChanged(await tx
       .update(paymentBatches)
       .set({ status: "approved", approvedBy: session.user.id, approvedAt: Date.now() })
-      .where(eq(paymentBatches.id, batchId))
+      .where(and(eq(paymentBatches.id, batchId), eq(paymentBatches.status, "draft"))))
     await logActivity(
       {
         entityType: "payment_batch",
@@ -297,7 +307,11 @@ export async function approveBatch(batchId: string): Promise<PaymentActionResult
       dedupeKey: `payment_batch:${batchId}:PaymentBatchApproved`,
       actorUserId: session.user.id,
     })
-  })
+    })
+  } catch (e) {
+    if (e instanceof StaleStatusError) return { error: "Only draft batches can be approved" }
+    throw e
+  }
 
   revalidatePath(`/admin/payments/${batchId}`)
   revalidatePath("/admin/payments")
@@ -312,11 +326,12 @@ export async function markBatchSentToFinance(batchId: string): Promise<PaymentAc
   if (!batch) return { error: "Not found" }
   if (batch.status !== "approved") return { error: "Only approved batches can be sent to finance" }
 
-  await db.transaction(async (tx) => {
-    await tx
+  try {
+    await db.transaction(async (tx) => {
+    assertChanged(await tx
       .update(paymentBatches)
       .set({ status: "sent_to_finance", sentAt: Date.now() })
-      .where(eq(paymentBatches.id, batchId))
+      .where(and(eq(paymentBatches.id, batchId), eq(paymentBatches.status, "approved"))))
     await logActivity(
       {
         entityType: "payment_batch",
@@ -335,7 +350,11 @@ export async function markBatchSentToFinance(batchId: string): Promise<PaymentAc
       dedupeKey: `payment_batch:${batchId}:PaymentBatchSent`,
       actorUserId: session.user.id,
     })
-  })
+    })
+  } catch (e) {
+    if (e instanceof StaleStatusError) return { error: "Only approved batches can be sent to finance" }
+    throw e
+  }
 
   revalidatePath(`/admin/payments/${batchId}`)
   revalidatePath("/admin/payments")
@@ -350,11 +369,12 @@ export async function markBatchPaid(batchId: string): Promise<PaymentActionResul
   if (!batch) return { error: "Not found" }
   if (batch.status !== "sent_to_finance") return { error: "Only sent batches can be marked as paid" }
 
-  await db.transaction(async (tx) => {
-    await tx
+  try {
+    await db.transaction(async (tx) => {
+    assertChanged(await tx
       .update(paymentBatches)
       .set({ status: "paid", paidAt: Date.now() })
-      .where(eq(paymentBatches.id, batchId))
+      .where(and(eq(paymentBatches.id, batchId), eq(paymentBatches.status, "sent_to_finance"))))
 
     // Held line items are disputed — do not mark them paid; they roll to a later batch
     await tx
@@ -381,7 +401,11 @@ export async function markBatchPaid(batchId: string): Promise<PaymentActionResul
       dedupeKey: `payment_batch:${batchId}:PaymentBatchPaid`,
       actorUserId: session.user.id,
     })
-  })
+    })
+  } catch (e) {
+    if (e instanceof StaleStatusError) return { error: "Only sent batches can be marked as paid" }
+    throw e
+  }
 
   revalidatePath(`/admin/payments/${batchId}`)
   revalidatePath("/admin/payments")
@@ -399,12 +423,16 @@ export async function holdPayment(paymentId: string, reason?: string): Promise<P
   const [payment] = await db.select().from(partnerPayments).where(eq(partnerPayments.id, paymentId))
   if (!payment) return { error: "Not found" }
   if (payment.status === "paid") return { error: "Paid items cannot be held" }
+  if (payment.status === "on_hold") return { id: paymentId } // already held — idempotent no-op
 
   const formerBatchId = payment.batchId
   const fromStatus = payment.status
 
-  await db.transaction(async (tx) => {
-    await tx
+  try {
+    await db.transaction(async (tx) => {
+    // Guard on the status we read: a concurrent hold/release/pay that already
+    // moved this payment makes this a no-op (0 rows) → abort, no duplicate event.
+    assertChanged(await tx
       .update(partnerPayments)
       .set({
         status: "on_hold",
@@ -412,7 +440,7 @@ export async function holdPayment(paymentId: string, reason?: string): Promise<P
         updatedAt: Date.now(),
         ...(reason !== undefined ? { notes: reason } : {}),
       })
-      .where(eq(partnerPayments.id, paymentId))
+      .where(and(eq(partnerPayments.id, paymentId), eq(partnerPayments.status, fromStatus))))
 
     // OI-0: recompute the former batch's total so the held amount stops counting.
     if (formerBatchId) {
@@ -444,7 +472,11 @@ export async function holdPayment(paymentId: string, reason?: string): Promise<P
       dedupeKey: `partner_payment:${paymentId}:PaymentHeld:${createId()}`,
       actorUserId: session.user.id,
     })
-  })
+    })
+  } catch (e) {
+    if (e instanceof StaleStatusError) return { error: "Paid items cannot be held" }
+    throw e
+  }
 
   if (formerBatchId) revalidatePath(`/admin/payments/${formerBatchId}`)
   revalidatePath("/admin/payments")
@@ -459,16 +491,17 @@ export async function releasePayment(paymentId: string, reason?: string): Promis
   if (!payment) return { error: "Not found" }
   if (payment.status !== "on_hold") return { error: "Only held items can be released" }
 
-  await db.transaction(async (tx) => {
+  try {
+    await db.transaction(async (tx) => {
     // Back to pending so it gets picked up by the next batch generation for its period
-    await tx
+    assertChanged(await tx
       .update(partnerPayments)
       .set({
         status: "pending",
         updatedAt: Date.now(),
         ...(reason !== undefined ? { notes: reason } : {}),
       })
-      .where(eq(partnerPayments.id, paymentId))
+      .where(and(eq(partnerPayments.id, paymentId), eq(partnerPayments.status, "on_hold"))))
     await logActivity(
       {
         entityType: "payment_batch",
@@ -495,7 +528,11 @@ export async function releasePayment(paymentId: string, reason?: string): Promis
       dedupeKey: `partner_payment:${paymentId}:PaymentReleased:${createId()}`,
       actorUserId: session.user.id,
     })
-  })
+    })
+  } catch (e) {
+    if (e instanceof StaleStatusError) return { error: "Only held items can be released" }
+    throw e
+  }
 
   revalidatePath("/admin/payments")
   return { id: paymentId }

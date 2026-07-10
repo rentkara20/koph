@@ -6,7 +6,7 @@
 // minimal-entry flow (lib/actions/assets.ts), just with a purchaseOrderLineId
 // origin instead of orderLineId. Existing client order-line asset creation
 // stays untouched and fully compatible.
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq, lt, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
@@ -187,9 +187,18 @@ export async function receivePurchaseOrderLineCore(
     .from(purchaseOrderLines)
     .where(eq(purchaseOrderLines.id, d.purchaseOrderLineId))
   if (!line) throw new Error("Purchase order line not found")
-  if (line.qtyReceived >= line.qtyOrdered) {
+
+  // Atomic guarded increment FIRST: two concurrent receives of the same line
+  // must not both pass a stale `qtyReceived < qtyOrdered` check and each mint
+  // an asset (over-receive). The compare-and-set makes the second one a no-op.
+  const incremented = await tx
+    .update(purchaseOrderLines)
+    .set({ qtyReceived: sql`${purchaseOrderLines.qtyReceived} + 1`, updatedAt: Date.now() })
+    .where(and(eq(purchaseOrderLines.id, line.id), lt(purchaseOrderLines.qtyReceived, purchaseOrderLines.qtyOrdered)))
+  if (((incremented as { rowsAffected?: number }).rowsAffected ?? 0) === 0) {
     throw new Error("Cannot receive more than ordered")
   }
+  const newQtyReceived = line.qtyReceived + 1
 
   const result = await createAssetCore(
     tx,
@@ -197,12 +206,6 @@ export async function receivePurchaseOrderLineCore(
     actorUserId
   )
   const assetId = result.assetId
-
-  const newQtyReceived = line.qtyReceived + 1
-  await tx
-    .update(purchaseOrderLines)
-    .set({ qtyReceived: newQtyReceived, updatedAt: Date.now() })
-    .where(eq(purchaseOrderLines.id, line.id))
 
   await emitDomainEvent(tx, {
     aggregateType: "purchase_order",

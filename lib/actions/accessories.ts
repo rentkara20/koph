@@ -6,7 +6,7 @@
 // non_serialized (quantity by location). Attaching to a request/asset and
 // the delivery/collection checklist are atomic, own-event operations —
 // distinct from asset status transitions.
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, gte, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
@@ -101,18 +101,15 @@ export async function receiveAccessoryStock(
 
   if (item.category === "non_serialized") {
     const qty = d.qty ?? 1
-    const [existing] = await db
-      .select()
-      .from(accessoryStock)
-      .where(and(eq(accessoryStock.accessoryItemId, item.id), eq(accessoryStock.location, DEFAULT_LOCATION)))
-    if (existing) {
-      await db
-        .update(accessoryStock)
-        .set({ qty: existing.qty + qty, updatedAt: Date.now() })
-        .where(eq(accessoryStock.id, existing.id))
-    } else {
-      await db.insert(accessoryStock).values({ id: createId(), accessoryItemId: item.id, location: DEFAULT_LOCATION, qty })
-    }
+    // Atomic upsert on the (accessoryItemId, location) unique index — a
+    // read-then-write increment would drop concurrent/double-clicked receives.
+    await db
+      .insert(accessoryStock)
+      .values({ id: createId(), accessoryItemId: item.id, location: DEFAULT_LOCATION, qty })
+      .onConflictDoUpdate({
+        target: [accessoryStock.accessoryItemId, accessoryStock.location],
+        set: { qty: sql`${accessoryStock.qty} + ${qty}`, updatedAt: Date.now() },
+      })
     revalidatePath("/admin/accessories")
     return { id: item.id }
   }
@@ -155,18 +152,35 @@ export async function attachAccessoryCore(
 
   if (item.category === "non_serialized") {
     const qty = d.qty ?? 1
-    const [stock] = await tx
-      .select()
-      .from(accessoryStock)
-      .where(and(eq(accessoryStock.accessoryItemId, item.id), eq(accessoryStock.location, DEFAULT_LOCATION)))
-    if (!stock || stock.qty < qty) throw new Error("Not enough stock for this accessory")
-    await tx.update(accessoryStock).set({ qty: stock.qty - qty, updatedAt: Date.now() }).where(eq(accessoryStock.id, stock.id))
+    // Atomic compare-and-set decrement: two concurrent attaches of the last
+    // units must not both pass a stale `qty >= n` check and oversell to a
+    // negative balance. rowsAffected === 0 means insufficient (or missing) stock.
+    const decremented = await tx
+      .update(accessoryStock)
+      .set({ qty: sql`${accessoryStock.qty} - ${qty}`, updatedAt: Date.now() })
+      .where(
+        and(
+          eq(accessoryStock.accessoryItemId, item.id),
+          eq(accessoryStock.location, DEFAULT_LOCATION),
+          gte(accessoryStock.qty, qty)
+        )
+      )
+    if (((decremented as { rowsAffected?: number }).rowsAffected ?? 0) === 0) {
+      throw new Error("Not enough stock for this accessory")
+    }
   } else {
     if (!d.accessoryUnitId) throw new Error("A specific unit is required for this accessory")
     const [unit] = await tx.select().from(accessoryUnits).where(eq(accessoryUnits.id, d.accessoryUnitId))
     if (!unit) throw new Error("Accessory unit not found")
-    if (unit.status !== "in_stock") throw new Error("Accessory unit is not available")
-    await tx.update(accessoryUnits).set({ status: "assigned", updatedAt: Date.now() }).where(eq(accessoryUnits.id, unit.id))
+    // Guarded status flip: a concurrent double-attach of the same physical unit
+    // must not both succeed (two attachment rows for one unit).
+    const assigned = await tx
+      .update(accessoryUnits)
+      .set({ status: "assigned", updatedAt: Date.now() })
+      .where(and(eq(accessoryUnits.id, unit.id), eq(accessoryUnits.status, "in_stock")))
+    if (((assigned as { rowsAffected?: number }).rowsAffected ?? 0) === 0) {
+      throw new Error("Accessory unit is not available")
+    }
   }
 
   const attachmentId = createId()
@@ -232,10 +246,17 @@ export async function updateAccessoryChecklistCore(
   const [attachment] = await tx.select().from(accessoryAttachments).where(eq(accessoryAttachments.id, d.attachmentId))
   if (!attachment) throw new Error("Accessory attachment not found")
 
-  await tx
+  // Guard the state transition: a double-submit of the same checklist state
+  // (e.g. two "collected" clicks) must run the stock side-effects only ONCE,
+  // otherwise a collect would restock the returned qty twice (stock inflation).
+  const transitioned = await tx
     .update(accessoryAttachments)
     .set({ checklistState: d.checklistState })
-    .where(eq(accessoryAttachments.id, d.attachmentId))
+    .where(and(eq(accessoryAttachments.id, d.attachmentId), ne(accessoryAttachments.checklistState, d.checklistState)))
+  if (((transitioned as { rowsAffected?: number }).rowsAffected ?? 0) === 0) {
+    // Already in this state — no-op, no duplicate restock/event.
+    return { id: d.attachmentId, entityType: attachment.entityType, entityId: attachment.entityId }
+  }
 
   if (d.checklistState === "collected") {
     if (attachment.accessoryUnitId) {
@@ -244,13 +265,12 @@ export async function updateAccessoryChecklistCore(
         .set({ status: "in_stock", updatedAt: Date.now() })
         .where(eq(accessoryUnits.id, attachment.accessoryUnitId))
     } else if (attachment.qty) {
-      const [stock] = await tx
-        .select()
-        .from(accessoryStock)
+      // Atomic increment restock (avoids lost update under concurrent collects).
+      const restocked = await tx
+        .update(accessoryStock)
+        .set({ qty: sql`${accessoryStock.qty} + ${attachment.qty}`, updatedAt: Date.now() })
         .where(and(eq(accessoryStock.accessoryItemId, attachment.accessoryItemId), eq(accessoryStock.location, DEFAULT_LOCATION)))
-      if (stock) {
-        await tx.update(accessoryStock).set({ qty: stock.qty + attachment.qty, updatedAt: Date.now() }).where(eq(accessoryStock.id, stock.id))
-      } else {
+      if (((restocked as { rowsAffected?: number }).rowsAffected ?? 0) === 0) {
         await tx.insert(accessoryStock).values({ id: createId(), accessoryItemId: attachment.accessoryItemId, location: DEFAULT_LOCATION, qty: attachment.qty })
       }
     }

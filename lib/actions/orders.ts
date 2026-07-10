@@ -270,6 +270,11 @@ export async function saveOrderUnits(
     }
 
     const toInsert: (typeof orderUnits.$inferInsert)[] = []
+    // New units are always inserted as in_stock, then moved to any requested
+    // non-default status through the OI-1 chokepoint — so a brand-new unit can
+    // never be created directly in assigned/delivered/etc. with no asset_event
+    // and no currentRequestId/currentCustomerId linkage.
+    const pendingInsertCorrections: { id: string; status: NonNullable<(typeof d.units)[number]["status"]> }[] = []
     for (const u of d.units) {
       if (u.id && existingIds.has(u.id)) {
         // Status changes go through the OI-1 chokepoint (via the correction
@@ -295,31 +300,39 @@ export async function saveOrderUnits(
           await applyAssetStatusCorrection(tx, u.id, nextStatus, { byUserId: session.user.id })
         }
       } else {
+        const newId = createId()
         toInsert.push({
-          id: createId(),
+          id: newId,
           orderId,
           orderLineId: u.orderLineId,
           serialNumber: u.serialNumber || null,
           supplierId: u.supplierId || null,
           purchaseCost: u.purchaseCost ?? null,
-          status: u.status ?? "in_stock",
+          status: "in_stock",
           notes: u.notes || null,
         })
+        const desired = u.status ?? "in_stock"
+        if (desired !== "in_stock") pendingInsertCorrections.push({ id: newId, status: desired })
       }
     }
     if (toInsert.length > 0) await tx.insert(orderUnits).values(toInsert)
-  })
+    for (const pc of pendingInsertCorrections) {
+      await applyAssetStatusCorrection(tx, pc.id, pc.status, { byUserId: session.user.id })
+    }
 
-  // Recompute order.status from the units' final fulfillment state.
-  const [orderRow] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId))
-  const finalUnits = await db.select({ status: orderUnits.status }).from(orderUnits).where(eq(orderUnits.orderId, orderId))
-  const nextStatus = deriveOrderStatus(
-    finalUnits.map((u) => u.status),
-    orderRow?.status ?? "draft"
-  )
-  if (nextStatus !== orderRow?.status) {
-    await db.update(orders).set({ status: nextStatus, updatedAt: Date.now() }).where(eq(orders.id, orderId))
-  }
+    // Recompute order.status from the units' final fulfillment state INSIDE the
+    // same transaction — otherwise a crash between the unit commit and the
+    // status write leaves orders.status permanently disagreeing with its units.
+    const [orderRow] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId))
+    const finalUnits = await tx.select({ status: orderUnits.status }).from(orderUnits).where(eq(orderUnits.orderId, orderId))
+    const nextStatus = deriveOrderStatus(
+      finalUnits.map((u) => u.status),
+      orderRow?.status ?? "draft"
+    )
+    if (nextStatus !== orderRow?.status) {
+      await tx.update(orders).set({ status: nextStatus, updatedAt: Date.now() }).where(eq(orders.id, orderId))
+    }
+  })
 
   revalidatePath(`/admin/orders/${orderId}`)
   return { id: orderId }
