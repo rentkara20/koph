@@ -1014,6 +1014,9 @@
     "supersede": "Supersede",
     "supersedeReason": "Reason for superseding",
     "superseded": "Procurement case superseded",
-    "supersededNote": "This case has been superseded by a newer one."
+    "supersededNote": "This case has been superseded by a newer one.",
+    "createPo": "Create purchase order",
+    "poCreated": "Purchase order created",
+    "poNumber": "PO number"
   }
 }

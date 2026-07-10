@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { linkExternalPo, supersedeProcurementCase } from "@/lib/actions/procurement-case"
+import { createPurchaseOrderFromCase } from "@/lib/actions/procurement"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import type { ProcurementCase } from "@/lib/db/schema"
 
@@ -36,12 +37,32 @@ export function ProcurementCasePanel({
   const router = useRouter()
   const [erpSystem, setErpSystem] = useState<"zoho" | "odoo">("zoho")
   const [externalPoRef, setExternalPoRef] = useState("")
+  const [poNumber, setPoNumber] = useState("")
   const [reason, setReason] = useState("")
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
 
   const isLinked = Boolean(procurementCase.externalPoRef)
   const isSuperseded = procurementCase.status === "superseded"
+  const hasLinkedPo = Boolean(linkedPurchaseOrders && linkedPurchaseOrders.length > 0)
+
+  function handleCreatePo() {
+    setError("")
+    startTransition(async () => {
+      const result = await createPurchaseOrderFromCase({
+        procurementCaseId: procurementCase.id,
+        poNumber: poNumber.trim(),
+      })
+      if (result.error) {
+        const msg = translateActionError(result.error)
+        setError(msg)
+        toast.error(msg)
+        return
+      }
+      toast.success(t("poCreated"))
+      router.push(`/admin/procurement/${result.id}`)
+    })
+  }
 
   function handleLink() {
     setError("")
@@ -119,6 +140,18 @@ export function ProcurementCasePanel({
           </Button>
         </div>
       ) : null}
+
+      {isLinked && procurementCase.source === "commercial_flow" && !hasLinkedPo && !isSuperseded && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <p className="text-xs font-medium">{t("createPo")}</p>
+          <Label className="text-xs">{t("poNumber")}</Label>
+          <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} dir="ltr" />
+          <Button size="sm" onClick={handleCreatePo} disabled={pending || !poNumber.trim()}>
+            {pending && <Loader2 className="me-2 size-4 animate-spin" />}
+            {t("createPo")}
+          </Button>
+        </div>
+      )}
 
       {linkedPurchaseOrders && linkedPurchaseOrders.length > 0 && (
         <div>

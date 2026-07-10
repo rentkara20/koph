@@ -30,9 +30,11 @@ export function EvaluationApprovalPanel({
   const [notes, setNotes] = useState("")
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
+  const [pendingAction, setPendingAction] = useState<string | null>(null)
 
-  function run(action: () => Promise<{ error?: string }>, successKey: string) {
+  function run(action: () => Promise<{ error?: string }>, successKey: string, actionKey: string) {
     setError("")
+    setPendingAction(actionKey)
     startTransition(async () => {
       const result = await action()
       if (result.error) {
@@ -65,11 +67,12 @@ export function EvaluationApprovalPanel({
           onClick={() =>
             run(
               () => createCommercialEvaluation({ sourcingRequestId, chosenQuotationId, notes: notes.trim() || undefined }),
-              "evaluationCreated"
+              "evaluationCreated",
+              "createEvaluation"
             )
           }
         >
-          {pending && <Loader2 className="me-2 size-4 animate-spin" />}
+          {pending && pendingAction === "createEvaluation" && <Loader2 className="me-2 size-4 animate-spin" />}
           {t("createEvaluation")}
         </Button>
       </div>
@@ -88,11 +91,12 @@ export function EvaluationApprovalPanel({
             onClick={() =>
               run(
                 () => decideCommercialApproval({ evaluationId: latestEvaluationId, decision: "approved" }),
-                "approvalDecided"
+                "approvalDecided",
+                "approve"
               )
             }
           >
-            {pending && <Loader2 className="me-2 size-4 animate-spin" />}
+            {pending && pendingAction === "approve" && <Loader2 className="me-2 size-4 animate-spin" />}
             {t("approve")}
           </Button>
           <Button
@@ -102,10 +106,12 @@ export function EvaluationApprovalPanel({
             onClick={() =>
               run(
                 () => decideCommercialApproval({ evaluationId: latestEvaluationId, decision: "rejected" }),
-                "approvalDecided"
+                "approvalDecided",
+                "reject"
               )
             }
           >
+            {pending && pendingAction === "reject" && <Loader2 className="me-2 size-4 animate-spin" />}
             {t("reject")}
           </Button>
         </div>
@@ -117,7 +123,11 @@ export function EvaluationApprovalPanel({
     return (
       <div className="space-y-3 rounded-lg border p-3">
         {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button size="sm" disabled={pending} onClick={() => run(() => handoffToProcurementCase({ sourcingRequestId }), "handedOff")}>
+        <Button
+          size="sm"
+          disabled={pending}
+          onClick={() => run(() => handoffToProcurementCase({ sourcingRequestId }), "handedOff", "handoff")}
+        >
           {pending && <Loader2 className="me-2 size-4 animate-spin" />}
           {t("handoff")}
         </Button>

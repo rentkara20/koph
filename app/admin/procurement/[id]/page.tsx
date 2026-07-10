@@ -41,7 +41,10 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
       </div>
 
       {procurementCaseData && (
-        <ProcurementCasePanel procurementCase={procurementCaseData.procurementCase} />
+        <ProcurementCasePanel
+          procurementCase={procurementCaseData.procurementCase}
+          linkedPurchaseOrders={procurementCaseData.linkedPurchaseOrders}
+        />
       )}
 
       <div className="space-y-4">

@@ -10,7 +10,18 @@ import { and, desc, eq, lt, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
-import { orderUnits, purchaseOrderLines, purchaseOrders, suppliers } from "@/lib/db/schema"
+import {
+  commercialApprovals,
+  commercialEvaluations,
+  orderUnits,
+  procurementCases,
+  purchaseOrderLines,
+  purchaseOrders,
+  supplierQuotationLines,
+  supplierQuotations,
+  supplierRfqs,
+  suppliers,
+} from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { createAssetCore } from "@/lib/actions/assets"
@@ -167,6 +178,119 @@ export async function createPurchaseOrder(
   })
 
   revalidatePath("/admin/procurement")
+  return { id: poId }
+}
+
+// ─── Create a purchase order FROM an already-linked commercial-flow case ────
+// Closes the gap between "Procurement Case -> external ERP PO" and
+// "Receiving": once a case's ERP-PO link is set, this mints the local
+// purchase_order/lines that receivePurchaseOrderLineCore works against —
+// supplier and lines are derived from the case's chosen quotation, not
+// re-entered, so the commercial numbers ops already agreed to stay the
+// source of truth.
+
+const createPoFromCaseSchema = z.object({
+  procurementCaseId: z.string().trim().min(1),
+  poNumber: z.string().trim().min(1).max(60),
+  invoiceRef: z.string().trim().max(120).optional(),
+  notes: z.string().trim().max(2000).optional(),
+})
+
+export async function createPurchaseOrderFromCase(
+  input: z.infer<typeof createPoFromCaseSchema>
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = createPoFromCaseSchema.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+  const d = parsed.data
+
+  const [procurementCase] = await db.select().from(procurementCases).where(eq(procurementCases.id, d.procurementCaseId))
+  if (!procurementCase) return { error: "Procurement case not found" }
+  if (procurementCase.source !== "commercial_flow") {
+    return { error: "Only commercial-flow cases create a PO this way — manual POs already have one" }
+  }
+  if (!procurementCase.externalPoRef) {
+    return { error: "Link the external ERP PO before creating the purchase order" }
+  }
+  if (procurementCase.status === "superseded") return { error: "Procurement case is superseded" }
+
+  const [existingPo] = await db
+    .select({ id: purchaseOrders.id })
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.procurementCaseId, d.procurementCaseId))
+  if (existingPo) return { error: "A purchase order already exists for this case" }
+
+  if (!procurementCase.commercialApprovalId) return { error: "Case has no commercial approval on record" }
+  const [approval] = await db
+    .select()
+    .from(commercialApprovals)
+    .where(eq(commercialApprovals.id, procurementCase.commercialApprovalId))
+  if (!approval) return { error: "Commercial approval not found" }
+
+  const [evaluation] = await db
+    .select()
+    .from(commercialEvaluations)
+    .where(eq(commercialEvaluations.id, approval.evaluationId))
+  if (!evaluation?.chosenQuotationId) return { error: "Evaluation has no chosen quotation on record" }
+
+  const [quotation] = await db
+    .select()
+    .from(supplierQuotations)
+    .where(eq(supplierQuotations.id, evaluation.chosenQuotationId))
+  if (!quotation) return { error: "Chosen quotation not found" }
+
+  const [rfq] = await db.select().from(supplierRfqs).where(eq(supplierRfqs.id, quotation.rfqId))
+  if (!rfq) return { error: "RFQ for chosen quotation not found" }
+
+  const lines = await db
+    .select()
+    .from(supplierQuotationLines)
+    .where(eq(supplierQuotationLines.quotationId, quotation.id))
+  if (lines.length === 0) return { error: "Chosen quotation has no lines" }
+
+  const [clash] = await db
+    .select({ id: purchaseOrders.id })
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.poNumber, d.poNumber))
+  if (clash) return { error: "PO number already exists" }
+
+  let poId = ""
+  await db.transaction(async (tx) => {
+    poId = createId()
+    await tx.insert(purchaseOrders).values({
+      id: poId,
+      supplierId: rfq.supplierId,
+      poNumber: d.poNumber,
+      status: "ordered",
+      invoiceRef: d.invoiceRef,
+      orderedAt: Date.now(),
+      notes: d.notes,
+      procurementCaseId: d.procurementCaseId,
+      createdBy: session.user.id,
+    })
+    for (const line of lines) {
+      await tx.insert(purchaseOrderLines).values({
+        id: createId(),
+        purchaseOrderId: poId,
+        itemDescription: line.itemDescription,
+        qtyOrdered: line.qty,
+        unitCost: line.unitPrice,
+      })
+    }
+    await emitDomainEvent(tx, {
+      aggregateType: "purchase_order",
+      aggregateId: poId,
+      eventType: "PurchaseOrderCreated",
+      payload: { poNumber: d.poNumber, supplierId: rfq.supplierId, procurementCaseId: d.procurementCaseId },
+      dedupeKey: `purchase_order:${poId}:PurchaseOrderCreated`,
+      actorUserId: session.user.id,
+    })
+  })
+
+  revalidatePath("/admin/procurement")
+  revalidatePath(`/admin/sourcing/${procurementCase.sourcingRequestId}`)
   return { id: poId }
 }
 

@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server"
 import { getSourcingRequest } from "@/lib/actions/sourcing"
 import { getQuotationsForSourcingRequest } from "@/lib/actions/quotations"
 import { getLatestCommercialEvaluation } from "@/lib/actions/commercial-approval"
-import { getProcurementCaseForSourcingRequest } from "@/lib/actions/procurement-case"
+import { getProcurementCase, getProcurementCaseForSourcingRequest } from "@/lib/actions/procurement-case"
 import { getSuppliers } from "@/lib/actions/suppliers"
 import { Badge } from "@/components/ui/badge"
 import { ProcurementCasePanel } from "@/components/procurement-case-panel"
@@ -38,6 +38,7 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
 
   const rfqSuppliers = suppliers.filter((s) => !rfqs.some((r) => r.supplierId === s.id))
   const quotationOptions = quotations.map((q) => ({ id: q.quotation.id, supplierName: q.supplierName }))
+  const procurementCaseDetail = procurementCase ? await getProcurementCase(procurementCase.id) : null
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -111,7 +112,12 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
         latestEvaluationId={evaluation?.id ?? null}
       />
 
-      {procurementCase && <ProcurementCasePanel procurementCase={procurementCase} />}
+      {procurementCase && (
+        <ProcurementCasePanel
+          procurementCase={procurementCase}
+          linkedPurchaseOrders={procurementCaseDetail?.linkedPurchaseOrders}
+        />
+      )}
     </div>
   )
 }

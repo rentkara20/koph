@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
 import {
+  sourcingRequests,
   supplierQuotationLines,
   supplierQuotations,
   supplierRfqs,
@@ -72,6 +73,20 @@ export async function submitSupplierQuotation(
       .update(supplierRfqs)
       .set({ status: "responded", updatedAt: Date.now() })
       .where(eq(supplierRfqs.id, d.rfqId))
+
+    // First quotation in moves the request out of "waiting on suppliers" and
+    // into "ready to evaluate" — without this the evaluation step never
+    // unlocks even after every RFQ has responded.
+    const [request] = await tx
+      .select({ status: sourcingRequests.status })
+      .from(sourcingRequests)
+      .where(eq(sourcingRequests.id, rfq.sourcingRequestId))
+    if (request?.status === "draft" || request?.status === "rfq_sent") {
+      await tx
+        .update(sourcingRequests)
+        .set({ status: "quotes_received", updatedAt: Date.now() })
+        .where(eq(sourcingRequests.id, rfq.sourcingRequestId))
+    }
 
     await emitDomainEvent(tx, {
       aggregateType: "supplier_quotation",
