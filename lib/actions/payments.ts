@@ -358,7 +358,7 @@ export async function markBatchPaid(batchId: string): Promise<PaymentActionResul
 // A disputed payment is pulled OUT of its batch (back to on_hold, unbatched) so
 // the rest of the batch can be paid; the held item can be re-batched later.
 
-export async function holdPayment(paymentId: string): Promise<PaymentActionResult> {
+export async function holdPayment(paymentId: string, reason?: string): Promise<PaymentActionResult> {
   const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
 
@@ -367,11 +367,17 @@ export async function holdPayment(paymentId: string): Promise<PaymentActionResul
   if (payment.status === "paid") return { error: "Paid items cannot be held" }
 
   const formerBatchId = payment.batchId
+  const fromStatus = payment.status
 
   await db.transaction(async (tx) => {
     await tx
       .update(partnerPayments)
-      .set({ status: "on_hold", batchId: null, updatedAt: Date.now() })
+      .set({
+        status: "on_hold",
+        batchId: null,
+        updatedAt: Date.now(),
+        ...(reason !== undefined ? { notes: reason } : {}),
+      })
       .where(eq(partnerPayments.id, paymentId))
 
     // OI-0: recompute the former batch's total so the held amount stops counting.
@@ -383,7 +389,13 @@ export async function holdPayment(paymentId: string): Promise<PaymentActionResul
           entityId: formerBatchId,
           action: "payment_held",
           i18nKey: "activity.paymentHeld",
-          i18nData: { paymentId, amount: payment.totalAmount },
+          i18nData: {
+            paymentId,
+            amount: payment.totalAmount,
+            fromStatus,
+            toStatus: "on_hold",
+            reason: reason ?? "",
+          },
           performedBy: session.user.id,
         },
         tx
@@ -396,7 +408,7 @@ export async function holdPayment(paymentId: string): Promise<PaymentActionResul
   return { id: paymentId }
 }
 
-export async function releasePayment(paymentId: string): Promise<PaymentActionResult> {
+export async function releasePayment(paymentId: string, reason?: string): Promise<PaymentActionResult> {
   const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
 
@@ -408,7 +420,11 @@ export async function releasePayment(paymentId: string): Promise<PaymentActionRe
     // Back to pending so it gets picked up by the next batch generation for its period
     await tx
       .update(partnerPayments)
-      .set({ status: "pending", updatedAt: Date.now() })
+      .set({
+        status: "pending",
+        updatedAt: Date.now(),
+        ...(reason !== undefined ? { notes: reason } : {}),
+      })
       .where(eq(partnerPayments.id, paymentId))
     await logActivity(
       {
@@ -416,7 +432,13 @@ export async function releasePayment(paymentId: string): Promise<PaymentActionRe
         entityId: paymentId,
         action: "payment_released",
         i18nKey: "activity.paymentReleased",
-        i18nData: { paymentId, amount: payment.totalAmount },
+        i18nData: {
+          paymentId,
+          amount: payment.totalAmount,
+          fromStatus: "on_hold",
+          toStatus: "pending",
+          reason: reason ?? "",
+        },
         performedBy: session.user.id,
       },
       tx
