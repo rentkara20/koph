@@ -156,7 +156,17 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
                     email={rfq.supplierEmail}
                   />
                 )}
-                {rfq.status === "sent" && <QuotationForm rfqId={rfq.id} />}
+                {rfq.status === "sent" && rfqItems.length > 0 && (
+                  <QuotationForm
+                    rfqId={rfq.id}
+                    items={rfqItems.map((item) => ({
+                      id: item.id,
+                      quantity: item.quantity,
+                      supplierDescription: item.supplierDescription,
+                      partNumber: item.partNumber,
+                    }))}
+                  />
+                )}
               </div>
             )
           })}
@@ -175,19 +185,54 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
                   <th className="p-3">{t("qty")}</th>
                   <th className="p-3">{t("unitPrice")}</th>
                   <th className="p-3">{t("leadTimeDays")}</th>
+                  <th className="p-3">{t("warranty")}</th>
+                  <th className="p-3">{t("availability")}</th>
+                  <th className="p-3">{t("upgrade")}</th>
                 </tr>
               </thead>
               <tbody>
                 {quotations.flatMap((q) =>
-                  q.lines.map((line) => (
-                    <tr key={line.id} className="border-b last:border-0">
-                      <td className="p-3">{q.supplierName}</td>
-                      <td className="p-3">{line.itemDescription}</td>
-                      <td className="p-3">{line.qty}</td>
-                      <td className="p-3">{line.unitPrice ?? "—"}</td>
-                      <td className="p-3">{line.leadTimeDays ?? "—"}</td>
-                    </tr>
-                  ))
+                  q.lines.map((line) => {
+                    const item = line.sourcingRequestItemId
+                      ? itemById.get(line.sourcingRequestItemId)
+                      : null
+                    const upgrade =
+                      line.upgradesNote || line.upgradesCost != null
+                        ? `${line.upgradesNote ?? ""}${
+                            line.upgradesCost != null ? ` (+${line.upgradesCost})` : ""
+                          }`.trim()
+                        : "—"
+                    return (
+                      <tr key={line.id} className="border-b last:border-0 align-top">
+                        <td className="p-3">{q.supplierName}</td>
+                        <td className="p-3">
+                          {item?.supplierDescription ?? line.itemDescription}
+                          {line.offeredSpec && (
+                            <span className="block text-xs text-muted-foreground">
+                              {line.offeredSpec}
+                            </span>
+                          )}
+                          {line.offeredPartNumber && (
+                            <span className="block text-xs text-muted-foreground" dir="ltr">
+                              {line.offeredPartNumber}
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3">{line.qty}</td>
+                        <td className="p-3" dir="ltr">
+                          {line.unitPrice != null
+                            ? `${line.unitPrice} ${line.currency ?? "SAR"}${
+                                line.taxRate != null ? ` +${line.taxRate}%` : ""
+                              }`
+                            : "—"}
+                        </td>
+                        <td className="p-3">{line.leadTimeDays ?? "—"}</td>
+                        <td className="p-3">{line.warranty ?? "—"}</td>
+                        <td className="p-3">{line.availability ?? "—"}</td>
+                        <td className="p-3">{upgrade}</td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>

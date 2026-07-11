@@ -1021,7 +1021,21 @@
     "sendViaEmail": "Email",
     "copyMessage": "Copy message",
     "messageCopied": "Message copied",
-    "copyFailed": "Could not copy — select and copy manually"
+    "copyFailed": "Could not copy — select and copy manually",
+    "currency": "Currency",
+    "taxRatePct": "Tax %",
+    "availability": "Availability",
+    "availabilityHint": "e.g. In stock, 2 weeks",
+    "warranty": "Warranty",
+    "warrantyHint": "e.g. 1 year",
+    "offeredPartNumber": "Offered part number",
+    "offeredSpec": "Offered spec",
+    "offeredSpecHint": "What the supplier actually offers",
+    "upgradesNote": "Upgrade note",
+    "upgradesNoteHint": "e.g. 16GB → 32GB RAM installed by supplier",
+    "upgradesCost": "Upgrade cost",
+    "upgrade": "Upgrade",
+    "quotationNotes": "Quotation notes"
   },
   "procurementCase": {
     "title": "Procurement Case",

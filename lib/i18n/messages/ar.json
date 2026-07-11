@@ -1021,7 +1021,21 @@
     "sendViaEmail": "بريد إلكتروني",
     "copyMessage": "نسخ الرسالة",
     "messageCopied": "تم نسخ الرسالة",
-    "copyFailed": "تعذر النسخ — انسخ يدوياً"
+    "copyFailed": "تعذر النسخ — انسخ يدوياً",
+    "currency": "العملة",
+    "taxRatePct": "الضريبة %",
+    "availability": "التوفر",
+    "availabilityHint": "مثال: متوفر، أسبوعان",
+    "warranty": "الضمان",
+    "warrantyHint": "مثال: سنة",
+    "offeredPartNumber": "رقم القطعة المعروض",
+    "offeredSpec": "المواصفات المعروضة",
+    "offeredSpecHint": "ما يعرضه المورد فعلياً",
+    "upgradesNote": "ملاحظة الترقية",
+    "upgradesNoteHint": "مثال: ترقية الذاكرة من 16 إلى 32 جيجابايت لدى المورد",
+    "upgradesCost": "تكلفة الترقية",
+    "upgrade": "الترقية",
+    "quotationNotes": "ملاحظات العرض"
   },
   "procurementCase": {
     "title": "ملف المشتريات",
