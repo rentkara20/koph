@@ -105,6 +105,7 @@ export const DOMAIN_EVENT_TYPES = [
   "PurchaseOrderCreated",
   "PurchaseOrderLineReceived",
   "SourcingRequestCreated",
+  "SourcingRequestItemAdded",
   "SupplierRfqSent",
   "SupplierQuotationSubmitted",
   "CommercialEvaluationCreated",

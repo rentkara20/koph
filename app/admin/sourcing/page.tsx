@@ -39,7 +39,8 @@ export default async function SourcingPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
-                <th className="p-3">{t("description")}</th>
+                <th className="p-3">{t("externalRef")}</th>
+                <th className="p-3">{t("requestTitle")}</th>
                 <th className="p-3">{t("sourceType")}</th>
                 <th className="p-3">Status</th>
               </tr>
@@ -47,9 +48,10 @@ export default async function SourcingPage() {
             <tbody>
               {requests.map((r) => (
                 <tr key={r.id} className="border-b last:border-0 hover:bg-muted/40">
+                  <td className="p-3" dir="ltr">{r.externalRef ?? "—"}</td>
                   <td className="p-3">
                     <Link href={`/admin/sourcing/${r.id}`} className="font-medium hover:underline">
-                      {r.description}
+                      {r.title ?? r.description}
                     </Link>
                   </td>
                   <td className="p-3">{t(`sourceTypes.${r.sourceType}` as never)}</td>
