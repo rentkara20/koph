@@ -1035,7 +1035,32 @@
     "upgradesNoteHint": "e.g. 16GB → 32GB RAM installed by supplier",
     "upgradesCost": "Upgrade cost",
     "upgrade": "Upgrade",
-    "quotationNotes": "Quotation notes"
+    "quotationNotes": "Quotation notes",
+    "comparisonAndAward": "Compare & award",
+    "noQuotesForItem": "No quotes for this item yet",
+    "cheapest": "Cheapest",
+    "fastest": "Fastest",
+    "saveAwards": "Save awards",
+    "awardsSaved": "Awards saved",
+    "awards": "Awards",
+    "locked": "Locked",
+    "reason": "Reason",
+    "awardReasons": {
+      "lowest_price": "Lowest price",
+      "fastest_delivery": "Fastest delivery",
+      "recommended": "Recommended",
+      "manual": "Manual choice"
+    },
+    "procurementCases": "Procurement cases",
+    "noSupplier": "No supplier",
+    "caseStatuses": {
+      "open": "Open",
+      "handed_off": "Handed off",
+      "po_linked": "PO linked",
+      "closed": "Closed",
+      "cancelled": "Cancelled",
+      "superseded": "Superseded"
+    }
   },
   "procurementCase": {
     "title": "Procurement Case",

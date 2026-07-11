@@ -1,17 +1,18 @@
 import { notFound } from "next/navigation"
 import { getFormatter, getTranslations } from "next-intl/server"
+import Link from "next/link"
 import { getSourcingRequest } from "@/lib/actions/sourcing"
-import { getQuotationsForSourcingRequest } from "@/lib/actions/quotations"
-import { getLatestCommercialEvaluation } from "@/lib/actions/commercial-approval"
-import { getProcurementCase, getProcurementCaseForSourcingRequest } from "@/lib/actions/procurement-case"
+import { getQuotationsForSourcingRequest, getSourcingComparisonMatrix } from "@/lib/actions/quotations"
+import { getLatestCommercialEvaluation, getSourcingAwards } from "@/lib/actions/commercial-approval"
+import { getProcurementCasesForSourcingRequest } from "@/lib/actions/procurement-case"
 import { getSuppliers } from "@/lib/actions/suppliers"
 import { Badge } from "@/components/ui/badge"
-import { ProcurementCasePanel } from "@/components/procurement-case-panel"
 import { buildRfqEmailSubject, buildRfqMessage } from "@/lib/domain/rfq-message"
 import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
 import { SendRfqForm } from "./_components/send-rfq-form"
 import { RfqMessageActions } from "./_components/rfq-message-actions"
 import { QuotationForm } from "./_components/quotation-form"
+import { AwardPanel } from "./_components/award-panel"
 import { EvaluationApprovalPanel } from "./_components/evaluation-approval-panel"
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
@@ -45,15 +46,18 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
   if (!data) notFound()
   const { request, items, rfqs, rfqItemIds } = data
 
-  const [quotations, evaluation, procurementCase, suppliers] = await Promise.all([
+  const [quotations, evaluation, awards, matrix, procurementCases, suppliers] = await Promise.all([
     getQuotationsForSourcingRequest(id),
     getLatestCommercialEvaluation(id),
-    getProcurementCaseForSourcingRequest(id),
+    getSourcingAwards(id),
+    getSourcingComparisonMatrix(id),
+    getProcurementCasesForSourcingRequest(id),
     getSuppliers(),
   ])
 
   const quotationOptions = quotations.map((q) => ({ id: q.quotation.id, supplierName: q.supplierName }))
-  const procurementCaseDetail = procurementCase ? await getProcurementCase(procurementCase.id) : null
+  const hasCandidates = matrix.some((row) => row.candidates.length > 0)
+  const canAward = hasCandidates && (request.status === "quotes_received" || request.status === "under_evaluation")
   const itemById = new Map(items.map((item) => [item.id, item]))
   const sourceableItems = items.filter((item) => !["cancelled", "not_sourced"].includes(item.status))
 
@@ -173,67 +177,41 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
         </div>
       )}
 
-      {quotations.length > 0 && (
+      {canAward && <AwardPanel sourcingRequestId={id} matrix={matrix} />}
+
+      {awards && awards.lines.length > 0 && (
         <div className="space-y-2">
-          <p className="text-sm font-medium">{t("quoteComparison")}</p>
+          <p className="text-sm font-medium">
+            {t("awards")}
+            {awards.approvalDecision === "approved" && (
+              <Badge variant="success" className="ms-2 text-[10px]">
+                {t("locked")}
+              </Badge>
+            )}
+          </p>
           <div className="overflow-x-auto rounded-xl border bg-card">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="p-3">{t("supplier")}</th>
                   <th className="p-3">{t("itemDescription")}</th>
-                  <th className="p-3">{t("qty")}</th>
+                  <th className="p-3">{t("supplier")}</th>
                   <th className="p-3">{t("unitPrice")}</th>
-                  <th className="p-3">{t("leadTimeDays")}</th>
-                  <th className="p-3">{t("warranty")}</th>
-                  <th className="p-3">{t("availability")}</th>
-                  <th className="p-3">{t("upgrade")}</th>
+                  <th className="p-3">{t("reason")}</th>
                 </tr>
               </thead>
               <tbody>
-                {quotations.flatMap((q) =>
-                  q.lines.map((line) => {
-                    const item = line.sourcingRequestItemId
-                      ? itemById.get(line.sourcingRequestItemId)
-                      : null
-                    const upgrade =
-                      line.upgradesNote || line.upgradesCost != null
-                        ? `${line.upgradesNote ?? ""}${
-                            line.upgradesCost != null ? ` (+${line.upgradesCost})` : ""
-                          }`.trim()
-                        : "—"
-                    return (
-                      <tr key={line.id} className="border-b last:border-0 align-top">
-                        <td className="p-3">{q.supplierName}</td>
-                        <td className="p-3">
-                          {item?.supplierDescription ?? line.itemDescription}
-                          {line.offeredSpec && (
-                            <span className="block text-xs text-muted-foreground">
-                              {line.offeredSpec}
-                            </span>
-                          )}
-                          {line.offeredPartNumber && (
-                            <span className="block text-xs text-muted-foreground" dir="ltr">
-                              {line.offeredPartNumber}
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-3">{line.qty}</td>
-                        <td className="p-3" dir="ltr">
-                          {line.unitPrice != null
-                            ? `${line.unitPrice} ${line.currency ?? "SAR"}${
-                                line.taxRate != null ? ` +${line.taxRate}%` : ""
-                              }`
-                            : "—"}
-                        </td>
-                        <td className="p-3">{line.leadTimeDays ?? "—"}</td>
-                        <td className="p-3">{line.warranty ?? "—"}</td>
-                        <td className="p-3">{line.availability ?? "—"}</td>
-                        <td className="p-3">{upgrade}</td>
-                      </tr>
-                    )
-                  })
-                )}
+                {awards.lines.map((line) => (
+                  <tr key={line.itemId} className="border-b last:border-0 align-top">
+                    <td className="p-3">
+                      {line.quantity}× {line.itemDescription}
+                    </td>
+                    <td className="p-3">{line.supplierName}</td>
+                    <td className="p-3" dir="ltr">
+                      {line.unitPrice != null ? `${line.unitPrice} ${line.currency ?? "SAR"}` : "—"}
+                    </td>
+                    <td className="p-3">{t(`awardReasons.${line.reason}` as never)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -247,11 +225,31 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
         latestEvaluationId={evaluation?.id ?? null}
       />
 
-      {procurementCase && (
-        <ProcurementCasePanel
-          procurementCase={procurementCase}
-          linkedPurchaseOrders={procurementCaseDetail?.linkedPurchaseOrders}
-        />
+      {procurementCases.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">{t("procurementCases")}</p>
+          <div className="space-y-2">
+            {procurementCases.map((pc) => (
+              <Link
+                key={pc.id}
+                href={`/admin/procurement/${pc.id}`}
+                className="flex items-center justify-between gap-2 rounded-lg border p-3 hover:bg-muted/40"
+              >
+                <div>
+                  <p className="text-sm">{pc.supplierName ?? t("noSupplier")}</p>
+                  {pc.externalPoRef && (
+                    <p className="text-xs text-muted-foreground" dir="ltr">
+                      {pc.externalPoRef}
+                    </p>
+                  )}
+                </div>
+                <Badge variant={pc.status === "po_linked" ? "success" : "secondary"}>
+                  {t(`caseStatuses.${pc.status}` as never)}
+                </Badge>
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

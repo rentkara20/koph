@@ -10,7 +10,13 @@ import { desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
-import { commercialApprovals, procurementCases, purchaseOrders, sourcingRequests } from "@/lib/db/schema"
+import {
+  commercialApprovals,
+  procurementCases,
+  purchaseOrders,
+  sourcingRequests,
+  suppliers,
+} from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
@@ -25,6 +31,9 @@ const createCaseSchema = z.object({
   source: z.enum(["commercial_flow", "system_manual"]),
   sourcingRequestId: z.string().trim().min(1).optional(),
   commercialApprovalId: z.string().trim().min(1).optional(),
+  // Sourcing V2: the awarded supplier for this case. One case per
+  // (request × supplier) → one external ERP PO each.
+  supplierId: z.string().trim().min(1).optional(),
 })
 
 export async function createProcurementCaseCore(
@@ -43,6 +52,7 @@ export async function createProcurementCaseCore(
     source: d.source,
     sourcingRequestId: d.sourcingRequestId ?? null,
     commercialApprovalId: d.commercialApprovalId ?? null,
+    supplierId: d.supplierId ?? null,
     status: "open",
     createdBy: actorUserId,
   })
@@ -51,7 +61,11 @@ export async function createProcurementCaseCore(
     aggregateType: "procurement_case",
     aggregateId: caseId,
     eventType: "ProcurementCaseCreated",
-    payload: { source: d.source, sourcingRequestId: d.sourcingRequestId ?? null },
+    payload: {
+      source: d.source,
+      sourcingRequestId: d.sourcingRequestId ?? null,
+      supplierId: d.supplierId ?? null,
+    },
     dedupeKey: `procurement_case:${caseId}:ProcurementCaseCreated`,
     actorUserId,
   })
@@ -233,4 +247,27 @@ export async function getProcurementCaseForSourcingRequest(sourcingRequestId: st
   if (cases.length === 0) return null
 
   return cases.find((c) => c.status !== "superseded") ?? cases[0]
+}
+
+// All non-superseded cases for a sourcing request (Sourcing V2: handoff can
+// create one case per awarded supplier), newest first, with supplier name.
+export async function getProcurementCasesForSourcingRequest(sourcingRequestId: string) {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  const cases = await db
+    .select({
+      id: procurementCases.id,
+      status: procurementCases.status,
+      supplierId: procurementCases.supplierId,
+      supplierName: suppliers.name,
+      externalPoRef: procurementCases.externalPoRef,
+      createdAt: procurementCases.createdAt,
+    })
+    .from(procurementCases)
+    .leftJoin(suppliers, eq(procurementCases.supplierId, suppliers.id))
+    .where(eq(procurementCases.sourcingRequestId, sourcingRequestId))
+    .orderBy(desc(procurementCases.createdAt))
+
+  return cases.filter((c) => c.status !== "superseded")
 }

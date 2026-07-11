@@ -1035,7 +1035,32 @@
     "upgradesNoteHint": "مثال: ترقية الذاكرة من 16 إلى 32 جيجابايت لدى المورد",
     "upgradesCost": "تكلفة الترقية",
     "upgrade": "الترقية",
-    "quotationNotes": "ملاحظات العرض"
+    "quotationNotes": "ملاحظات العرض",
+    "comparisonAndAward": "المقارنة والترسية",
+    "noQuotesForItem": "لا توجد عروض لهذا الصنف بعد",
+    "cheapest": "الأرخص",
+    "fastest": "الأسرع",
+    "saveAwards": "حفظ الترسية",
+    "awardsSaved": "تم حفظ الترسية",
+    "awards": "الترسيات",
+    "locked": "مقفلة",
+    "reason": "السبب",
+    "awardReasons": {
+      "lowest_price": "أقل سعر",
+      "fastest_delivery": "أسرع توريد",
+      "recommended": "موصى به",
+      "manual": "اختيار يدوي"
+    },
+    "procurementCases": "حالات المشتريات",
+    "noSupplier": "بدون مورد",
+    "caseStatuses": {
+      "open": "مفتوحة",
+      "handed_off": "تم التحويل",
+      "po_linked": "مرتبطة بأمر شراء",
+      "closed": "مغلقة",
+      "cancelled": "ملغاة",
+      "superseded": "مُستبدلة"
+    }
   },
   "procurementCase": {
     "title": "ملف المشتريات",

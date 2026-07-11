@@ -20,6 +20,7 @@ import { createId } from "@/lib/utils/ids"
 import { getStaffSession } from "@/lib/auth/session"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { validateQuotationLineItems } from "@/lib/domain/quotation-lines"
+import { computeBadges, lineTotal, type ComparisonLine } from "@/lib/domain/sourcing-comparison"
 
 type ActionResult = { error?: string; id?: string }
 
@@ -198,6 +199,147 @@ export async function getQuotationsForSourcingRequest(sourcingRequestId: string)
       supplierId: rfq?.supplierId ?? null,
       supplierName: rfq?.supplierName ?? null,
       lines: lines.filter((l) => l.quotationId === quotation.id),
+    }
+  })
+}
+
+// ─── Comparison matrix — item × supplier, tax-normalised (Sourcing V2 P5) ────
+// Computed on read (no table). Per request item, lists every quotation line
+// that quoted it, with the supplier, a tax-inclusive total, and advisory
+// cheapest/fastest badges. Feeds both the comparison UI and the award picker.
+
+export type ComparisonCandidate = {
+  quotationLineId: string
+  quotationId: string
+  supplierId: string | null
+  supplierName: string | null
+  offeredPartNumber: string | null
+  offeredSpec: string | null
+  unitPrice: number | null
+  currency: string
+  taxRate: number | null
+  qty: number
+  leadTimeDays: number | null
+  warranty: string | null
+  availability: string | null
+  upgradesNote: string | null
+  upgradesCost: number | null
+  total: number | null
+  isCheapest: boolean
+  isFastest: boolean
+}
+
+export type ComparisonRow = {
+  item: {
+    id: string
+    quantity: number
+    customerDescription: string
+    supplierDescription: string
+    partNumber: string | null
+    status: string
+  }
+  candidates: ComparisonCandidate[]
+}
+
+export async function getSourcingComparisonMatrix(sourcingRequestId: string): Promise<ComparisonRow[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  const items = await db
+    .select()
+    .from(sourcingRequestItems)
+    .where(eq(sourcingRequestItems.sourcingRequestId, sourcingRequestId))
+    .orderBy(sourcingRequestItems.createdAt)
+  if (items.length === 0) return []
+
+  const rfqs = await db
+    .select({ id: supplierRfqs.id, supplierId: supplierRfqs.supplierId, supplierName: suppliers.name })
+    .from(supplierRfqs)
+    .innerJoin(suppliers, eq(supplierRfqs.supplierId, suppliers.id))
+    .where(eq(supplierRfqs.sourcingRequestId, sourcingRequestId))
+  if (rfqs.length === 0) return items.map((item) => ({ item, candidates: [] }))
+
+  const quotations = await db
+    .select()
+    .from(supplierQuotations)
+    .where(
+      inArray(
+        supplierQuotations.rfqId,
+        rfqs.map((r) => r.id)
+      )
+    )
+  const quotationById = new Map(quotations.map((q) => [q.id, q]))
+  const rfqById = new Map(rfqs.map((r) => [r.id, r]))
+
+  const lines = quotations.length
+    ? await db
+        .select()
+        .from(supplierQuotationLines)
+        .where(
+          inArray(
+            supplierQuotationLines.quotationId,
+            quotations.map((q) => q.id)
+          )
+        )
+    : []
+
+  return items.map((item) => {
+    const itemLines = lines.filter((l) => l.sourcingRequestItemId === item.id)
+    const comparison: ComparisonLine[] = itemLines.map((l) => ({
+      quotationLineId: l.id,
+      currency: l.currency ?? "SAR",
+      unitPrice: l.unitPrice,
+      taxRate: l.taxRate,
+      qty: l.qty,
+      upgradesCost: l.upgradesCost,
+      leadTimeDays: l.leadTimeDays,
+    }))
+    const badges = computeBadges(comparison)
+
+    const candidates: ComparisonCandidate[] = itemLines.map((l) => {
+      const quotation = quotationById.get(l.quotationId)
+      const rfq = quotation ? rfqById.get(quotation.rfqId) : undefined
+      const total = lineTotal({
+        quotationLineId: l.id,
+        currency: l.currency ?? "SAR",
+        unitPrice: l.unitPrice,
+        taxRate: l.taxRate,
+        qty: l.qty,
+        upgradesCost: l.upgradesCost,
+        leadTimeDays: l.leadTimeDays,
+      })
+      return {
+        quotationLineId: l.id,
+        quotationId: l.quotationId,
+        supplierId: rfq?.supplierId ?? null,
+        supplierName: rfq?.supplierName ?? null,
+        offeredPartNumber: l.offeredPartNumber,
+        offeredSpec: l.offeredSpec,
+        unitPrice: l.unitPrice,
+        currency: l.currency ?? "SAR",
+        taxRate: l.taxRate,
+        qty: l.qty,
+        leadTimeDays: l.leadTimeDays,
+        warranty: l.warranty,
+        availability: l.availability,
+        upgradesNote: l.upgradesNote,
+        upgradesCost: l.upgradesCost,
+        total: total == null ? null : Math.round(total * 100) / 100,
+        isCheapest: badges.cheapestLineId === l.id,
+        isFastest: badges.fastestLineId === l.id,
+      }
+    })
+
+    return {
+      item: {
+        id: item.id,
+        quantity: item.quantity,
+        customerDescription: item.customerDescription,
+        supplierDescription: item.supplierDescription,
+        partNumber: item.partNumber,
+        status: item.status,
+      },
+      candidates,
     }
   })
 }

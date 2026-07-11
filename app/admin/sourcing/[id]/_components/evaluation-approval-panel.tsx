@@ -6,9 +6,7 @@ import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Select } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { createCommercialEvaluation, decideCommercialApproval, handoffToProcurementCase } from "@/lib/actions/commercial-approval"
+import { decideCommercialApproval, handoffToProcurementCase } from "@/lib/actions/commercial-approval"
 import { translateActionError } from "@/lib/i18n/action-errors"
 
 type QuotationOption = { id: string; supplierName: string | null }
@@ -16,7 +14,6 @@ type QuotationOption = { id: string; supplierName: string | null }
 export function EvaluationApprovalPanel({
   sourcingRequestId,
   status,
-  quotationOptions,
   latestEvaluationId,
 }: {
   sourcingRequestId: string
@@ -26,8 +23,6 @@ export function EvaluationApprovalPanel({
 }) {
   const t = useTranslations("sourcing")
   const router = useRouter()
-  const [chosenQuotationId, setChosenQuotationId] = useState(quotationOptions[0]?.id ?? "")
-  const [notes, setNotes] = useState("")
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
   const [pendingAction, setPendingAction] = useState<string | null>(null)
@@ -46,37 +41,6 @@ export function EvaluationApprovalPanel({
       toast.success(t(successKey as never))
       router.refresh()
     })
-  }
-
-  if (status === "quotes_received" && quotationOptions.length > 0) {
-    return (
-      <div className="space-y-3 rounded-lg border p-3">
-        <p className="text-sm font-medium">{t("createEvaluation")}</p>
-        <Select value={chosenQuotationId} onChange={(e) => setChosenQuotationId(e.target.value)}>
-          {quotationOptions.map((q) => (
-            <option key={q.id} value={q.id}>
-              {q.supplierName ?? q.id}
-            </option>
-          ))}
-        </Select>
-        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t("evaluationNotes")} />
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        <Button
-          size="sm"
-          disabled={pending}
-          onClick={() =>
-            run(
-              () => createCommercialEvaluation({ sourcingRequestId, chosenQuotationId, notes: notes.trim() || undefined }),
-              "evaluationCreated",
-              "createEvaluation"
-            )
-          }
-        >
-          {pending && pendingAction === "createEvaluation" && <Loader2 className="me-2 size-4 animate-spin" />}
-          {t("createEvaluation")}
-        </Button>
-      </div>
-    )
   }
 
   if (status === "under_evaluation" && latestEvaluationId) {
