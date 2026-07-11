@@ -6,6 +6,8 @@ import {
   getInventoryByModel,
   getSourcingRequestsByStatus,
   getProcurementCasesByStatus,
+  getWarrantyAssignmentsByStatus,
+  getAccessoryStockSummary,
 } from "@/lib/actions/reports"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,18 +31,38 @@ const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "suc
 }
 
 export default async function ReportsPage() {
-  const [statusRows, partnerPerf, paymentSummary, pendingSummary, inventoryByModel, sourcingByStatus, casesByStatus] =
-    await Promise.all([
-      getRequestsByStatus(),
-      getPartnerPerformance(),
-      getPaymentSummaryByMonth(),
-      getPendingPaymentsSummary(),
-      getInventoryByModel(),
-      getSourcingRequestsByStatus(),
-      getProcurementCasesByStatus(),
-    ])
+  const [
+    statusRows,
+    partnerPerf,
+    paymentSummary,
+    pendingSummary,
+    inventoryByModel,
+    sourcingByStatus,
+    casesByStatus,
+    warrantyByStatus,
+    accessoryStockRows,
+  ] = await Promise.all([
+    getRequestsByStatus(),
+    getPartnerPerformance(),
+    getPaymentSummaryByMonth(),
+    getPendingPaymentsSummary(),
+    getInventoryByModel(),
+    getSourcingRequestsByStatus(),
+    getProcurementCasesByStatus(),
+    getWarrantyAssignmentsByStatus(),
+    getAccessoryStockSummary(),
+  ])
 
   const totalSourcing = sourcingByStatus.reduce((s, r) => s + r.count, 0)
+  const totalWarranty = warrantyByStatus.reduce((s, r) => s + r.count, 0)
+
+  const accessoryMap = new Map<string, number>()
+  for (const row of accessoryStockRows) {
+    accessoryMap.set(row.nameEn, (accessoryMap.get(row.nameEn) ?? 0) + row.qty)
+  }
+  const accessoryRows = [...accessoryMap.entries()]
+    .map(([name, qty]) => ({ name, qty }))
+    .sort((a, b) => b.qty - a.qty)
 
   const totalRequests = statusRows.reduce((s, r) => s + r.count, 0)
 
@@ -185,6 +207,68 @@ export default async function ReportsPage() {
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{row.source.replace(/_/g, " ")}</td>
                     <td className="px-4 py-3 tabular-nums">{row.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Warranty assignments by status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Warranty assignments by status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {warrantyByStatus.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No warranty assignments yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {warrantyByStatus.map((row) => {
+                const pct = totalWarranty > 0 ? (row.count / totalWarranty) * 100 : 0
+                return (
+                  <div key={row.status} className="flex items-center gap-3">
+                    <div className="w-40 shrink-0">
+                      <Badge variant="outline">{row.status.replace(/_/g, " ")}</Badge>
+                    </div>
+                    <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full rounded-full bg-foreground/20" style={{ width: `${pct}%` }} />
+                    </div>
+                    <span className="text-sm tabular-nums font-medium w-8 text-right">{row.count}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Accessory stock summary */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            Accessory stock (all locations)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {accessoryRows.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-muted-foreground">No accessory stock yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Item</th>
+                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Qty on hand</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {accessoryRows.map((row) => (
+                  <tr key={row.name}>
+                    <td className="px-4 py-3 font-medium">{row.name}</td>
+                    <td className="px-4 py-3 tabular-nums">{row.qty}</td>
                   </tr>
                 ))}
               </tbody>

@@ -13,6 +13,9 @@ import {
   requests,
   sourcingRequests,
   procurementCases,
+  warrantyAssignments,
+  accessoryStock,
+  accessoryItems,
 } from "@/lib/db/schema"
 import { getStaffSession } from "@/lib/auth/session"
 
@@ -147,6 +150,34 @@ export async function getProcurementCasesByStatus() {
     .from(procurementCases)
     .groupBy(procurementCases.status, procurementCases.source)
     .orderBy(procurementCases.status)
+}
+
+// ─── Warranty & Accessories (P6/P5) ───────────────────────────────────────────
+
+export async function getWarrantyAssignmentsByStatus() {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  return db
+    .select({ status: warrantyAssignments.status, count: count() })
+    .from(warrantyAssignments)
+    .groupBy(warrantyAssignments.status)
+    .orderBy(warrantyAssignments.status)
+}
+
+export async function getAccessoryStockSummary() {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  return db
+    .select({
+      nameEn: accessoryItems.nameEn,
+      location: accessoryStock.location,
+      qty: accessoryStock.qty,
+    })
+    .from(accessoryStock)
+    .innerJoin(accessoryItems, eq(accessoryStock.accessoryItemId, accessoryItems.id))
+    .orderBy(accessoryItems.nameEn)
 }
 
 // ─── Pending payments summary ─────────────────────────────────────────────────
