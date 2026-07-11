@@ -917,6 +917,10 @@ export const sourcingRequests = sqliteTable(
     // Only set when sourceType = customer_order.
     orderId: text("order_id").references(() => orders.id, { onDelete: "set null" }),
     orderLineId: text("order_line_id").references(() => orderLines.id, { onDelete: "set null" }),
+    // External business reference — the original customer request number
+    // (Notion today, Odoo later). This is the anchor everything traces back to.
+    externalRef: text("external_ref"),
+    title: text("title"),
     description: text("description").notNull(),
     status: text("status", {
       enum: [
@@ -940,6 +944,40 @@ export const sourcingRequests = sqliteTable(
   (t) => [
     index("sourcing_request_order_idx").on(t.orderId),
     index("sourcing_request_status_idx").on(t.status),
+    index("sourcing_request_external_ref_idx").on(t.externalRef),
+  ]
+)
+
+// One row per requested product within a sourcing request (Sourcing V2).
+// Three description tiers: customerDescription is the FINAL delivered
+// configuration (feeds delivery note / asset sheet), supplierDescription is
+// what suppliers see in RFQs and later purchasing, partNumber is reference
+// data only — never the workflow entity. Spec fields + quantity lock once the
+// item is awarded under an approved evaluation (enforced app-level in *Core
+// guards; unlock only via evaluation supersede → re-award → re-approve).
+export const sourcingRequestItems = sqliteTable(
+  "sourcing_request_item",
+  {
+    id: text("id").primaryKey(),
+    sourcingRequestId: text("sourcing_request_id")
+      .notNull()
+      .references(() => sourcingRequests.id),
+    quantity: integer("quantity").notNull().default(1),
+    customerDescription: text("customer_description").notNull(),
+    supplierDescription: text("supplier_description").notNull(),
+    partNumber: text("part_number"),
+    notes: text("notes"),
+    status: text("status", {
+      enum: ["pending", "rfq_sent", "quoted", "selected", "not_sourced", "cancelled"],
+    })
+      .notNull()
+      .default("pending"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("sourcing_request_item_request_idx").on(t.sourcingRequestId),
+    index("sourcing_request_item_part_number_idx").on(t.partNumber),
   ]
 )
 
@@ -965,6 +1003,28 @@ export const supplierRfqs = sqliteTable(
   (t) => [
     index("supplier_rfq_request_idx").on(t.sourcingRequestId),
     index("supplier_rfq_supplier_idx").on(t.supplierId),
+  ]
+)
+
+// Subset selector (Sourcing V2): which request items a given RFQ carries.
+// The same item may appear in many RFQs — competitive quoting across
+// suppliers AND repeat/revised RFQs to the same supplier (no unique
+// (request, supplier) constraint by design; history is rows + sentAt).
+export const supplierRfqItems = sqliteTable(
+  "supplier_rfq_item",
+  {
+    id: text("id").primaryKey(),
+    rfqId: text("rfq_id")
+      .notNull()
+      .references(() => supplierRfqs.id),
+    sourcingRequestItemId: text("sourcing_request_item_id")
+      .notNull()
+      .references(() => sourcingRequestItems.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("supplier_rfq_item_rfq_idx").on(t.rfqId),
+    index("supplier_rfq_item_item_idx").on(t.sourcingRequestItemId),
   ]
 )
 
@@ -1001,9 +1061,30 @@ export const supplierQuotationLines = sqliteTable(
     qty: integer("qty").notNull().default(1),
     unitPrice: real("unit_price"),
     leadTimeDays: integer("lead_time_days"),
+    // Sourcing V2 — nullable for legacy rows; required app-side for new
+    // writes. Which request item this line answers (comparison key).
+    sourcingRequestItemId: text("sourcing_request_item_id").references(
+      () => sourcingRequestItems.id
+    ),
+    // What the supplier actually offers. Purchased config = offered part
+    // number + spec + upgrades; delivered config stays the item's
+    // customerDescription. Deliberately no BOM/configurable-product system.
+    offeredPartNumber: text("offered_part_number"),
+    offeredSpec: text("offered_spec"),
+    currency: text("currency").default("SAR"),
+    taxRate: real("tax_rate"),
+    availability: text("availability"),
+    warranty: text("warranty"),
+    validUntil: integer("valid_until"),
+    upgradesNote: text("upgrades_note"),
+    upgradesCost: real("upgrades_cost"),
     createdAt: integer("created_at").notNull().$defaultFn(now),
   },
-  (t) => [index("supplier_quotation_line_quotation_idx").on(t.quotationId)]
+  (t) => [
+    index("supplier_quotation_line_quotation_idx").on(t.quotationId),
+    index("supplier_quotation_line_item_idx").on(t.sourcingRequestItemId),
+    index("supplier_quotation_line_part_number_idx").on(t.offeredPartNumber),
+  ]
 )
 
 export const commercialEvaluations = sqliteTable(
@@ -1023,6 +1104,37 @@ export const commercialEvaluations = sqliteTable(
     updatedAt: integer("updated_at").notNull().$defaultFn(now),
   },
   (t) => [index("commercial_evaluation_request_idx").on(t.sourcingRequestId)]
+)
+
+// Per-item award (Sourcing V2) — the single source of truth for "which
+// quotation line won this item, and why". Append-only: changing an award
+// means superseding the whole evaluation (existing locked rule) and creating
+// a new evaluation with new lines. Cheapest is never auto-selected; the
+// reason is always an explicit human decision. An item's "selected" state is
+// derived from the latest non-superseded evaluation, never stored twice.
+export const commercialEvaluationLines = sqliteTable(
+  "commercial_evaluation_line",
+  {
+    id: text("id").primaryKey(),
+    evaluationId: text("evaluation_id")
+      .notNull()
+      .references(() => commercialEvaluations.id),
+    sourcingRequestItemId: text("sourcing_request_item_id")
+      .notNull()
+      .references(() => sourcingRequestItems.id),
+    chosenQuotationLineId: text("chosen_quotation_line_id")
+      .notNull()
+      .references(() => supplierQuotationLines.id),
+    reason: text("reason", {
+      enum: ["lowest_price", "fastest_delivery", "recommended", "manual"],
+    }).notNull(),
+    notes: text("notes"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("commercial_evaluation_line_evaluation_idx").on(t.evaluationId),
+    index("commercial_evaluation_line_item_idx").on(t.sourcingRequestItemId),
+  ]
 )
 
 // Append-only past creation (locked, 2026-07-10): a re-approval after a
@@ -1058,6 +1170,9 @@ export const procurementCases = sqliteTable(
     // Both null for source="system_manual".
     sourcingRequestId: text("sourcing_request_id").references(() => sourcingRequests.id),
     commercialApprovalId: text("commercial_approval_id").references(() => commercialApprovals.id),
+    // Sourcing V2: one case per (request × awarded supplier) — each case maps
+    // to exactly one external ERP PO. Nullable for legacy/system_manual rows.
+    supplierId: text("supplier_id").references(() => suppliers.id),
     status: text("status", {
       enum: ["open", "handed_off", "po_linked", "closed", "cancelled", "superseded"],
     })
@@ -1083,6 +1198,12 @@ export const procurementCases = sqliteTable(
 
 export type SourcingRequest = typeof sourcingRequests.$inferSelect
 export type NewSourcingRequest = typeof sourcingRequests.$inferInsert
+export type SourcingRequestItem = typeof sourcingRequestItems.$inferSelect
+export type NewSourcingRequestItem = typeof sourcingRequestItems.$inferInsert
+export type SupplierRfqItem = typeof supplierRfqItems.$inferSelect
+export type NewSupplierRfqItem = typeof supplierRfqItems.$inferInsert
+export type CommercialEvaluationLine = typeof commercialEvaluationLines.$inferSelect
+export type NewCommercialEvaluationLine = typeof commercialEvaluationLines.$inferInsert
 export type SupplierRfq = typeof supplierRfqs.$inferSelect
 export type NewSupplierRfq = typeof supplierRfqs.$inferInsert
 export type SupplierQuotation = typeof supplierQuotations.$inferSelect
