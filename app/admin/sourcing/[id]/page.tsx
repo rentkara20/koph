@@ -7,7 +7,10 @@ import { getProcurementCase, getProcurementCaseForSourcingRequest } from "@/lib/
 import { getSuppliers } from "@/lib/actions/suppliers"
 import { Badge } from "@/components/ui/badge"
 import { ProcurementCasePanel } from "@/components/procurement-case-panel"
+import { buildRfqEmailSubject, buildRfqMessage } from "@/lib/domain/rfq-message"
+import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
 import { SendRfqForm } from "./_components/send-rfq-form"
+import { RfqMessageActions } from "./_components/rfq-message-actions"
 import { QuotationForm } from "./_components/quotation-form"
 import { EvaluationApprovalPanel } from "./_components/evaluation-approval-panel"
 
@@ -116,6 +119,12 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
             const rfqItems = (rfqItemIds[rfq.id] ?? [])
               .map((itemId) => itemById.get(itemId))
               .filter((item) => item != null)
+            const message = buildRfqMessage({
+              supplierContactName: rfq.supplierContactPerson,
+              externalRef: request.externalRef,
+              title: request.title,
+              items: rfqItems,
+            })
             return (
               <div key={rfq.id} className="space-y-2 rounded-lg border p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -138,6 +147,14 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
                       </li>
                     ))}
                   </ul>
+                )}
+                {rfq.status === "sent" && rfqItems.length > 0 && (
+                  <RfqMessageActions
+                    message={message}
+                    emailSubject={buildRfqEmailSubject(request.externalRef, request.title)}
+                    whatsappUrl={buildWhatsappUrl(rfq.supplierMobile, message)}
+                    email={rfq.supplierEmail}
+                  />
                 )}
                 {rfq.status === "sent" && <QuotationForm rfqId={rfq.id} />}
               </div>

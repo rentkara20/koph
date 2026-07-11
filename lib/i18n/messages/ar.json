@@ -1016,7 +1016,12 @@
     },
     "selectItems": "الأصناف المشمولة",
     "selectSuppliers": "الموردون",
-    "rfqHistory": "سجل طلبات التسعير"
+    "rfqHistory": "سجل طلبات التسعير",
+    "sendViaWhatsapp": "واتساب",
+    "sendViaEmail": "بريد إلكتروني",
+    "copyMessage": "نسخ الرسالة",
+    "messageCopied": "تم نسخ الرسالة",
+    "copyFailed": "تعذر النسخ — انسخ يدوياً"
   },
   "procurementCase": {
     "title": "ملف المشتريات",

@@ -293,6 +293,9 @@ export async function getSourcingRequest(id: string) {
       id: supplierRfqs.id,
       supplierId: supplierRfqs.supplierId,
       supplierName: suppliers.name,
+      supplierContactPerson: suppliers.contactPerson,
+      supplierMobile: suppliers.mobile,
+      supplierEmail: suppliers.email,
       status: supplierRfqs.status,
       sentAt: supplierRfqs.sentAt,
     })

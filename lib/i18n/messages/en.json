@@ -1016,7 +1016,12 @@
     },
     "selectItems": "Items to include",
     "selectSuppliers": "Suppliers",
-    "rfqHistory": "RFQ history"
+    "rfqHistory": "RFQ history",
+    "sendViaWhatsapp": "WhatsApp",
+    "sendViaEmail": "Email",
+    "copyMessage": "Copy message",
+    "messageCopied": "Message copied",
+    "copyFailed": "Could not copy — select and copy manually"
   },
   "procurementCase": {
     "title": "Procurement Case",
