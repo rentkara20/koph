@@ -1,10 +1,9 @@
 "use server"
 
-import { and, count, desc, eq, isNull, lt } from "drizzle-orm"
+import { and, count, desc, eq, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { notifications } from "@/lib/db/schema"
 import { getSession } from "@/lib/auth/session"
-import { getNotificationRetentionDays } from "@/lib/actions/settings"
 
 export type NotificationItem = {
   id: string
@@ -50,14 +49,6 @@ export async function getUnreadCount(): Promise<number> {
     .where(and(eq(notifications.userId, session.user.id), isNull(notifications.readAt)))
 
   return row?.value ?? 0
-}
-
-/** Prune notifications older than the admin-configured retention window (Settings → Notifications). */
-export async function pruneOldNotifications(): Promise<{ deleted: number }> {
-  const retentionDays = await getNotificationRetentionDays()
-  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000
-  const result = await db.delete(notifications).where(lt(notifications.createdAt, cutoff))
-  return { deleted: (result as { rowsAffected?: number }).rowsAffected ?? 0 }
 }
 
 export async function markNotificationRead(id: string): Promise<{ error?: string }> {
