@@ -394,10 +394,16 @@ export async function createAssetCore(
     orderId = line.orderId
   } else {
     const [line] = await tx
-      .select({ id: purchaseOrderLines.id, purchaseOrderId: purchaseOrderLines.purchaseOrderId })
+      .select({
+        id: purchaseOrderLines.id,
+        purchaseOrderId: purchaseOrderLines.purchaseOrderId,
+        status: purchaseOrderLines.status,
+      })
       .from(purchaseOrderLines)
       .where(eq(purchaseOrderLines.id, d.purchaseOrderLineId!))
     if (!line) throw new Error("Purchase order line not found")
+    if (line.status === "cancelled")
+      throw new Error("Cannot create an asset from a cancelled purchase order line")
     purchaseOrderLineId = line.id
     purchaseOrderId = line.purchaseOrderId
   }
@@ -458,6 +464,14 @@ export async function createAsset(
 
   const parsed = createAssetSchema.safeParse(input)
   if (!parsed.success) return { error: "Invalid input" }
+
+  // PO-origin assets MUST go through the receiving flow
+  // (receivePurchaseOrderLineCore), which enforces the qtyReceived < qtyOrdered
+  // over-receive cap and increments the received count. This direct-entry path
+  // has no such cap, so it is restricted to client-order origin only.
+  if (parsed.data.purchaseOrderLineId) {
+    return { error: "Assets from a purchase order must be created through the receiving flow" }
+  }
 
   let assetId = ""
   try {

@@ -66,38 +66,42 @@ export async function createOrder(
     return (acc ?? 0) + lt
   }, null)
 
-  await db.insert(orders).values({
-    id,
-    orderNumber: d.orderNumber,
-    customerId: d.customerId,
-    contactPerson: d.contactPerson || null,
-    contactMobile: d.contactMobile || null,
-    contactEmail: d.contactEmail || null,
-    quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
-    rentalPeriodMonths: d.rentalPeriodMonths ?? null,
-    additionalPeriodMonths: d.additionalPeriodMonths ?? null,
-    total,
-    status: "draft",
-    notes: d.notes || null,
-    createdBy: session.user.id,
-  })
+  // Header + lines are one atomic unit — a mid-create failure must not leave
+  // an order header persisted with none (or half) of its lines.
+  await db.transaction(async (tx) => {
+    await tx.insert(orders).values({
+      id,
+      orderNumber: d.orderNumber,
+      customerId: d.customerId,
+      contactPerson: d.contactPerson || null,
+      contactMobile: d.contactMobile || null,
+      contactEmail: d.contactEmail || null,
+      quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
+      rentalPeriodMonths: d.rentalPeriodMonths ?? null,
+      additionalPeriodMonths: d.additionalPeriodMonths ?? null,
+      total,
+      status: "draft",
+      notes: d.notes || null,
+      createdBy: session.user.id,
+    })
 
-  if (d.lines.length > 0) {
-    await db.insert(orderLines).values(
-      d.lines.map((l, i) => ({
-        id: createId(),
-        orderId: id,
-        description: l.description,
-        brand: l.brand || null,
-        model: l.model || null,
-        quantity: l.quantity,
-        rentalMonths: l.rentalMonths ?? null,
-        unitPriceMonthly: l.unitPriceMonthly ?? null,
-        lineTotal: lineTotals[i],
-        notes: l.notes || null,
-      }))
-    )
-  }
+    if (d.lines.length > 0) {
+      await tx.insert(orderLines).values(
+        d.lines.map((l, i) => ({
+          id: createId(),
+          orderId: id,
+          description: l.description,
+          brand: l.brand || null,
+          model: l.model || null,
+          quantity: l.quantity,
+          rentalMonths: l.rentalMonths ?? null,
+          unitPriceMonthly: l.unitPriceMonthly ?? null,
+          lineTotal: lineTotals[i],
+          notes: l.notes || null,
+        }))
+      )
+    }
+  })
 
   revalidatePath("/admin/orders")
   return { id }
