@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
+import { useCallback, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
@@ -9,9 +9,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
+import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select"
 import { Textarea } from "@/components/ui/textarea"
 import { createSourcingRequest } from "@/lib/actions/sourcing"
+import { searchCustomers, type CustomerOption } from "@/lib/actions/customers"
+import { searchCustomerOrders, type CustomerOrderOption } from "@/lib/actions/orders"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { resolveSupplierDescription, applySameAsToggle } from "@/lib/domain/sourcing-description"
 
 type SourceType = "customer_order" | "stock_replenishment" | "operational_need"
 
@@ -19,6 +23,9 @@ type ItemDraft = {
   quantity: string
   customerDescription: string
   supplierDescription: string
+  // When true, supplierDescription mirrors customerDescription and is read-only.
+  // Derived in the UI — no persisted "same as" flag (see sourcing-description.ts).
+  sameAsCustomer: boolean
   partNumber: string
   notes: string
 }
@@ -27,31 +34,103 @@ const EMPTY_ITEM: ItemDraft = {
   quantity: "1",
   customerDescription: "",
   supplierDescription: "",
+  sameAsCustomer: true,
   partNumber: "",
   notes: "",
 }
 
-export function CreateSourcingRequestForm() {
+type Props = {
+  /** Seed shown when the customer picker first opens (not a hard limit). */
+  initialCustomers: CustomerOption[]
+  /** Preselected customer + order when arriving via ?orderId=… (else null). */
+  initialCustomer: CustomerOption | null
+  initialOrder: CustomerOrderOption | null
+}
+
+const toOption = (o: { id: string; name?: string; orderNumber?: string }): SearchableSelectOption => ({
+  value: o.id,
+  label: o.name ?? o.orderNumber ?? o.id,
+})
+
+export function CreateSourcingRequestForm({
+  initialCustomers,
+  initialCustomer,
+  initialOrder,
+}: Props) {
   const t = useTranslations("sourcing")
+  const tCommon = useTranslations("common")
   const router = useRouter()
+
   const [sourceType, setSourceType] = useState<SourceType>("customer_order")
-  const [orderId, setOrderId] = useState("")
-  const [orderLineId, setOrderLineId] = useState("")
+  // Track id + label together so the trigger can render a preselected record's
+  // name even when it falls outside the current search page.
+  const [customerId, setCustomerId] = useState(initialCustomer?.id ?? "")
+  const [customerLabel, setCustomerLabel] = useState(initialCustomer?.name ?? "")
+  const [orderId, setOrderId] = useState(initialOrder?.id ?? "")
+  const [orderLabel, setOrderLabel] = useState(initialOrder?.orderNumber ?? "")
   const [externalRef, setExternalRef] = useState("")
+  // Optional free-text search label. Left blank, the server derives a display
+  // label from the request's own data — the user is never forced to type one.
   const [title, setTitle] = useState("")
   const [notes, setNotes] = useState("")
   const [items, setItems] = useState<ItemDraft[]>([{ ...EMPTY_ITEM }])
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
 
+  const seedCustomerOptions = initialCustomers.map(toOption)
+
+  // Server-side searches. Customer search is global; order search is always
+  // scoped to the selected customer so foreign orders can never surface.
+  const loadCustomers = useCallback(
+    async (query: string) => (await searchCustomers(query)).map(toOption),
+    []
+  )
+  const loadCustomerOrders = useCallback(
+    async (query: string) =>
+      customerId ? (await searchCustomerOrders(customerId, query)).map(toOption) : [],
+    [customerId]
+  )
+
+  function handleCustomerChange(nextId: string, option: SearchableSelectOption) {
+    setCustomerId(nextId)
+    setCustomerLabel(option.label)
+    // The previously selected order belongs to the old customer — drop it.
+    setOrderId("")
+    setOrderLabel("")
+  }
+
+  function handleOrderChange(nextId: string, option: SearchableSelectOption) {
+    setOrderId(nextId)
+    setOrderLabel(option.label)
+  }
+
   function updateItem(index: number, patch: Partial<ItemDraft>) {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  }
+
+  function toggleSameAsCustomer(index: number, sameAsCustomer: boolean) {
+    setItems((prev) =>
+      prev.map((item, i) => (i === index ? applySameAsToggle(item, sameAsCustomer) : item))
+    )
+  }
+
+  const isCustomerOrder = sourceType === "customer_order"
+
+  // The supplier spec actually submitted for an item: the customer spec when
+  // mirroring, otherwise the independently-typed value. Single source of truth
+  // for validation, rendering, and submit.
+  function effectiveSupplier(item: ItemDraft): string {
+    return resolveSupplierDescription(
+      item.sameAsCustomer,
+      item.customerDescription,
+      item.supplierDescription
+    )
   }
 
   const itemsValid = items.every(
     (item) =>
       item.customerDescription.trim() &&
-      item.supplierDescription.trim() &&
+      effectiveSupplier(item).trim() &&
       Number.parseInt(item.quantity, 10) >= 1
   )
 
@@ -60,15 +139,14 @@ export function CreateSourcingRequestForm() {
     startTransition(async () => {
       const result = await createSourcingRequest({
         sourceType,
-        orderId: sourceType === "customer_order" ? orderId.trim() || undefined : undefined,
-        orderLineId: sourceType === "customer_order" ? orderLineId.trim() || undefined : undefined,
+        orderId: isCustomerOrder ? orderId || undefined : undefined,
         externalRef: externalRef.trim() || undefined,
-        title: title.trim(),
+        title: title.trim() || undefined,
         notes: notes.trim() || undefined,
         items: items.map((item) => ({
           quantity: Number.parseInt(item.quantity, 10) || 1,
           customerDescription: item.customerDescription.trim(),
-          supplierDescription: item.supplierDescription.trim(),
+          supplierDescription: effectiveSupplier(item).trim(),
           partNumber: item.partNumber.trim() || undefined,
           notes: item.notes.trim() || undefined,
         })),
@@ -107,19 +185,56 @@ export function CreateSourcingRequestForm() {
       </div>
 
       <div>
-        <Label>{t("requestTitle")}</Label>
+        <Label>
+          {t("requestTitle")}{" "}
+          <span className="text-xs font-normal text-muted-foreground">({tCommon("optional")})</span>
+        </Label>
         <Input value={title} onChange={(e) => setTitle(e.target.value)} />
       </div>
 
-      {sourceType === "customer_order" && (
+      {isCustomerOrder && (
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <Label>{t("orderId")}</Label>
-            <Input value={orderId} onChange={(e) => setOrderId(e.target.value)} dir="ltr" />
+            <Label>{t("customer")}</Label>
+            <SearchableSelect
+              options={seedCustomerOptions}
+              loadOptions={loadCustomers}
+              value={customerId}
+              selectedOption={
+                customerId ? { value: customerId, label: customerLabel } : undefined
+              }
+              onChange={handleCustomerChange}
+              placeholder={t("selectCustomer")}
+              searchPlaceholder={t("searchCustomer")}
+              emptyLabel={t("noCustomers")}
+              loadingLabel={tCommon("loading")}
+              errorLabel={t("searchError")}
+            />
           </div>
+          {/*
+            TODO: Order-line mapping. Sourcing from a multi-line customer order
+            should let the user pick the exact order line(s) instead of the
+            order alone (the `orderLineId` FK already exists on sourcing_request
+            and is validated server-side). Requires loading order lines for the
+            selected order. Deferred — future feature.
+          */}
           <div>
-            <Label>{t("orderLineId")}</Label>
-            <Input value={orderLineId} onChange={(e) => setOrderLineId(e.target.value)} dir="ltr" />
+            <Label>{t("customerOrder")}</Label>
+            <SearchableSelect
+              // Remount on customer change to reset the picker's internal search
+              // state; loadOptions is already customer-scoped.
+              key={customerId || "no-customer"}
+              loadOptions={loadCustomerOrders}
+              value={orderId}
+              selectedOption={orderId ? { value: orderId, label: orderLabel } : undefined}
+              onChange={handleOrderChange}
+              disabled={!customerId}
+              placeholder={customerId ? t("selectOrder") : t("selectCustomerFirst")}
+              searchPlaceholder={t("searchOrder")}
+              emptyLabel={t("noCustomerOrders")}
+              loadingLabel={tCommon("loading")}
+              errorLabel={t("searchError")}
+            />
           </div>
         </div>
       )}
@@ -172,11 +287,22 @@ export function CreateSourcingRequestForm() {
                 placeholder={t("customerDescriptionHint")}
               />
             </div>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input"
+                checked={item.sameAsCustomer}
+                onChange={(e) => toggleSameAsCustomer(index, e.target.checked)}
+              />
+              <span className="text-sm">{t("sameAsCustomer")}</span>
+            </label>
             <div>
               <Label>{t("supplierDescription")}</Label>
               <Textarea
-                value={item.supplierDescription}
+                value={effectiveSupplier(item)}
                 onChange={(e) => updateItem(index, { supplierDescription: e.target.value })}
+                readOnly={item.sameAsCustomer}
+                disabled={item.sameAsCustomer}
                 rows={2}
                 placeholder={t("supplierDescriptionHint")}
               />
@@ -202,7 +328,7 @@ export function CreateSourcingRequestForm() {
 
       <Button
         onClick={handleSubmit}
-        disabled={pending || !title.trim() || !itemsValid}
+        disabled={pending || !itemsValid}
         className="w-full sm:w-auto"
       >
         {pending && <Loader2 className="me-2 size-4 animate-spin" />}

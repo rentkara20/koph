@@ -18,11 +18,15 @@ import {
   supplierRfqs,
   supplierRfqItems,
   suppliers,
+  orders,
+  orderLines,
 } from "@/lib/db/schema"
+import { isNull } from "drizzle-orm"
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession } from "@/lib/auth/session"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { canIncludeItemInRfq, type SourcingItemStatus } from "@/lib/domain/sourcing-item-status"
+import { sourcingRequestDescription } from "@/lib/domain/sourcing-description"
 
 type ActionResult = { error?: string; id?: string }
 
@@ -41,7 +45,9 @@ const createSourcingRequestSchema = z.object({
   orderId: z.string().trim().min(1).optional(),
   orderLineId: z.string().trim().min(1).optional(),
   externalRef: z.string().trim().min(1).max(200).optional(),
-  title: z.string().trim().min(1).max(500),
+  // Optional search label. When absent, a display label is derived at insert
+  // time (see below) so list/detail views never show an empty heading.
+  title: z.string().trim().min(1).max(500).optional(),
   notes: z.string().trim().min(1).max(2000).optional(),
   items: z.array(sourcingItemSchema).min(1).max(100),
 })
@@ -59,6 +65,26 @@ export async function createSourcingRequest(
     return { error: "orderId/orderLineId only apply to sourceType=customer_order" }
   }
 
+  // Guard the FK columns: orderId/orderLineId are real references, not free
+  // text. Reject anything that does not resolve to a live order (and, when a
+  // line is given, one that belongs to that order) so no dangling reference or
+  // invalid customer↔order combination can be persisted.
+  if (d.orderId) {
+    const [order] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(and(eq(orders.id, d.orderId), isNull(orders.deletedAt)))
+    if (!order) return { error: "Order not found" }
+  }
+  if (d.orderLineId) {
+    if (!d.orderId) return { error: "orderLineId requires orderId" }
+    const [line] = await db
+      .select({ id: orderLines.id })
+      .from(orderLines)
+      .where(and(eq(orderLines.id, d.orderLineId), eq(orderLines.orderId, d.orderId)))
+    if (!line) return { error: "Order line does not belong to the selected order" }
+  }
+
   const id = createId()
   await db.transaction(async (tx) => {
     await tx.insert(sourcingRequests).values({
@@ -67,10 +93,18 @@ export async function createSourcingRequest(
       orderId: d.orderId ?? null,
       orderLineId: d.orderLineId ?? null,
       externalRef: d.externalRef ?? null,
-      title: d.title,
-      // Legacy NOT NULL column — pre-V2 rows used it as the single spec.
-      // V2 keeps it as the free-form note (falls back to the title).
-      description: d.notes ?? d.title,
+      title: d.title ?? null,
+      // Legacy NOT NULL column — pre-V2 rows used it as the single spec. V2
+      // keeps it as the free-form note, and it doubles as the display-label
+      // fallback rendered when `title` is blank (list/detail show
+      // `title ?? description`). Normalised first-non-empty chain guarantees a
+      // meaningful, never-blank value.
+      description: sourcingRequestDescription({
+        notes: d.notes,
+        title: d.title,
+        firstItemCustomerDescription: d.items[0].customerDescription,
+        externalRef: d.externalRef,
+      }),
       createdBy: session.user.id,
     })
     for (const item of d.items) {

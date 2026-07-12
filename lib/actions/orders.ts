@@ -390,6 +390,69 @@ export async function getOrders(search?: string) {
   return base.where(isNull(orders.deletedAt)).orderBy(desc(orders.createdAt)).limit(100)
 }
 
+// ─── Focused option lookups for the customer-scoped order picker ──────────────
+// Minimal {id, orderNumber, customerId} projections for async SearchableSelect.
+// Search is ALWAYS scoped to one customer, so orders of other customers can
+// never appear. Auth-guarded; bounded result set.
+
+export type CustomerOrderOption = { id: string; orderNumber: string; customerId: string }
+
+type Database = typeof db
+
+const ORDER_OPTION_LIMIT = 20
+
+// Core query, db-injectable so it is unit-testable against a fresh test db.
+export async function searchCustomerOrdersCore(
+  database: Database,
+  customerId: string,
+  query?: string,
+  limit = ORDER_OPTION_LIMIT
+): Promise<CustomerOrderOption[]> {
+  if (!customerId?.trim()) return []
+
+  const projection = {
+    id: orders.id,
+    orderNumber: orders.orderNumber,
+    customerId: orders.customerId,
+  }
+  const conditions = [isNull(orders.deletedAt), eq(orders.customerId, customerId)]
+  const q = query?.trim()
+  if (q) conditions.push(like(orders.orderNumber, `%${q}%`))
+
+  return database
+    .select(projection)
+    .from(orders)
+    .where(and(...conditions))
+    .orderBy(desc(orders.createdAt))
+    .limit(limit)
+}
+
+export async function getOrderByIdCore(
+  database: Database,
+  id: string
+): Promise<CustomerOrderOption | null> {
+  const [order] = await database
+    .select({ id: orders.id, orderNumber: orders.orderNumber, customerId: orders.customerId })
+    .from(orders)
+    .where(and(eq(orders.id, id), isNull(orders.deletedAt)))
+  return order ?? null
+}
+
+export async function searchCustomerOrders(
+  customerId: string,
+  query?: string
+): Promise<CustomerOrderOption[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+  return searchCustomerOrdersCore(db, customerId, query)
+}
+
+export async function getOrderById(id: string): Promise<CustomerOrderOption | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+  return getOrderByIdCore(db, id)
+}
+
 export async function getOrder(id: string) {
   const session = await getStaffSession()
   if (!session) return null

@@ -100,6 +100,71 @@ export async function getCustomer(id: string) {
   return customer ?? null
 }
 
+// ─── Focused option lookups for searchable pickers ───────────────────────────
+// Minimal {id, name} projections used by async SearchableSelect. Server-side
+// search so results are never capped at a preloaded window; every action is
+// auth-guarded and returns a small, bounded result set.
+
+export type CustomerOption = { id: string; name: string }
+
+type Database = typeof db
+
+const OPTION_SEARCH_LIMIT = 20
+
+// Core query, db-injectable so it is unit-testable against a fresh test db.
+export async function searchCustomersCore(
+  database: Database,
+  query?: string,
+  limit = OPTION_SEARCH_LIMIT
+): Promise<CustomerOption[]> {
+  const projection = { id: customers.id, name: customers.name }
+  const q = query?.trim()
+  if (q) {
+    const like_ = `%${q}%`
+    return database
+      .select(projection)
+      .from(customers)
+      .where(
+        and(
+          isNull(customers.deletedAt),
+          or(like(customers.name, like_), like(customers.mobile, like_), like(customers.city, like_))
+        )
+      )
+      .orderBy(desc(customers.createdAt))
+      .limit(limit)
+  }
+
+  return database
+    .select(projection)
+    .from(customers)
+    .where(isNull(customers.deletedAt))
+    .orderBy(desc(customers.createdAt))
+    .limit(limit)
+}
+
+export async function getCustomerByIdCore(
+  database: Database,
+  id: string
+): Promise<CustomerOption | null> {
+  const [customer] = await database
+    .select({ id: customers.id, name: customers.name })
+    .from(customers)
+    .where(and(eq(customers.id, id), isNull(customers.deletedAt)))
+  return customer ?? null
+}
+
+export async function searchCustomers(query?: string): Promise<CustomerOption[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+  return searchCustomersCore(db, query)
+}
+
+export async function getCustomerById(id: string): Promise<CustomerOption | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+  return getCustomerByIdCore(db, id)
+}
+
 export async function deleteCustomer(id: string): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
