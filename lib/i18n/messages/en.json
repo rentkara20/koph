@@ -814,7 +814,12 @@
       "partially_received": "Partially received",
       "received": "Received",
       "cancelled": "Cancelled"
-    }
+    },
+    "cancelLine": "Cancel line",
+    "confirmCancelLine": "Confirm cancel",
+    "cancelReasonPlaceholder": "Reason (optional)",
+    "lineCancelled": "Line cancelled",
+    "dismiss": "Dismiss"
   },
   "warranty": {
     "title": "Warranty Center",

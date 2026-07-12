@@ -185,3 +185,135 @@ describe("receivePurchaseOrderLineCore", () => {
     expect(after.length).toBe(before.length)
   })
 })
+
+// ─── Cancel line ─────────────────────────────────────────────────────────────
+// cancelPurchaseOrderLineCore soft-cancels a line (only while qtyReceived = 0)
+// and recomputes the PO status EXCLUDING cancelled lines.
+async function seedPoWithLines(qtysOrdered: number[]) {
+  const supplierId = createId()
+  const poId = createId()
+  const procurementCaseId = createId()
+  await db.insert(schema.suppliers).values({ id: supplierId, name: "IT_SUPPLIER" })
+  await db.insert(schema.procurementCases).values({ id: procurementCaseId, source: "system_manual" })
+  await db.insert(schema.purchaseOrders).values({
+    id: poId,
+    supplierId,
+    poNumber: "PO-" + poId.slice(-8),
+    status: "ordered",
+    procurementCaseId,
+  })
+  const lineIds: string[] = []
+  for (const qty of qtysOrdered) {
+    const lineId = createId()
+    lineIds.push(lineId)
+    await db.insert(schema.purchaseOrderLines).values({
+      id: lineId,
+      purchaseOrderId: poId,
+      itemDescription: "IT laptop",
+      qtyOrdered: qty,
+    })
+  }
+  return { poId, lineIds }
+}
+
+describe("cancelPurchaseOrderLineCore", () => {
+  test("cancels an un-received line, records reason, emits event", async () => {
+    const { cancelPurchaseOrderLineCore } = await import("./procurement")
+    const { lineIds } = await seedPoWithLines([1, 1])
+
+    await db.transaction(async (tx) => {
+      await cancelPurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0], reason: "not stocked" }, "u1")
+    })
+
+    const [line] = await db
+      .select()
+      .from(schema.purchaseOrderLines)
+      .where(eq(schema.purchaseOrderLines.id, lineIds[0]))
+    expect(line.status).toBe("cancelled")
+    expect(line.cancelReason).toBe("not stocked")
+    expect(line.cancelledAt).not.toBeNull()
+
+    const events = await db
+      .select()
+      .from(schema.domainEvents)
+      .where(eq(schema.domainEvents.aggregateId, line.purchaseOrderId))
+    expect(events.some((e) => e.eventType === "PurchaseOrderLineCancelled")).toBe(true)
+  })
+
+  test("PO with a remaining fully-received line becomes received after cancelling the other", async () => {
+    const { receivePurchaseOrderLineCore, cancelPurchaseOrderLineCore } = await import("./procurement")
+    const { poId, lineIds } = await seedPoWithLines([1, 1])
+
+    // Receive line 0 fully; line 1 stays un-received then gets cancelled.
+    await db.transaction(async (tx) => {
+      await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0], serialNumber: "PO-C-1" }, "u1")
+    })
+    let [po] = await db.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, poId))
+    expect(po.status).toBe("partially_received") // line 1 still open
+
+    await db.transaction(async (tx) => {
+      await cancelPurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[1] }, "u1")
+    })
+    ;[po] = await db.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, poId))
+    expect(po.status).toBe("received") // cancelled line no longer counts
+  })
+
+  test("cancelling the only line collapses the PO to cancelled", async () => {
+    const { cancelPurchaseOrderLineCore } = await import("./procurement")
+    const { poId, lineIds } = await seedPoWithLines([2])
+
+    await db.transaction(async (tx) => {
+      await cancelPurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0] }, "u1")
+    })
+
+    const [po] = await db.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, poId))
+    expect(po.status).toBe("cancelled")
+  })
+
+  test("rejects cancelling a line that has received units", async () => {
+    const { receivePurchaseOrderLineCore, cancelPurchaseOrderLineCore } = await import("./procurement")
+    const { lineIds } = await seedPoWithLines([2])
+
+    await db.transaction(async (tx) => {
+      await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0], serialNumber: "PO-C-2" }, "u1")
+    })
+
+    await expect(
+      db.transaction(async (tx) => {
+        await cancelPurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0] }, "u1")
+      })
+    ).rejects.toThrow("Cannot cancel a line that has received units")
+  })
+
+  test("rejects cancelling an already-cancelled line", async () => {
+    const { cancelPurchaseOrderLineCore } = await import("./procurement")
+    const { lineIds } = await seedPoWithLines([1, 1])
+
+    await db.transaction(async (tx) => {
+      await cancelPurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0] }, "u1")
+    })
+    await expect(
+      db.transaction(async (tx) => {
+        await cancelPurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0] }, "u1")
+      })
+    ).rejects.toThrow("Line is already cancelled")
+  })
+})
+
+describe("receive guards a cancelled line", () => {
+  test("rejects receiving a cancelled line, no asset minted", async () => {
+    const { cancelPurchaseOrderLineCore, receivePurchaseOrderLineCore } = await import("./procurement")
+    const { lineIds } = await seedPoWithLines([1, 1])
+    await db.transaction(async (tx) => {
+      await cancelPurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0] }, "u1")
+    })
+    const before = await db.select().from(schema.orderUnits)
+    await expect(
+      db.transaction(async (tx) => {
+        await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineIds[0], serialNumber: "PO-CX-1" }, "u1")
+      })
+    ).rejects.toThrow("Cannot receive a cancelled line")
+    const after = await db.select().from(schema.orderUnits)
+    expect(after.length).toBe(before.length)
+  })
+})

@@ -814,7 +814,12 @@
       "partially_received": "استلام جزئي",
       "received": "تم الاستلام",
       "cancelled": "ملغاة"
-    }
+    },
+    "cancelLine": "إلغاء السطر",
+    "confirmCancelLine": "تأكيد الإلغاء",
+    "cancelReasonPlaceholder": "السبب (اختياري)",
+    "lineCancelled": "تم إلغاء السطر",
+    "dismiss": "تراجع"
   },
   "warranty": {
     "title": "مركز الضمان",

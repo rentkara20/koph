@@ -6,6 +6,7 @@ import { getProcurementCase } from "@/lib/actions/procurement-case"
 import { Badge } from "@/components/ui/badge"
 import { ProcurementCasePanel } from "@/components/procurement-case-panel"
 import { ReceiveLineForm } from "./_components/receive-line-form"
+import { CancelLineForm } from "./_components/cancel-line-form"
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
   draft: "secondary",
@@ -50,26 +51,40 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
       <div className="space-y-4">
         {lines.map((line) => {
           const units = receivedMap.get(line.id) ?? []
+          const cancelled = line.status === "cancelled"
           const fullyReceived = line.qtyReceived >= line.qtyOrdered
+          const canCancel = !cancelled && line.qtyReceived === 0 && po.status !== "cancelled"
           return (
-            <div key={line.id} className="space-y-3 rounded-xl border bg-card p-4">
+            <div
+              key={line.id}
+              className={`space-y-3 rounded-xl border bg-card p-4 ${cancelled ? "opacity-60" : ""}`}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="font-medium">{line.itemDescription}</p>
+                  <p className={`font-medium ${cancelled ? "line-through" : ""}`}>
+                    {line.itemDescription}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {[line.brand, line.model].filter(Boolean).join(" · ")}
                   </p>
+                  {cancelled && line.cancelReason && (
+                    <p className="mt-1 text-xs text-destructive">{line.cancelReason}</p>
+                  )}
                 </div>
-                <Badge variant={fullyReceived ? "success" : "secondary"}>
-                  {fullyReceived
-                    ? t("fullyReceived")
-                    : t("remaining", { received: line.qtyReceived, ordered: line.qtyOrdered })}
+                <Badge variant={cancelled ? "destructive" : fullyReceived ? "success" : "secondary"}>
+                  {cancelled
+                    ? t("statuses.cancelled")
+                    : fullyReceived
+                      ? t("fullyReceived")
+                      : t("remaining", { received: line.qtyReceived, ordered: line.qtyOrdered })}
                 </Badge>
               </div>
 
-              {!fullyReceived && po.status !== "cancelled" && (
+              {!cancelled && !fullyReceived && po.status !== "cancelled" && (
                 <ReceiveLineForm purchaseOrderLineId={line.id} />
               )}
+
+              {canCancel && <CancelLineForm purchaseOrderLineId={line.id} />}
 
               {units.length > 0 && (
                 <div>

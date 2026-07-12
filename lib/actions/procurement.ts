@@ -321,6 +321,7 @@ export async function receivePurchaseOrderLineCore(
     .from(purchaseOrderLines)
     .where(eq(purchaseOrderLines.id, d.purchaseOrderLineId))
   if (!line) throw new Error("Purchase order line not found")
+  if (line.status === "cancelled") throw new Error("Cannot receive a cancelled line")
 
   // Atomic guarded increment FIRST: two concurrent receives of the same line
   // must not both pass a stale `qtyReceived < qtyOrdered` check and each mint
@@ -350,24 +351,115 @@ export async function receivePurchaseOrderLineCore(
     actorUserId,
   })
 
-  const allLines = await tx
+  await recomputePurchaseOrderStatus(tx, line.purchaseOrderId)
+
+  return { assetId }
+}
+
+// Recompute a PO's aggregate status from its lines. Cancelled lines are
+// excluded — their ordered/received quantities no longer count. A PO whose
+// every line is cancelled collapses to "cancelled".
+async function recomputePurchaseOrderStatus(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  purchaseOrderId: string
+): Promise<void> {
+  const activeLines = await tx
     .select({
-      id: purchaseOrderLines.id,
       qtyOrdered: purchaseOrderLines.qtyOrdered,
       qtyReceived: purchaseOrderLines.qtyReceived,
     })
     .from(purchaseOrderLines)
-    .where(eq(purchaseOrderLines.purchaseOrderId, line.purchaseOrderId))
-  const totalOrdered = allLines.reduce((s, l) => s + l.qtyOrdered, 0)
-  const totalReceived = allLines.reduce((s, l) => s + (l.id === line.id ? newQtyReceived : l.qtyReceived), 0)
-  const newStatus =
-    totalReceived >= totalOrdered ? "received" : totalReceived > 0 ? "partially_received" : "ordered"
+    .where(
+      and(
+        eq(purchaseOrderLines.purchaseOrderId, purchaseOrderId),
+        eq(purchaseOrderLines.status, "active")
+      )
+    )
+
+  let newStatus: "ordered" | "partially_received" | "received" | "cancelled"
+  if (activeLines.length === 0) {
+    newStatus = "cancelled"
+  } else {
+    const totalOrdered = activeLines.reduce((s, l) => s + l.qtyOrdered, 0)
+    const totalReceived = activeLines.reduce((s, l) => s + l.qtyReceived, 0)
+    newStatus =
+      totalReceived >= totalOrdered ? "received" : totalReceived > 0 ? "partially_received" : "ordered"
+  }
+
   await tx
     .update(purchaseOrders)
     .set({ status: newStatus, updatedAt: Date.now() })
-    .where(eq(purchaseOrders.id, line.purchaseOrderId))
+    .where(eq(purchaseOrders.id, purchaseOrderId))
+}
 
-  return { assetId }
+// ─── Cancel a purchase order line ────────────────────────────────────────────
+// A line is never hard-deleted once created — it is cancelled, keeping the
+// audit trail, and only while nothing has been received against it. Cancelling
+// recomputes the PO's aggregate status (a fully-cancelled PO becomes cancelled).
+
+const cancelLineSchema = z.object({
+  purchaseOrderLineId: z.string().trim().min(1),
+  reason: z.string().trim().max(500).optional(),
+})
+
+// Exported separately so integration tests can exercise the cancellation +
+// status-recompute path directly, same rationale as receivePurchaseOrderLineCore.
+export async function cancelPurchaseOrderLineCore(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  input: z.infer<typeof cancelLineSchema>,
+  actorUserId: string | null
+): Promise<void> {
+  const d = cancelLineSchema.parse(input)
+
+  const [line] = await tx
+    .select()
+    .from(purchaseOrderLines)
+    .where(eq(purchaseOrderLines.id, d.purchaseOrderLineId))
+  if (!line) throw new Error("Purchase order line not found")
+  if (line.status === "cancelled") throw new Error("Line is already cancelled")
+  if (line.qtyReceived > 0) throw new Error("Cannot cancel a line that has received units")
+
+  await tx
+    .update(purchaseOrderLines)
+    .set({
+      status: "cancelled",
+      cancelledAt: Date.now(),
+      cancelReason: d.reason ?? null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(purchaseOrderLines.id, line.id))
+
+  await emitDomainEvent(tx, {
+    aggregateType: "purchase_order",
+    aggregateId: line.purchaseOrderId,
+    eventType: "PurchaseOrderLineCancelled",
+    payload: { purchaseOrderLineId: line.id, reason: d.reason ?? null },
+    dedupeKey: `purchase_order_line:${line.id}:cancelled`,
+    actorUserId,
+  })
+
+  await recomputePurchaseOrderStatus(tx, line.purchaseOrderId)
+}
+
+export async function cancelPurchaseOrderLine(
+  input: z.infer<typeof cancelLineSchema>
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = cancelLineSchema.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+
+  try {
+    await db.transaction(async (tx) => {
+      await cancelPurchaseOrderLineCore(tx, parsed.data, session.user.id)
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to cancel line" }
+  }
+
+  revalidatePath("/admin/procurement")
+  return {}
 }
 
 export async function receivePurchaseOrderLine(

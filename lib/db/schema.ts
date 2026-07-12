@@ -892,6 +892,14 @@ export const purchaseOrderLines = sqliteTable(
     qtyOrdered: integer("qty_ordered").notNull(),
     qtyReceived: integer("qty_received").notNull().default(0),
     unitCost: real("unit_cost"),
+    // A line is never deleted once it may carry history — it is cancelled
+    // instead (only allowed while qtyReceived = 0). Cancelled lines are
+    // excluded from the PO's aggregate received/ordered status.
+    status: text("status", { enum: ["active", "cancelled"] })
+      .notNull()
+      .default("active"),
+    cancelledAt: integer("cancelled_at"),
+    cancelReason: text("cancel_reason"),
     createdAt: integer("created_at").notNull().$defaultFn(now),
     updatedAt: integer("updated_at").notNull().$defaultFn(now),
   },

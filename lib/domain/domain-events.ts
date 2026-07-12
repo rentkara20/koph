@@ -104,6 +104,7 @@ export const DOMAIN_EVENT_TYPES = [
   "PaymentReleased",
   "PurchaseOrderCreated",
   "PurchaseOrderLineReceived",
+  "PurchaseOrderLineCancelled",
   "SourcingRequestCreated",
   "SourcingRequestItemAdded",
   "SupplierRfqSent",
