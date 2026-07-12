@@ -649,11 +649,34 @@
     "unitsCount": "جهاز",
     "viewCustomerProfile": "عرض الملف",
     "createDeliveryRequest": "إنشاء عملية توصيل",
+    "startSourcing": "ابدأ طلب شراء",
     "cancelOrder": "إلغاء الطلب",
     "reopenOrder": "إعادة فتح الطلب",
     "linkedRequests": "العمليات من هذا الطلب",
     "linkedRequestsDescription": "التوصيل والاستلام وغيرها من العمليات المنشأة بسحب أجهزة من هذا الطلب.",
-    "noLinkedRequests": "لا توجد عمليات منشأة من هذا الطلب بعد."
+    "noLinkedRequests": "لا توجد عمليات منشأة من هذا الطلب بعد.",
+    "journey": {
+      "title": "مسار الطلبية",
+      "stages": {
+        "order": "الطلبية",
+        "sourcing": "التوريد",
+        "procurement": "الشراء",
+        "assets": "الأجهزة",
+        "delivery": "التسليم"
+      },
+      "count": {
+        "order": "",
+        "sourcing": "{count, plural, zero {# طلب} one {طلب واحد} two {طلبان} few {# طلبات} many {# طلبًا} other {# طلب}}",
+        "procurement": "{count, plural, zero {# أمر} one {أمر واحد} two {أمران} few {# أوامر} many {# أمرًا} other {# أمر}}",
+        "assets": "{count, plural, zero {# جهاز} one {جهاز واحد} two {جهازان} few {# أجهزة} many {# جهازًا} other {# جهاز}}",
+        "delivery": "{count, plural, zero {# عملية} one {عملية واحدة} two {عمليتان} few {# عمليات} many {# عملية} other {# عملية}}"
+      },
+      "state": {
+        "done": "منجز",
+        "active": "جارٍ",
+        "pending": "لم يبدأ"
+      }
+    }
   },
   "assets": {
     "title": "الأصول",
@@ -963,6 +986,7 @@
     "sameAsCustomer": "وصف المورد مطابق لوصف العميل",
     "save": "حفظ",
     "requestCreated": "تم إنشاء طلب التوريد",
+    "itemsPrefilled": "{count, plural, zero {تم تعبئة # صنف من الطلبية} one {تم تعبئة صنف واحد من الطلبية} two {تم تعبئة صنفين من الطلبية} few {تم تعبئة # أصناف من الطلبية} many {تم تعبئة # صنفًا من الطلبية} other {تم تعبئة # صنف من الطلبية}}",
     "statuses": {
       "draft": "مسودة",
       "rfq_sent": "تم إرسال طلب العرض",

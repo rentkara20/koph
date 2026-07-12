@@ -8,11 +8,15 @@ import {
   orderLines,
   orderUnits,
   orders,
+  procurementCases,
+  purchaseOrders,
   requestItems,
   requests,
   requestTypes,
+  sourcingRequests,
   suppliers,
 } from "@/lib/db/schema"
+import { deriveOrderJourney, type JourneyStage } from "@/lib/domain/order-journey"
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { applyAssetStatusCorrection } from "@/lib/actions/asset-transition"
@@ -453,6 +457,56 @@ export async function getOrderById(id: string): Promise<CustomerOrderOption | nu
   return getOrderByIdCore(db, id)
 }
 
+// Prefill payload for the sourcing form: one draft per order line so the user
+// does not retype what the customer order already captured. Kept intentionally
+// lean — the form fills its remaining fields (supplier spec, "same as") itself.
+export type SourcingItemDraft = {
+  quantity: number
+  customerDescription: string
+  partNumber: string
+  notes: string
+}
+
+// Compose the human-facing line description from the structured fields, without
+// duplicating brand/model text that the free-text description may already hold.
+function composeLineDescription(line: {
+  description: string
+  brand: string | null
+  model: string | null
+}): string {
+  const base = line.description.trim()
+  const extras = [line.brand, line.model]
+    .map((v) => v?.trim())
+    .filter((v): v is string => Boolean(v) && !base.toLowerCase().includes(v!.toLowerCase()))
+  return extras.length ? `${base} — ${extras.join(" ")}`.trim() : base
+}
+
+export async function getOrderLineDraftsForSourcing(orderId: string): Promise<SourcingItemDraft[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+  if (!orderId?.trim()) return []
+
+  const lines = await db
+    .select({
+      description: orderLines.description,
+      brand: orderLines.brand,
+      model: orderLines.model,
+      quantity: orderLines.quantity,
+      notes: orderLines.notes,
+    })
+    .from(orderLines)
+    .innerJoin(orders, eq(orderLines.orderId, orders.id))
+    .where(and(eq(orderLines.orderId, orderId), isNull(orders.deletedAt)))
+    .orderBy(orderLines.createdAt)
+
+  return lines.map((line) => ({
+    quantity: line.quantity,
+    customerDescription: composeLineDescription(line),
+    partNumber: "",
+    notes: line.notes?.trim() ?? "",
+  }))
+}
+
 export async function getOrder(id: string) {
   const session = await getStaffSession()
   if (!session) return null
@@ -525,6 +579,67 @@ export async function getRequestsForOrder(orderId: string): Promise<LinkedReques
     }
   }
   return [...byId.values()]
+}
+
+// Cross-module progress of an order: how far it has travelled through
+// Order → Sourcing → Procurement → Assets → Delivery. Read-only aggregation so
+// staff (and sales viewing the order) can see where the work reached at a glance.
+export async function getOrderJourney(orderId: string): Promise<JourneyStage[] | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+
+  const [order] = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(and(eq(orders.id, orderId), isNull(orders.deletedAt)))
+  if (!order) return null
+
+  // Sourcing requests raised for this order.
+  const sourcing = await db
+    .select({ id: sourcingRequests.id, status: sourcingRequests.status })
+    .from(sourcingRequests)
+    .where(eq(sourcingRequests.orderId, orderId))
+  const sourcingIds = sourcing.map((s) => s.id)
+
+  // Procurement cases + purchase orders descend from those sourcing requests.
+  const cases = sourcingIds.length
+    ? await db
+        .select({ id: procurementCases.id })
+        .from(procurementCases)
+        .where(inArray(procurementCases.sourcingRequestId, sourcingIds))
+    : []
+  const caseIds = cases.map((c) => c.id)
+  const pos = caseIds.length
+    ? await db
+        .select({ id: purchaseOrders.id })
+        .from(purchaseOrders)
+        .where(inArray(purchaseOrders.procurementCaseId, caseIds))
+    : []
+
+  // Asset units registered against the order + how many have been delivered.
+  const unitRows = await db
+    .select({ status: orderUnits.status })
+    .from(orderUnits)
+    .where(eq(orderUnits.orderId, orderId))
+
+  // Delivery requests that pulled units from this order.
+  const linkedRequests = await getRequestsForOrder(orderId)
+
+  return deriveOrderJourney({
+    sourcing: {
+      requestCount: sourcing.length,
+      anyHandedOff: sourcing.some((s) => s.status === "handed_off"),
+    },
+    procurement: { caseCount: cases.length, poCount: pos.length },
+    assets: {
+      unitCount: unitRows.length,
+      deliveredCount: unitRows.filter((u) => u.status === "delivered").length,
+    },
+    delivery: {
+      requestCount: linkedRequests.length,
+      anyCompleted: linkedRequests.some((r) => r.status === "completed"),
+    },
+  })
 }
 
 export async function deleteOrder(id: string): Promise<ActionResult> {

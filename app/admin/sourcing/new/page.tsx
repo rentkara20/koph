@@ -1,6 +1,6 @@
 import { getTranslations } from "next-intl/server"
 import { searchCustomers, getCustomerById } from "@/lib/actions/customers"
-import { getOrderById } from "@/lib/actions/orders"
+import { getOrderById, getOrderLineDraftsForSourcing } from "@/lib/actions/orders"
 import { CreateSourcingRequestForm } from "../_components/create-sourcing-request-form"
 
 export default async function NewSourcingRequestPage({
@@ -20,6 +20,8 @@ export default async function NewSourcingRequestPage({
   // by id, so the pair resolves even when it falls outside the seed/search page.
   const initialOrder = orderId ? await getOrderById(orderId) : null
   const initialCustomer = initialOrder ? await getCustomerById(initialOrder.customerId) : null
+  // Prefill item rows from the preselected order's lines (no retyping).
+  const initialItems = initialOrder ? await getOrderLineDraftsForSourcing(initialOrder.id) : []
 
   return (
     <div className="max-w-2xl space-y-6">
@@ -28,6 +30,7 @@ export default async function NewSourcingRequestPage({
         initialCustomers={initialCustomers}
         initialCustomer={initialCustomer}
         initialOrder={initialOrder}
+        initialItems={initialItems}
       />
     </div>
   )

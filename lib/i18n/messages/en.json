@@ -649,11 +649,34 @@
     "unitsCount": "devices",
     "viewCustomerProfile": "View profile",
     "createDeliveryRequest": "Create delivery request",
+    "startSourcing": "Start sourcing",
     "cancelOrder": "Cancel order",
     "reopenOrder": "Reopen order",
     "linkedRequests": "Operations from this order",
     "linkedRequestsDescription": "Delivery, collection, and other operations created by pulling devices from this order.",
-    "noLinkedRequests": "No operations created from this order yet."
+    "noLinkedRequests": "No operations created from this order yet.",
+    "journey": {
+      "title": "Order journey",
+      "stages": {
+        "order": "Order",
+        "sourcing": "Sourcing",
+        "procurement": "Procurement",
+        "assets": "Assets",
+        "delivery": "Delivery"
+      },
+      "count": {
+        "order": "",
+        "sourcing": "{count, plural, one {# request} other {# requests}}",
+        "procurement": "{count, plural, one {# PO} other {# POs}}",
+        "assets": "{count, plural, one {# unit} other {# units}}",
+        "delivery": "{count, plural, one {# op} other {# ops}}"
+      },
+      "state": {
+        "done": "done",
+        "active": "in progress",
+        "pending": "not started"
+      }
+    }
   },
   "assets": {
     "title": "Assets",
@@ -963,6 +986,7 @@
     "sameAsCustomer": "Supplier description is the same as customer description",
     "save": "Save",
     "requestCreated": "Sourcing request created",
+    "itemsPrefilled": "{count, plural, one {# item filled from the order} other {# items filled from the order}}",
     "statuses": {
       "draft": "Draft",
       "rfq_sent": "RFQ sent",

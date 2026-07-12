@@ -13,7 +13,12 @@ import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/s
 import { Textarea } from "@/components/ui/textarea"
 import { createSourcingRequest } from "@/lib/actions/sourcing"
 import { searchCustomers, type CustomerOption } from "@/lib/actions/customers"
-import { searchCustomerOrders, type CustomerOrderOption } from "@/lib/actions/orders"
+import {
+  searchCustomerOrders,
+  getOrderLineDraftsForSourcing,
+  type CustomerOrderOption,
+  type SourcingItemDraft,
+} from "@/lib/actions/orders"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { resolveSupplierDescription, applySameAsToggle } from "@/lib/domain/sourcing-description"
 
@@ -39,12 +44,26 @@ const EMPTY_ITEM: ItemDraft = {
   notes: "",
 }
 
+// Order-line prefill → editable item row. Supplier spec starts mirrored so the
+// user only edits it when a line's RFQ wording must differ from the customer's.
+function draftToItem(draft: SourcingItemDraft): ItemDraft {
+  return {
+    ...EMPTY_ITEM,
+    quantity: String(draft.quantity || 1),
+    customerDescription: draft.customerDescription,
+    partNumber: draft.partNumber,
+    notes: draft.notes,
+  }
+}
+
 type Props = {
   /** Seed shown when the customer picker first opens (not a hard limit). */
   initialCustomers: CustomerOption[]
   /** Preselected customer + order when arriving via ?orderId=… (else null). */
   initialCustomer: CustomerOption | null
   initialOrder: CustomerOrderOption | null
+  /** Item rows prefilled from the preselected order's lines (else empty). */
+  initialItems: SourcingItemDraft[]
 }
 
 const toOption = (o: { id: string; name?: string; orderNumber?: string }): SearchableSelectOption => ({
@@ -56,6 +75,7 @@ export function CreateSourcingRequestForm({
   initialCustomers,
   initialCustomer,
   initialOrder,
+  initialItems,
 }: Props) {
   const t = useTranslations("sourcing")
   const tCommon = useTranslations("common")
@@ -73,7 +93,10 @@ export function CreateSourcingRequestForm({
   // label from the request's own data — the user is never forced to type one.
   const [title, setTitle] = useState("")
   const [notes, setNotes] = useState("")
-  const [items, setItems] = useState<ItemDraft[]>([{ ...EMPTY_ITEM }])
+  const [items, setItems] = useState<ItemDraft[]>(
+    initialItems.length ? initialItems.map(draftToItem) : [{ ...EMPTY_ITEM }]
+  )
+  const [loadingItems, setLoadingItems] = useState(false)
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
 
@@ -102,6 +125,20 @@ export function CreateSourcingRequestForm({
   function handleOrderChange(nextId: string, option: SearchableSelectOption) {
     setOrderId(nextId)
     setOrderLabel(option.label)
+    // Pull the order's lines into the item rows so the user does not retype
+    // what the customer order already captured. Rows stay fully editable.
+    setLoadingItems(true)
+    startTransition(async () => {
+      try {
+        const drafts = await getOrderLineDraftsForSourcing(nextId)
+        if (drafts.length) {
+          setItems(drafts.map(draftToItem))
+          toast.success(t("itemsPrefilled", { count: drafts.length }))
+        }
+      } finally {
+        setLoadingItems(false)
+      }
+    })
   }
 
   function updateItem(index: number, patch: Partial<ItemDraft>) {
@@ -212,11 +249,10 @@ export function CreateSourcingRequestForm({
             />
           </div>
           {/*
-            TODO: Order-line mapping. Sourcing from a multi-line customer order
-            should let the user pick the exact order line(s) instead of the
-            order alone (the `orderLineId` FK already exists on sourcing_request
-            and is validated server-side). Requires loading order lines for the
-            selected order. Deferred — future feature.
+            Selecting an order prefills the item rows from its lines (see
+            handleOrderChange). Not yet wired: per-line `orderLineId` linkage on
+            each sourcing item — the FK exists on sourcing_request but item-level
+            mapping (which order line a given RFQ item traces back to) is deferred.
           */}
           <div>
             <Label>{t("customerOrder")}</Label>
@@ -240,7 +276,10 @@ export function CreateSourcingRequestForm({
       )}
 
       <div className="space-y-3">
-        <p className="text-sm font-medium">{t("items")}</p>
+        <p className="flex items-center gap-2 text-sm font-medium">
+          {t("items")}
+          {loadingItems && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+        </p>
         {items.map((item, index) => (
           <div key={index} className="space-y-3 rounded-lg border p-3">
             <div className="flex items-center justify-between">

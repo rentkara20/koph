@@ -1,8 +1,8 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { ArrowLeft, Truck } from "lucide-react"
-import { getOrder, deleteOrder, getRequestsForOrder } from "@/lib/actions/orders"
+import { ArrowLeft, Truck, ShoppingCart } from "lucide-react"
+import { getOrder, deleteOrder, getRequestsForOrder, getOrderJourney } from "@/lib/actions/orders"
 import { getCustomers } from "@/lib/actions/customers"
 import { getSuppliers } from "@/lib/actions/suppliers"
 import { buttonVariants } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import { UnitsSection } from "./_components/units-section"
 import { CancelOrderButton } from "./_components/cancel-order-button"
 import { DeleteButton } from "@/components/delete-button"
 import { EditableSection } from "@/components/editable-section"
+import { OrderJourney } from "./_components/order-journey"
 import { cn } from "@/lib/utils"
 
 export default async function OrderDetailPage({
@@ -24,14 +25,16 @@ export default async function OrderDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [t, tRequests, data, customerList, supplierList, linkedRequests] = await Promise.all([
-    getTranslations("orders"),
-    getTranslations("requests"),
-    getOrder(id),
-    getCustomers(),
-    getSuppliers(),
-    getRequestsForOrder(id),
-  ])
+  const [t, tRequests, data, customerList, supplierList, linkedRequests, journey] =
+    await Promise.all([
+      getTranslations("orders"),
+      getTranslations("requests"),
+      getOrder(id),
+      getCustomers(),
+      getSuppliers(),
+      getRequestsForOrder(id),
+      getOrderJourney(id),
+    ])
 
   if (!data) notFound()
   const { order, lines, units } = data
@@ -53,6 +56,13 @@ export default async function OrderDetailPage({
         </div>
         <div className="flex items-center gap-2">
           <Link
+            href={`/admin/sourcing/new?orderId=${encodeURIComponent(order.id)}`}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+          >
+            <ShoppingCart className="size-3.5" />
+            {t("startSourcing")}
+          </Link>
+          <Link
             href={`/admin/requests/new?orderNumber=${encodeURIComponent(order.orderNumber)}`}
             className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
           >
@@ -63,6 +73,8 @@ export default async function OrderDetailPage({
           <DeleteButton onDelete={deleteOrder.bind(null, id)} redirectTo="/admin/orders" />
         </div>
       </div>
+
+      {journey && <OrderJourney stages={journey} />}
 
       <Card>
         <CardHeader>
