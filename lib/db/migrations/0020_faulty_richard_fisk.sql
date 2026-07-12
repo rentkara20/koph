@@ -1,0 +1,1 @@
+ALTER TABLE `partner_task` ADD `photo_required` integer DEFAULT true NOT NULL;

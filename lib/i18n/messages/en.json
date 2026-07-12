@@ -169,7 +169,11 @@
     "manual": "Own courier (link)",
     "apiCourier": "Shipping company (API)",
     "whatsappPartner": "WhatsApp partner",
-    "apiCourierSoon": "API dispatch coming soon"
+    "apiCourierSoon": "API dispatch coming soon",
+    "returnToPartner": "Return to partner",
+    "returnReasonPlaceholder": "Reason (optional)",
+    "returnConfirm": "Confirm return",
+    "photoRequiredToggle": "Proof photo required"
   },
   "customers": {
     "title": "Customers",
@@ -409,7 +413,8 @@
     "logisticsSaved": "Logistics updated",
     "noMobile": "No mobile number on file for this contact",
     "whatsappOpened": "Opening WhatsApp…",
-    "conditionsSaved": "Item conditions recorded"
+    "conditionsSaved": "Item conditions recorded",
+    "taskReturned": "Task returned to partner"
   },
   "delete": {
     "confirm": "Are you sure?",
@@ -593,7 +598,8 @@
     "taskPendingSignoff": "A task is awaiting sign-off",
     "taskRejected": "A partner rejected a task",
     "taskFailed": "A task was marked failed",
-    "taskCancelled": "A task was cancelled"
+    "taskCancelled": "A task was cancelled",
+    "taskProofRejected": "Delivery proof for request {requestNumber} was rejected — please redo it"
   },
   "suppliers": {
     "title": "Suppliers",

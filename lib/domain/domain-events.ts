@@ -90,6 +90,7 @@ export const DOMAIN_EVENT_TYPES = [
   "TaskPendingSignoff",
   "TaskRejected",
   "TaskFailed",
+  "TaskProofRejected",
   "TaskCancelled",
   "SignatureSent",
   "SignatureCompleted",

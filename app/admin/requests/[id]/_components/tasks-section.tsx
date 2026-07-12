@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Plus, Copy, Check, RefreshCw, X, Trash2, MessageCircle } from "lucide-react"
-import { createTask, signOffTask, cancelTask, regenerateTaskLink, deleteTask } from "@/lib/actions/tasks"
+import { createTask, signOffTask, cancelTask, regenerateTaskLink, deleteTask, rejectTaskProof } from "@/lib/actions/tasks"
 import { buildWhatsappUrl, partnerAssignmentMessage, taskLink } from "@/lib/utils/whatsapp"
 import { addServiceToTask, removeServiceFromTask } from "@/lib/actions/task-services"
 import { Button } from "@/components/ui/button"
@@ -205,6 +205,56 @@ function SignOffButton({
   )
 }
 
+function RejectProofButton({ taskId }: { taskId: string }) {
+  const router = useRouter()
+  const t = useTranslations("tasks")
+  const tToast = useTranslations("toast")
+  const [open, setOpen] = useState(false)
+  const [reason, setReason] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  async function handleReject() {
+    setLoading(true)
+    try {
+      const result = await rejectTaskProof(taskId, reason.trim() || undefined)
+      if (result?.error) {
+        toast.error(translateActionError(result.error))
+        setLoading(false)
+        return
+      }
+      toast.success(tToast("taskReturned"))
+      router.refresh()
+    } catch {
+      toast.error(tToast("genericError"))
+      setLoading(false)
+    }
+  }
+
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        {t("returnToPartner")}
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Input
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder={t("returnReasonPlaceholder")}
+        maxLength={500}
+        className="h-7 w-52 text-xs"
+      />
+      <Button size="sm" variant="destructive" disabled={loading} onClick={handleReject}>
+        {loading ? "…" : t("returnConfirm")}
+      </Button>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+    </div>
+  )
+}
+
 function TaskServiceManager({
   taskId,
   isTerminal,
@@ -331,6 +381,7 @@ export function TasksSection({
         contractId: (fd.get("contractId") as string) || undefined,
         contactId: (fd.get("contactId") as string) || undefined,
         executionMode: ((fd.get("executionMode") as string) || "manual") as "manual" | "api_courier",
+        photoRequired: fd.get("photoRequired") === "on",
         notes: (fd.get("notes") as string) || undefined,
       })
       if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setLoading(false); return }
@@ -475,6 +526,11 @@ export function TasksSection({
                     />
                   )}
 
+                  {/* Reject proof — send the task back to the partner */}
+                  {task.status === "pending_signoff" && (
+                    <RejectProofButton taskId={task.id} />
+                  )}
+
                   {/* Cancel */}
                   {isActive && (
                     <button
@@ -581,6 +637,11 @@ export function TasksSection({
                 <option value="api_courier">{t("apiCourier")}</option>
               </Select>
             </div>
+
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" name="photoRequired" defaultChecked className="size-3.5 accent-primary" />
+              {t("photoRequiredToggle")}
+            </label>
 
             <div className="space-y-1.5">
               <Label className="text-xs">{tCommon("notes")} <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>

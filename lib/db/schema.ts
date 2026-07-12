@@ -289,6 +289,9 @@ export const partnerTasks = sqliteTable("partner_task", {
   executionMode: text("execution_mode", { enum: ["manual", "api_courier"] })
     .notNull()
     .default("manual"),
+  // Per-task override: when false the partner can mark done without uploading
+  // proof photos, regardless of the global requiredDeliveryPhotoCount setting.
+  photoRequired: integer("photo_required", { mode: "boolean" }).notNull().default(true),
   // Magic link
   taskToken: text("task_token").notNull().unique(),
   taskTokenExpiresAt: integer("task_token_expires_at").notNull(),

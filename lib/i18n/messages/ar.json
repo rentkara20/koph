@@ -169,7 +169,11 @@
     "manual": "مندوب خاص (رابط)",
     "apiCourier": "شركة شحن (API)",
     "whatsappPartner": "واتساب للمنفّذ",
-    "apiCourierSoon": "الربط عبر API قريباً"
+    "apiCourierSoon": "الربط عبر API قريباً",
+    "returnToPartner": "إرجاع للمنفّذ",
+    "returnReasonPlaceholder": "السبب (اختياري)",
+    "returnConfirm": "تأكيد الإرجاع",
+    "photoRequiredToggle": "صورة الإثبات إجبارية"
   },
   "customers": {
     "title": "العملاء",
@@ -409,7 +413,8 @@
     "logisticsSaved": "تم تحديث بيانات الشحن",
     "noMobile": "لا يوجد رقم جوال مسجّل لهذا المستلم",
     "whatsappOpened": "جاري فتح واتساب…",
-    "conditionsSaved": "تم تسجيل حالة الأصناف"
+    "conditionsSaved": "تم تسجيل حالة الأصناف",
+    "taskReturned": "تم إرجاع المهمة للمنفّذ"
   },
   "delete": {
     "confirm": "هل أنت متأكد؟",
@@ -593,7 +598,8 @@
     "taskPendingSignoff": "مهمة بانتظار التوقيع",
     "taskRejected": "قام شريك برفض مهمة",
     "taskFailed": "تم تعليم مهمة كفاشلة",
-    "taskCancelled": "تم إلغاء مهمة"
+    "taskCancelled": "تم إلغاء مهمة",
+    "taskProofRejected": "تم رفض إثبات التسليم للطلب {requestNumber} — يرجى إعادة التنفيذ"
   },
   "suppliers": {
     "title": "التجار",

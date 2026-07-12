@@ -147,6 +147,7 @@ export const createTaskSchema = z.object({
   contactId: z.string().trim().max(60).optional(),
   taskTypeId: z.string().trim().max(60).optional(),
   executionMode: z.enum(["manual", "api_courier"]).optional(),
+  photoRequired: z.boolean().optional(),
   notes: z.string().trim().max(1000).optional(),
 })
 

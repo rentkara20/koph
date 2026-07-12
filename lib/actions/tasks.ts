@@ -109,6 +109,7 @@ export async function createTask(
     contactId?: string
     taskTypeId?: string
     executionMode?: "manual" | "api_courier"
+    photoRequired?: boolean
     notes?: string
   }
 ): Promise<ActionResult> {
@@ -130,6 +131,7 @@ export async function createTask(
     contactId: data.contactId || null,
     taskTypeId: data.taskTypeId || null,
     executionMode: data.executionMode ?? "manual",
+    photoRequired: data.photoRequired ?? true,
     taskToken,
     taskTokenExpiresAt,
     status: "pending",
@@ -430,6 +432,103 @@ export async function signOffTask(
   return { id: taskId }
 }
 
+// ─── Admin: reject proof (return task to partner) ────────────────────────────
+// Reviewer path for pending_signoff: instead of closing, send the task back to
+// in_progress so the partner can redo the delivery proof. Photos are kept for
+// audit; the partner can add more before marking done again.
+
+export async function rejectTaskProof(taskId: string, reason?: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  if (reason && reason.length > 500) return { error: "Reason is too long" }
+
+  const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
+  if (!task) return { error: "Task not found" }
+  if (task.status !== "pending_signoff") {
+    return { error: "Task is not awaiting sign-off" }
+  }
+
+  // The partner needs a working magic link to redo the proof — extend it if
+  // it expired while the task sat in review.
+  const tokenUpdate =
+    task.taskTokenExpiresAt < Date.now()
+      ? { taskTokenExpiresAt: Date.now() + (await getTaskTokenTtlMs()) }
+      : {}
+
+  let rowsChanged = 0
+  await db.transaction(async (tx) => {
+    // Guard on pending_signoff so a concurrent sign-off and a reject can't
+    // both win — whichever commits first invalidates the other.
+    const result = await tx
+      .update(partnerTasks)
+      .set({
+        status: "in_progress",
+        completedAt: null,
+        updatedAt: Date.now(),
+        ...tokenUpdate,
+      })
+      .where(and(eq(partnerTasks.id, taskId), eq(partnerTasks.status, "pending_signoff")))
+    rowsChanged = (result as { rowsAffected?: number }).rowsAffected ?? 1
+    if (rowsChanged === 0) return
+
+    await logActivity(
+      {
+        entityType: "request",
+        entityId: task.requestId,
+        action: "task_proof_rejected",
+        i18nKey: "activity.taskProofRejected",
+        i18nData: reason ? { reason } : undefined,
+        performedBy: session.user.id,
+      },
+      tx
+    )
+
+    await emitDomainEvent(tx, {
+      aggregateType: "task",
+      aggregateId: taskId,
+      eventType: "TaskProofRejected",
+      payload: { requestId: task.requestId, reason: reason ?? null },
+      dedupeKey: `task:${taskId}:TaskProofRejected:${createId()}`,
+      actorUserId: session.user.id,
+    })
+  })
+  if (rowsChanged === 0) {
+    return { error: "Task status changed since you loaded this page. Please refresh and retry." }
+  }
+
+  // Notify the partner in-app when they have a portal login linked.
+  try {
+    const [partner] = await db
+      .select({ userId: partners.userId })
+      .from(partners)
+      .where(eq(partners.id, task.partnerId))
+    const [request] = await db
+      .select({ requestNumber: requests.requestNumber })
+      .from(requests)
+      .where(eq(requests.id, task.requestId))
+
+    if (partner?.userId) {
+      await notify({
+        userId: partner.userId,
+        type: "task_proof_rejected",
+        i18nKey: "notifications.taskProofRejected",
+        i18nData: { requestNumber: request?.requestNumber ?? "" },
+        linkUrl: `/task/${task.taskToken}`,
+        entityType: "partner_task",
+        entityId: taskId,
+      })
+    }
+  } catch (error) {
+    console.error("tasks: swallowed fallback error", error)
+    // Notification failures must not block the rejection itself.
+  }
+
+  await syncRequestStatus(task.requestId)
+  revalidatePath(`/admin/requests/${task.requestId}`)
+  return { id: taskId }
+}
+
 // ─── Admin: cancel task ───────────────────────────────────────────────────────
 
 export async function cancelTask(taskId: string): Promise<ActionResult> {
@@ -597,17 +696,16 @@ export async function updateTaskByToken(
 
   // Proof-of-delivery: require at least the admin-configured photo count
   // before a partner can mark a delivery done. Failures are exempt (photo
-  // may be impossible on-site).
-  if (newStatus === "pending_signoff") {
-    const requiredPhotos = await getRequiredDeliveryPhotoCount()
-    if (requiredPhotos > 0) {
-      const [{ value: photoCount }] = await db
-        .select({ value: count() })
-        .from(attachments)
-        .where(and(eq(attachments.entityId, task.id), eq(attachments.entityType, "partner_task")))
-      if (photoCount < requiredPhotos) {
-        return { error: "PHOTO_REQUIRED" }
-      }
+  // may be impossible on-site). Skipped entirely when the admin marked this
+  // task's photo as not required (task.photoRequired = false).
+  if (newStatus === "pending_signoff" && task.photoRequired) {
+    const requiredPhotos = Math.max(1, await getRequiredDeliveryPhotoCount())
+    const [{ value: photoCount }] = await db
+      .select({ value: count() })
+      .from(attachments)
+      .where(and(eq(attachments.entityId, task.id), eq(attachments.entityType, "partner_task")))
+    if (photoCount < requiredPhotos) {
+      return { error: "PHOTO_REQUIRED" }
     }
   }
 
