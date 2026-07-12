@@ -216,6 +216,32 @@ async function seedPoWithLines(qtysOrdered: number[]) {
   return { poId, lineIds }
 }
 
+describe("one purchase order per procurement case (unique index)", () => {
+  test("a second PO for the same procurement case is rejected by the DB", async () => {
+    const supplierId = createId()
+    const procurementCaseId = createId()
+    await db.insert(schema.suppliers).values({ id: supplierId, name: "IT_SUPPLIER_UQ" })
+    await db.insert(schema.procurementCases).values({ id: procurementCaseId, source: "system_manual" })
+    await db.insert(schema.purchaseOrders).values({
+      id: createId(),
+      supplierId,
+      poNumber: "PO-UQ-1",
+      status: "ordered",
+      procurementCaseId,
+    })
+
+    await expect(
+      db.insert(schema.purchaseOrders).values({
+        id: createId(),
+        supplierId,
+        poNumber: "PO-UQ-2",
+        status: "ordered",
+        procurementCaseId,
+      })
+    ).rejects.toThrow()
+  })
+})
+
 describe("cancelPurchaseOrderLineCore", () => {
   test("cancels an un-received line, records reason, emits event", async () => {
     const { cancelPurchaseOrderLineCore } = await import("./procurement")

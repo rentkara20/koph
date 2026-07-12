@@ -216,12 +216,6 @@ export async function createPurchaseOrderFromCase(
   }
   if (procurementCase.status === "superseded") return { error: "Procurement case is superseded" }
 
-  const [existingPo] = await db
-    .select({ id: purchaseOrders.id })
-    .from(purchaseOrders)
-    .where(eq(purchaseOrders.procurementCaseId, d.procurementCaseId))
-  if (existingPo) return { error: "A purchase order already exists for this case" }
-
   if (!procurementCase.commercialApprovalId) return { error: "Case has no commercial approval on record" }
   const [approval] = await db
     .select()
@@ -257,37 +251,58 @@ export async function createPurchaseOrderFromCase(
   if (clash) return { error: "PO number already exists" }
 
   let poId = ""
-  await db.transaction(async (tx) => {
-    poId = createId()
-    await tx.insert(purchaseOrders).values({
-      id: poId,
-      supplierId: rfq.supplierId,
-      poNumber: d.poNumber,
-      status: "ordered",
-      invoiceRef: d.invoiceRef,
-      orderedAt: Date.now(),
-      notes: d.notes,
-      procurementCaseId: d.procurementCaseId,
-      createdBy: session.user.id,
-    })
-    for (const line of lines) {
-      await tx.insert(purchaseOrderLines).values({
-        id: createId(),
-        purchaseOrderId: poId,
-        itemDescription: line.itemDescription,
-        qtyOrdered: line.qty,
-        unitCost: line.unitPrice,
+  try {
+    await db.transaction(async (tx) => {
+      // Re-check inside the tx: the earlier read-only check races two concurrent
+      // submissions with different PO numbers (no shared-row write forces a
+      // conflict), so the one-PO-per-case invariant must be re-asserted here and
+      // is backstopped by the unique index on purchase_order.procurement_case_id.
+      const [existingPo] = await tx
+        .select({ id: purchaseOrders.id })
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.procurementCaseId, d.procurementCaseId))
+      if (existingPo) throw new Error("PO_EXISTS")
+
+      poId = createId()
+      await tx.insert(purchaseOrders).values({
+        id: poId,
+        supplierId: rfq.supplierId,
+        poNumber: d.poNumber,
+        status: "ordered",
+        invoiceRef: d.invoiceRef,
+        orderedAt: Date.now(),
+        notes: d.notes,
+        procurementCaseId: d.procurementCaseId,
+        createdBy: session.user.id,
       })
-    }
-    await emitDomainEvent(tx, {
-      aggregateType: "purchase_order",
-      aggregateId: poId,
-      eventType: "PurchaseOrderCreated",
-      payload: { poNumber: d.poNumber, supplierId: rfq.supplierId, procurementCaseId: d.procurementCaseId },
-      dedupeKey: `purchase_order:${poId}:PurchaseOrderCreated`,
-      actorUserId: session.user.id,
+      for (const line of lines) {
+        await tx.insert(purchaseOrderLines).values({
+          id: createId(),
+          purchaseOrderId: poId,
+          itemDescription: line.itemDescription,
+          qtyOrdered: line.qty,
+          unitCost: line.unitPrice,
+        })
+      }
+      await emitDomainEvent(tx, {
+        aggregateType: "purchase_order",
+        aggregateId: poId,
+        eventType: "PurchaseOrderCreated",
+        payload: { poNumber: d.poNumber, supplierId: rfq.supplierId, procurementCaseId: d.procurementCaseId },
+        dedupeKey: `purchase_order:${poId}:PurchaseOrderCreated`,
+        actorUserId: session.user.id,
+      })
     })
-  })
+  } catch (error) {
+    if (error instanceof Error && error.message === "PO_EXISTS") {
+      return { error: "A purchase order already exists for this case" }
+    }
+    // Unique-index violation on procurement_case_id from a lost race.
+    if (error instanceof Error && /procurement_case_id|UNIQUE/i.test(error.message)) {
+      return { error: "A purchase order already exists for this case" }
+    }
+    return { error: error instanceof Error ? error.message : "Failed to create purchase order" }
+  }
 
   revalidatePath("/admin/procurement")
   revalidatePath(`/admin/sourcing/${procurementCase.sourcingRequestId}`)

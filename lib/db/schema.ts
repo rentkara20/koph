@@ -874,7 +874,10 @@ export const purchaseOrders = sqliteTable(
   },
   (t) => [
     index("purchase_order_supplier_idx").on(t.supplierId),
-    index("purchase_order_case_idx").on(t.procurementCaseId),
+    // One purchase order per procurement case. Enforces the one-case→one-PO
+    // invariant at the DB level so a lost race in createPurchaseOrderFromCase
+    // can never persist a duplicate PO.
+    uniqueIndex("purchase_order_case_idx").on(t.procurementCaseId),
   ]
 )
 

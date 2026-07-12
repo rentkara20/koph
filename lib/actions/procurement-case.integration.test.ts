@@ -160,6 +160,30 @@ describe("supersedeProcurementCaseCore — append-only, no delete", () => {
     expect(fresh!.source).toBe(old!.source)
   })
 
+  test("carries the awarded supplier forward onto the successor case", async () => {
+    const { createProcurementCaseCore, supersedeProcurementCaseCore } = await import("./procurement-case")
+    const supplierId = createId()
+    await db.insert(schema.suppliers).values({ id: supplierId, name: "IT_AWARDED_SUPPLIER" })
+
+    let oldCaseId = ""
+    await db.transaction(async (tx) => {
+      const result = await createProcurementCaseCore(tx, { source: "system_manual", supplierId }, null)
+      oldCaseId = result.caseId
+    })
+
+    let newCaseId = ""
+    await db.transaction(async (tx) => {
+      const result = await supersedeProcurementCaseCore(tx, { caseId: oldCaseId, reason: "re-award" }, null)
+      newCaseId = result.caseId
+    })
+
+    const [fresh] = await db
+      .select()
+      .from(schema.procurementCases)
+      .where(eq(schema.procurementCases.id, newCaseId))
+    expect(fresh.supplierId).toBe(supplierId)
+  })
+
   test("rejects superseding an already-superseded case", async () => {
     const { createProcurementCaseCore, supersedeProcurementCaseCore } = await import("./procurement-case")
     let caseId = ""
