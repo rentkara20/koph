@@ -51,28 +51,60 @@ export async function createCommercialEvaluation(
   const d = parsed.data
 
   const evaluationId = createId()
-  await db.transaction(async (tx) => {
-    await tx.insert(commercialEvaluations).values({
-      id: evaluationId,
-      sourcingRequestId: d.sourcingRequestId,
-      chosenQuotationId: d.chosenQuotationId ?? null,
-      notes: d.notes,
-      createdBy: session.user.id,
-    })
-    await tx
-      .update(sourcingRequests)
-      .set({ status: "under_evaluation", updatedAt: Date.now() })
-      .where(eq(sourcingRequests.id, d.sourcingRequestId))
+  try {
+    await db.transaction(async (tx) => {
+      const [request] = await tx
+        .select({ status: sourcingRequests.status })
+        .from(sourcingRequests)
+        .where(eq(sourcingRequests.id, d.sourcingRequestId))
+      if (!request) throw new Error("REQUEST_NOT_FOUND")
+      // Don't regress a request that's already past evaluation.
+      if (["approved", "rejected", "handed_off", "cancelled", "closed"].includes(request.status)) {
+        throw new Error("REQUEST_LOCKED")
+      }
 
-    await emitDomainEvent(tx, {
-      aggregateType: "commercial_evaluation",
-      aggregateId: evaluationId,
-      eventType: "CommercialEvaluationCreated",
-      payload: { sourcingRequestId: d.sourcingRequestId, chosenQuotationId: d.chosenQuotationId ?? null },
-      dedupeKey: `commercial_evaluation:${evaluationId}:CommercialEvaluationCreated`,
-      actorUserId: session.user.id,
+      // Append-only history: supersede any prior active evaluation so there is
+      // exactly one "active" evaluation per request (matches awardSourcingItems).
+      await tx
+        .update(commercialEvaluations)
+        .set({ status: "superseded", updatedAt: Date.now() })
+        .where(
+          and(
+            eq(commercialEvaluations.sourcingRequestId, d.sourcingRequestId),
+            eq(commercialEvaluations.status, "active")
+          )
+        )
+
+      await tx.insert(commercialEvaluations).values({
+        id: evaluationId,
+        sourcingRequestId: d.sourcingRequestId,
+        chosenQuotationId: d.chosenQuotationId ?? null,
+        notes: d.notes,
+        createdBy: session.user.id,
+      })
+      await tx
+        .update(sourcingRequests)
+        .set({ status: "under_evaluation", updatedAt: Date.now() })
+        .where(eq(sourcingRequests.id, d.sourcingRequestId))
+
+      await emitDomainEvent(tx, {
+        aggregateType: "commercial_evaluation",
+        aggregateId: evaluationId,
+        eventType: "CommercialEvaluationCreated",
+        payload: { sourcingRequestId: d.sourcingRequestId, chosenQuotationId: d.chosenQuotationId ?? null },
+        dedupeKey: `commercial_evaluation:${evaluationId}:CommercialEvaluationCreated`,
+        actorUserId: session.user.id,
+      })
     })
-  })
+  } catch (error) {
+    if (error instanceof Error && error.message === "REQUEST_NOT_FOUND") {
+      return { error: "Sourcing request not found" }
+    }
+    if (error instanceof Error && error.message === "REQUEST_LOCKED") {
+      return { error: "This request is already past evaluation and cannot be re-evaluated" }
+    }
+    return { error: error instanceof Error ? error.message : "Failed to create evaluation" }
+  }
 
   revalidatePath(`/admin/sourcing/${d.sourcingRequestId}`)
   return { id: evaluationId }
@@ -270,34 +302,62 @@ export async function decideCommercialApproval(
   const d = parsed.data
 
   const approvalId = createId()
-  await db.transaction(async (tx) => {
-    const [evaluation] = await tx
-      .select()
-      .from(commercialEvaluations)
-      .where(eq(commercialEvaluations.id, d.evaluationId))
-    if (!evaluation) throw new Error("Commercial evaluation not found")
+  try {
+    await db.transaction(async (tx) => {
+      const [evaluation] = await tx
+        .select()
+        .from(commercialEvaluations)
+        .where(eq(commercialEvaluations.id, d.evaluationId))
+      if (!evaluation) throw new Error("EVAL_NOT_FOUND")
+      // Only the current active evaluation is decidable — never a superseded one.
+      if (evaluation.status !== "active") throw new Error("EVAL_NOT_ACTIVE")
 
-    await tx.insert(commercialApprovals).values({
-      id: approvalId,
-      evaluationId: d.evaluationId,
-      decision: d.decision,
-      approverId: session.user.id,
-      notes: d.notes,
-    })
-    await tx
-      .update(sourcingRequests)
-      .set({ status: d.decision === "approved" ? "approved" : "rejected", updatedAt: Date.now() })
-      .where(eq(sourcingRequests.id, evaluation.sourcingRequestId))
+      const [request] = await tx
+        .select({ status: sourcingRequests.status })
+        .from(sourcingRequests)
+        .where(eq(sourcingRequests.id, evaluation.sourcingRequestId))
+      if (!request) throw new Error("REQUEST_NOT_FOUND")
+      // Don't regress a request that's already handed off / closed.
+      if (["handed_off", "cancelled", "closed"].includes(request.status)) {
+        throw new Error("REQUEST_LOCKED")
+      }
 
-    await emitDomainEvent(tx, {
-      aggregateType: "commercial_approval",
-      aggregateId: approvalId,
-      eventType: "CommercialApprovalDecided",
-      payload: { evaluationId: d.evaluationId, decision: d.decision },
-      dedupeKey: `commercial_approval:${approvalId}:CommercialApprovalDecided`,
-      actorUserId: session.user.id,
+      await tx.insert(commercialApprovals).values({
+        id: approvalId,
+        evaluationId: d.evaluationId,
+        decision: d.decision,
+        approverId: session.user.id,
+        notes: d.notes,
+      })
+      await tx
+        .update(sourcingRequests)
+        .set({ status: d.decision === "approved" ? "approved" : "rejected", updatedAt: Date.now() })
+        .where(eq(sourcingRequests.id, evaluation.sourcingRequestId))
+
+      await emitDomainEvent(tx, {
+        aggregateType: "commercial_approval",
+        aggregateId: approvalId,
+        eventType: "CommercialApprovalDecided",
+        payload: { evaluationId: d.evaluationId, decision: d.decision },
+        dedupeKey: `commercial_approval:${approvalId}:CommercialApprovalDecided`,
+        actorUserId: session.user.id,
+      })
     })
-  })
+  } catch (error) {
+    if (error instanceof Error && error.message === "EVAL_NOT_FOUND") {
+      return { error: "Commercial evaluation not found" }
+    }
+    if (error instanceof Error && error.message === "EVAL_NOT_ACTIVE") {
+      return { error: "This evaluation has been superseded and can no longer be decided" }
+    }
+    if (error instanceof Error && error.message === "REQUEST_NOT_FOUND") {
+      return { error: "Sourcing request not found" }
+    }
+    if (error instanceof Error && error.message === "REQUEST_LOCKED") {
+      return { error: "This request is already handed off or closed" }
+    }
+    return { error: error instanceof Error ? error.message : "Failed to record decision" }
+  }
 
   revalidatePath("/admin/sourcing")
   return { id: approvalId }

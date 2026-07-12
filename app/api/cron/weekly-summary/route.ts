@@ -4,7 +4,7 @@ import { db } from "@/lib/db"
 import { maintenanceOrders, partnerTasks, requests, users } from "@/lib/db/schema"
 import { sendEmail } from "@/lib/email/resend"
 import { weeklySummaryEmail } from "@/lib/email/templates"
-import { pruneOldNotifications } from "@/lib/actions/notifications"
+import { pruneOldNotifications } from "@/lib/jobs/notification-retention"
 import { isWeeklyDigestEnabled } from "@/lib/actions/settings"
 
 function isAuthorized(header: string | null): boolean {

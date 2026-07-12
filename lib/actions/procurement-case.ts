@@ -166,6 +166,10 @@ export async function supersedeProcurementCaseCore(
     source: old.source,
     sourcingRequestId: old.sourcingRequestId,
     commercialApprovalId: old.commercialApprovalId,
+    // Carry the awarded supplier forward — Sourcing V2 is one case per awarded
+    // supplier, so dropping it would produce a successor with a null supplier
+    // and break the one-case-per-supplier mapping.
+    supplierId: old.supplierId,
     status: "open",
     previousCaseId: old.id,
     createdBy: actorUserId,

@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { accounts, userInvites, users } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
+import { getSessionWithPermission } from "@/lib/auth/session"
 
 // Invites live 72h by default — same trust model as partner activation and
 // task/sign magic links (see [[project-koph-settings]] token TTLs).
@@ -15,10 +16,18 @@ export type InviteResult = { error?: string }
 
 /**
  * Issues a fresh invite for a user (create or resend). Invalidates any prior
- * un-accepted invite for that user so only the newest link works. Internal —
- * callers must have already authorized (see lib/actions/users.ts).
+ * un-accepted invite for that user so only the newest link works.
+ *
+ * This lives in a "use server" module, so it is a directly-callable RPC
+ * endpoint — it MUST self-authorize even though its in-app callers
+ * (lib/actions/users.ts) already hold a users.manage session. Without this
+ * guard, an anonymous caller could mint an invite for any known userId
+ * (including an admin) and take the account over via acceptInvite.
  */
 export async function issueInvite(userId: string, createdBy: string): Promise<{ token: string }> {
+  const session = await getSessionWithPermission("users.manage")
+  if (!session) throw new Error("Unauthorized")
+
   // Expire outstanding un-accepted invites for this user.
   await db
     .update(userInvites)

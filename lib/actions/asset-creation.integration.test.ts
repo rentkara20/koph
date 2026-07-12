@@ -117,6 +117,42 @@ describe("createAssetCore", () => {
     expect(after.length).toBe(before.length)
   })
 
+  test("rejects a cancelled purchase order line, no row inserted", async () => {
+    const { createAssetCore } = await import("./assets")
+    const supplierId = createId()
+    const poId = createId()
+    const lineId = createId()
+    const procurementCaseId = createId()
+    await db.insert(schema.suppliers).values({ id: supplierId, name: "IT_SUPPLIER" })
+    await db.insert(schema.procurementCases).values({ id: procurementCaseId, source: "system_manual" })
+    await db.insert(schema.purchaseOrders).values({
+      id: poId,
+      supplierId,
+      poNumber: "PO-" + lineId.slice(-8),
+      status: "ordered",
+      procurementCaseId,
+    })
+    await db.insert(schema.purchaseOrderLines).values({
+      id: lineId,
+      purchaseOrderId: poId,
+      itemDescription: "IT laptop",
+      qtyOrdered: 1,
+      status: "cancelled",
+      cancelledAt: Date.now(),
+    })
+
+    const before = await db.select().from(schema.orderUnits)
+
+    await expect(
+      db.transaction(async (tx) => {
+        await createAssetCore(tx, { purchaseOrderLineId: lineId, serialNumber: "SN-CANCELLED" }, "u1")
+      })
+    ).rejects.toThrow("cancelled purchase order line")
+
+    const after = await db.select().from(schema.orderUnits)
+    expect(after.length).toBe(before.length)
+  })
+
   test("rejects a blank serial number at the schema layer", async () => {
     const { createAssetCore } = await import("./assets")
     const { lineId } = await seedOrderLine()
