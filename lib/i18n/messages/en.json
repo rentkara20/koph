@@ -1217,5 +1217,129 @@
     "createPo": "Create purchase order",
     "poCreated": "Purchase order created",
     "poNumber": "PO number"
+  },
+  "workspace": {
+    "journey": {
+      "label": "Request journey",
+      "requested": "Requested",
+      "sourcing": "Sourcing",
+      "purchasing": "Purchasing",
+      "receiving": "Receiving",
+      "ready": "Ready",
+      "delivery": "Delivery",
+      "active": "Active",
+      "collection": "Collection",
+      "closed": "Closed"
+    },
+    "tabs": {
+      "label": "Request sections",
+      "overview": "Overview",
+      "buying": "Buying",
+      "devices": "Devices",
+      "jobs": "Jobs",
+      "documents": "Documents",
+      "money": "Money",
+      "timeline": "Timeline"
+    },
+    "nextActions": {
+      "sourceItems": "Source items",
+      "sendRfqs": "Send RFQs",
+      "recordQuotation": "Record supplier quotation",
+      "awardItems": "Award items",
+      "approveSelection": "Approve supplier selection",
+      "handOffToPurchasing": "Hand off to purchasing",
+      "addErpPoReference": "Add ERP PO reference",
+      "createPurchaseOrder": "Create purchase order",
+      "assignSupplierPickup": "Assign supplier pickup",
+      "receiveDevices": "Receive devices",
+      "qcDevices": "QC devices",
+      "createDeliveryJob": "Create delivery job",
+      "assignPartner": "Assign partner",
+      "reviewSignoff": "Review proof & sign off",
+      "requestAuthorizedSignature": "Request authorized signature",
+      "handleFailedJob": "Handle failed job",
+      "scheduleCollection": "Schedule collection",
+      "generatePaymentBatch": "Generate payment batch",
+      "approveBatch": "Approve batch",
+      "closeRequest": "Close request"
+    },
+    "blockers": {
+      "waitingErpPo": "Waiting on ERP purchase order (Zoho/Odoo)"
+    },
+    "blockerOwner": "Owner: {role}",
+    "blockerLine": "Blocked: {blocker}",
+    "roles": {
+      "procurement": "Procurement",
+      "warehouse": "Warehouse",
+      "ops": "Operations",
+      "finance": "Finance",
+      "admin": "Admin"
+    },
+    "itemCount": "{count} items",
+    "rentalPeriod": "rental {months} mo",
+    "rentalEnds": "ends {date}",
+    "edit": "Edit",
+    "noLines": "No items on this request yet.",
+    "notes": "Notes",
+    "contacts": "Contacts",
+    "authorizedSignatory": "Authorized signatory",
+    "rentalTerms": "Rental terms",
+    "rentalMonths": "Rental months",
+    "rentalEnd": "Rental end",
+    "lineFulfillment": "{delivered} delivered · {stocked} in stock / {requested} requested",
+    "buying": {
+      "sourcing": "Sourcing requests",
+      "noSourcing": "No sourcing started for this request.",
+      "sourcingRequest": "Sourcing request",
+      "sourcingCounts": "{items} items · {rfqs} RFQs · {quotes} quotations",
+      "erpReferences": "ERP references",
+      "erpReferencesHint": "Purchase references in Zoho/Odoo that this request's buying is anchored to.",
+      "erpReference": "ERP reference",
+      "awaitingErpRef": "Awaiting ERP PO reference",
+      "viewPurchaseOrder": "View purchase order",
+      "purchaseOrders": "Purchase orders",
+      "noPurchaseOrders": "No purchase orders yet.",
+      "received": "{received}/{ordered} received"
+    },
+    "devices": {
+      "none": "No devices registered for this request yet.",
+      "receivingQc": "Receiving QC"
+    },
+    "jobs": {
+      "none": "No field jobs pulled devices from this request yet.",
+      "itemCount": "{count} devices"
+    },
+    "documents": {
+      "signatures": "Signature requests",
+      "noSignatures": "No signature requests yet.",
+      "signatoryRole": {
+        "receiver": "Receiver",
+        "authorized": "Authorized signatory"
+      },
+      "attachments": "Attachments",
+      "noAttachments": "No attachments uploaded yet.",
+      "entity": {
+        "request": "Job",
+        "partner_task": "Task",
+        "signature_request": "Signature",
+        "purchase_order": "Purchase order"
+      }
+    },
+    "money": {
+      "partnerPayments": "Partner payments",
+      "total": "Total: {amount}",
+      "none": "No partner payments generated from this request yet.",
+      "batch": "Batch"
+    },
+    "timeline": {
+      "none": "No activity recorded yet.",
+      "entity": {
+        "request": "Job",
+        "partner_task": "Task",
+        "signature_request": "Signature",
+        "purchase_order": "Purchase order",
+        "payment_batch": "Payment batch"
+      }
+    }
   }
 }

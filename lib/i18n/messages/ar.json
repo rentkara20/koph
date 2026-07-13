@@ -1217,5 +1217,129 @@
     "createPo": "إنشاء أمر شراء",
     "poCreated": "تم إنشاء أمر الشراء",
     "poNumber": "رقم أمر الشراء"
+  },
+  "workspace": {
+    "journey": {
+      "label": "مسار الطلب",
+      "requested": "مطلوب",
+      "sourcing": "التسعير",
+      "purchasing": "الشراء",
+      "receiving": "الاستلام",
+      "ready": "جاهز",
+      "delivery": "التوصيل",
+      "active": "نشط",
+      "collection": "الاسترجاع",
+      "closed": "مغلق"
+    },
+    "tabs": {
+      "label": "أقسام الطلب",
+      "overview": "نظرة عامة",
+      "buying": "المشتريات",
+      "devices": "الأجهزة",
+      "jobs": "المهام الميدانية",
+      "documents": "المستندات",
+      "money": "المالية",
+      "timeline": "السجل الزمني"
+    },
+    "nextActions": {
+      "sourceItems": "ابدأ تسعير الأصناف",
+      "sendRfqs": "أرسل طلبات عروض الأسعار",
+      "recordQuotation": "سجّل عرض سعر المورّد",
+      "awardItems": "اعتمد ترسية الأصناف",
+      "approveSelection": "اعتمد اختيار المورّد",
+      "handOffToPurchasing": "حوّل إلى الشراء",
+      "addErpPoReference": "أضف مرجع أمر الشراء في ERP",
+      "createPurchaseOrder": "أنشئ أمر شراء",
+      "assignSupplierPickup": "كلّف مندوب استلام من المورّد",
+      "receiveDevices": "استلم الأجهزة",
+      "qcDevices": "افحص الأجهزة",
+      "createDeliveryJob": "أنشئ مهمة توصيل",
+      "assignPartner": "عيّن شريكًا",
+      "reviewSignoff": "راجع الإثبات وأغلق المهمة",
+      "requestAuthorizedSignature": "اطلب توقيع المفوّض",
+      "handleFailedJob": "عالج المهمة المتعثرة",
+      "scheduleCollection": "جدول الاسترجاع",
+      "generatePaymentBatch": "أنشئ دفعة مستحقات",
+      "approveBatch": "اعتمد الدفعة",
+      "closeRequest": "أغلق الطلب"
+    },
+    "blockers": {
+      "waitingErpPo": "بانتظار أمر الشراء في نظام ERP (زوهو/أودو)"
+    },
+    "blockerOwner": "المسؤول: {role}",
+    "blockerLine": "متوقف: {blocker}",
+    "roles": {
+      "procurement": "المشتريات",
+      "warehouse": "المستودع",
+      "ops": "العمليات",
+      "finance": "المالية",
+      "admin": "الإدارة"
+    },
+    "itemCount": "{count} صنف",
+    "rentalPeriod": "إيجار {months} شهرًا",
+    "rentalEnds": "ينتهي {date}",
+    "edit": "تعديل",
+    "noLines": "لا توجد أصناف على هذا الطلب بعد.",
+    "notes": "ملاحظات",
+    "contacts": "جهات الاتصال",
+    "authorizedSignatory": "مفوّض بالتوقيع",
+    "rentalTerms": "شروط الإيجار",
+    "rentalMonths": "أشهر الإيجار",
+    "rentalEnd": "نهاية الإيجار",
+    "lineFulfillment": "تم توصيل {delivered} · في المخزون {stocked} / المطلوب {requested}",
+    "buying": {
+      "sourcing": "طلبات التسعير",
+      "noSourcing": "لم يبدأ التسعير لهذا الطلب بعد.",
+      "sourcingRequest": "طلب تسعير",
+      "sourcingCounts": "{items} صنف · {rfqs} طلب عرض سعر · {quotes} عرض سعر",
+      "erpReferences": "مراجع ERP",
+      "erpReferencesHint": "مراجع الشراء في زوهو/أودو التي تستند إليها مشتريات هذا الطلب.",
+      "erpReference": "مرجع ERP",
+      "awaitingErpRef": "بانتظار مرجع أمر الشراء في ERP",
+      "viewPurchaseOrder": "عرض أمر الشراء",
+      "purchaseOrders": "أوامر الشراء",
+      "noPurchaseOrders": "لا توجد أوامر شراء بعد.",
+      "received": "تم استلام {received}/{ordered}"
+    },
+    "devices": {
+      "none": "لا توجد أجهزة مسجّلة لهذا الطلب بعد.",
+      "receivingQc": "فحص الاستلام"
+    },
+    "jobs": {
+      "none": "لا توجد مهام ميدانية سحبت أجهزة من هذا الطلب بعد.",
+      "itemCount": "{count} جهاز"
+    },
+    "documents": {
+      "signatures": "طلبات التوقيع",
+      "noSignatures": "لا توجد طلبات توقيع بعد.",
+      "signatoryRole": {
+        "receiver": "المستلم",
+        "authorized": "المفوّض بالتوقيع"
+      },
+      "attachments": "المرفقات",
+      "noAttachments": "لم تُرفع مرفقات بعد.",
+      "entity": {
+        "request": "مهمة ميدانية",
+        "partner_task": "مهمة شريك",
+        "signature_request": "توقيع",
+        "purchase_order": "أمر شراء"
+      }
+    },
+    "money": {
+      "partnerPayments": "مستحقات الشركاء",
+      "total": "الإجمالي: {amount}",
+      "none": "لا توجد مستحقات شركاء ناتجة عن هذا الطلب بعد.",
+      "batch": "الدفعة"
+    },
+    "timeline": {
+      "none": "لا يوجد نشاط مسجّل بعد.",
+      "entity": {
+        "request": "مهمة ميدانية",
+        "partner_task": "مهمة شريك",
+        "signature_request": "توقيع",
+        "purchase_order": "أمر شراء",
+        "payment_batch": "دفعة مستحقات"
+      }
+    }
   }
 }
