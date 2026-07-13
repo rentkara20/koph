@@ -1,23 +1,43 @@
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { getDashboardStats, getWorkQueue } from "@/lib/actions/dashboard"
+import { getDashboardStats } from "@/lib/actions/dashboard"
+import { getInbox, type InboxCard, type InboxOwner } from "@/lib/actions/inbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { formatDate } from "@/lib/utils/format"
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
   Loader2,
-  FileSignature,
   ChevronRight,
   Inbox,
+  ClipboardCheck,
+  PackageSearch,
+  Warehouse,
+  Coins,
 } from "lucide-react"
 
+const OWNER_ICON: Record<InboxOwner, typeof Inbox> = {
+  operations: ClipboardCheck,
+  procurement: PackageSearch,
+  warehouse: Warehouse,
+  finance: Coins,
+}
+
+function waitingLabel(
+  since: number | null,
+  t: (key: string, values?: Record<string, string | number>) => string
+): string {
+  if (!since) return ""
+  const days = Math.max(0, Math.floor((Date.now() - since) / 86400000))
+  return days === 0 ? t("waitingToday") : t("waitingDays", { days })
+}
+
 export default async function DashboardPage() {
-  const [stats, queue, t] = await Promise.all([
+  const [stats, inbox, t, ti] = await Promise.all([
     getDashboardStats(),
-    getWorkQueue(),
+    getInbox(),
     getTranslations("dashboard"),
+    getTranslations("dashboard.inbox"),
   ])
 
   if (!stats) return null
@@ -36,7 +56,7 @@ export default async function DashboardPage() {
       value: stats.pendingSignoff,
       description: t("pendingSignoffDesc"),
       icon: Clock,
-      href: "#signoff-queue",
+      href: "#inbox-operations",
       color: stats.pendingSignoff > 0 ? "text-amber-600" : "text-muted-foreground",
     },
     {
@@ -44,7 +64,7 @@ export default async function DashboardPage() {
       value: stats.overdueDeliveries,
       description: t("overdueDesc"),
       icon: AlertTriangle,
-      href: "#overdue-queue",
+      href: "#inbox-operations",
       color: stats.overdueDeliveries > 0 ? "text-destructive" : "text-muted-foreground",
     },
     {
@@ -57,16 +77,14 @@ export default async function DashboardPage() {
     },
   ]
 
-  const totalQueue =
-    (queue?.pendingSignoff.length ?? 0) +
-    (queue?.overdue.length ?? 0) +
-    (queue?.pendingSignatures.length ?? 0)
+  const sections = inbox ?? []
+  const totalCards = sections.reduce((sum, s) => sum + s.cards.length, 0)
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground mt-1">{t("subtitle")}</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{ti("inboxTitle")}</h1>
+        <p className="text-sm text-muted-foreground mt-1">{ti("inboxSubtitle")}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -91,128 +109,78 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      {/* Work queue — what needs attention now */}
-      <section className="space-y-4">
-        <h2 className="text-lg font-semibold tracking-tight">{t("needsAttention")}</h2>
-
-        {totalQueue === 0 ? (
-          <div className="rounded-lg border border-dashed p-10 text-center">
-            <Inbox className="mx-auto size-8 text-muted-foreground/50" />
-            <p className="mt-3 text-sm text-muted-foreground">{t("queueEmpty")}</p>
-          </div>
-        ) : (
-          <div className="grid gap-4 lg:grid-cols-3">
-            {/* Sign-off queue */}
-            <Card id="signoff-queue" className="scroll-mt-20">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Clock className="size-4 text-amber-600" />
-                  {t("signoffQueue")}
-                  <span className="ms-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                    {queue?.pendingSignoff.length ?? 0}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1.5">
-                {queue?.pendingSignoff.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-2">—</p>
-                ) : (
-                  queue?.pendingSignoff.map((row) => (
-                    <Link
-                      key={row.taskId}
-                      href={`/admin/requests/${row.requestId}`}
-                      className="group flex items-center gap-2 rounded-md px-2 py-2 -mx-2 hover:bg-accent transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{row.requestNumber ?? "—"}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {row.customerName ?? "—"}
-                          {row.partnerName ? ` · ${t("byPartner")} ${row.partnerName}` : ""}
-                        </p>
-                      </div>
-                      <span className="hidden shrink-0 text-xs font-medium text-primary group-hover:inline">
-                        {t("reviewAndSignoff")}
-                      </span>
-                      <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
-                    </Link>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Overdue queue */}
-            <Card id="overdue-queue" className="scroll-mt-20">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <AlertTriangle className="size-4 text-destructive" />
-                  {t("overdueQueue")}
-                  <span className="ms-auto rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
-                    {queue?.overdue.length ?? 0}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1.5">
-                {queue?.overdue.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-2">—</p>
-                ) : (
-                  queue?.overdue.map((row) => (
-                    <Link
-                      key={row.id}
-                      href={`/admin/requests/${row.id}`}
-                      className="group flex items-center gap-2 rounded-md px-2 py-2 -mx-2 hover:bg-accent transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{row.requestNumber}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {row.customerName ?? "—"}
-                          {row.deliveryDate
-                            ? ` · ${t("dueColon")} ${formatDate(row.deliveryDate)}`
-                            : ""}
-                        </p>
-                      </div>
-                      <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
-                    </Link>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Signature queue */}
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <FileSignature className="size-4 text-kara-blue" />
-                  {t("signatureQueue")}
-                  <span className="ms-auto rounded-full bg-kara-blue-soft px-2 py-0.5 text-xs font-medium text-kara-purple">
-                    {queue?.pendingSignatures.length ?? 0}
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1.5">
-                {queue?.pendingSignatures.length === 0 ? (
-                  <p className="text-xs text-muted-foreground py-2">—</p>
-                ) : (
-                  queue?.pendingSignatures.map((row) => (
-                    <Link
-                      key={row.id}
-                      href={row.requestId ? `/admin/requests/${row.requestId}` : "/admin/signatures"}
-                      className="group flex items-center gap-2 rounded-md px-2 py-2 -mx-2 hover:bg-accent transition-colors"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{row.documentName}</p>
-                        <p className="truncate text-xs text-muted-foreground">
-                          {row.customerName ?? "—"}
-                        </p>
-                      </div>
-                      <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
-                    </Link>
-                  ))
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        )}
-      </section>
+      {totalCards === 0 ? (
+        <div className="rounded-lg border border-dashed p-10 text-center">
+          <Inbox className="mx-auto size-8 text-muted-foreground/50" />
+          <p className="mt-3 text-sm text-muted-foreground">{t("queueEmpty")}</p>
+        </div>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {sections.map((section) => {
+            const OwnerIcon = OWNER_ICON[section.owner]
+            return (
+              <Card
+                key={section.owner}
+                id={`inbox-${section.owner}`}
+                className="scroll-mt-20"
+              >
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <OwnerIcon className="size-4 text-kara-blue" />
+                    {ti(`owner${section.owner.charAt(0).toUpperCase()}${section.owner.slice(1)}`)}
+                    <span className="ms-auto rounded-full bg-kara-blue-soft px-2 py-0.5 text-xs font-medium text-kara-purple">
+                      {section.cards.length}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1.5">
+                  {section.cards.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">{ti("allClear")}</p>
+                  ) : (
+                    section.cards.map((card) => (
+                      <InboxRow key={card.key} card={card} ti={ti} />
+                    ))
+                  )}
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      )}
     </div>
+  )
+}
+
+function InboxRow({
+  card,
+  ti,
+}: {
+  card: InboxCard
+  ti: (key: string, values?: Record<string, string | number>) => string
+}) {
+  const waiting = waitingLabel(card.since, ti)
+  return (
+    <Link
+      href={card.href}
+      className="group flex items-center gap-3 rounded-md px-2 py-2 -mx-2 hover:bg-accent transition-colors"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium">
+          <span className="text-muted-foreground">{card.requestRef}</span>
+          {card.customerName ? ` · ${card.customerName}` : ""}
+        </p>
+        <p className="truncate text-xs text-muted-foreground">
+          {ti(card.waitingKey)}
+          {waiting ? ` · ${waiting}` : ""}
+        </p>
+        {card.blockerKey ? (
+          <p className="truncate text-xs font-medium text-amber-600">{ti(card.blockerKey)}</p>
+        ) : null}
+      </div>
+      <span className="hidden shrink-0 text-xs font-medium text-primary group-hover:inline">
+        {ti(card.actionKey)}
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />
+    </Link>
   )
 }
