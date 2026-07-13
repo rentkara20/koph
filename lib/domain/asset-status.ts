@@ -2,6 +2,7 @@
 // before any write; the UI uses assetActionsFor to render valid buttons only.
 
 export type AssetStatus =
+  | "receiving_qc"
   | "in_stock"
   | "reserved"
   | "assigned"
@@ -14,6 +15,8 @@ export type AssetStatus =
   | "lost"
 
 export type AssetAction =
+  | "qc_pass"
+  | "qc_fail"
   | "reserve"
   | "unreserve"
   | "assign"
@@ -31,6 +34,10 @@ export type AssetAction =
 
 // action -> [fromStatuses, toStatus]
 const TRANSITIONS: Record<AssetAction, { from: AssetStatus[]; to: AssetStatus }> = {
+  // Receiving QC gate: assets minted from a qcRequired PO start at
+  // receiving_qc and only become available inventory via qc_pass.
+  qc_pass: { from: ["receiving_qc"], to: "in_stock" },
+  qc_fail: { from: ["receiving_qc"], to: "damaged" },
   reserve: { from: ["in_stock"], to: "reserved" },
   unreserve: { from: ["reserved"], to: "in_stock" },
   assign: { from: ["in_stock", "reserved"], to: "assigned" },

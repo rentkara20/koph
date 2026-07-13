@@ -79,3 +79,21 @@ describe("actionForTransition", () => {
     expect(actionForTransition("in_stock", "in_stock")).toBeNull()
   })
 })
+
+describe("receiving QC gate", () => {
+  test("qc_pass moves receiving_qc → in_stock; qc_fail → damaged", () => {
+    expect(canAssetTransition("receiving_qc", "qc_pass")).toBe(true)
+    expect(assetStatusAfter("qc_pass")).toBe("in_stock")
+    expect(canAssetTransition("receiving_qc", "qc_fail")).toBe(true)
+    expect(assetStatusAfter("qc_fail")).toBe("damaged")
+  })
+  test("receiving_qc assets are not available for rental actions", () => {
+    expect(canAssetTransition("receiving_qc", "reserve")).toBe(false)
+    expect(canAssetTransition("receiving_qc", "assign")).toBe(false)
+    expect(canAssetTransition("receiving_qc", "deliver")).toBe(false)
+  })
+  test("qc actions apply only to receiving_qc", () => {
+    expect(canAssetTransition("in_stock", "qc_pass")).toBe(false)
+    expect(canAssetTransition("damaged", "qc_pass")).toBe(false)
+  })
+})

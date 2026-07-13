@@ -44,6 +44,9 @@ export const partnerActionSchema = z.enum([
   "start",
   "mark_done",
   "mark_failed",
+  // Supplier-pickup kind only (mark_picked_up goes through its own
+  // quantity-carrying action in procurement-pickup.ts, not updateTaskByToken).
+  "mark_arrived",
 ])
 
 // Failure reasons are now DB-driven (lib/db/schema.ts failureReasons table,
@@ -75,6 +78,11 @@ export const createSupplierSchema = z.object({
   city: z.string().trim().max(120).optional(),
   address: z.string().trim().max(500).optional(),
   notes: z.string().trim().max(2000).optional(),
+  // Supplier-pickup logistics — inherited onto pickup tasks.
+  pickupContactName: z.string().trim().max(200).optional(),
+  pickupContactMobile: z.string().trim().max(30).optional(),
+  pickupMapsUrl: z.string().trim().max(500).optional(),
+  pickupNotes: z.string().trim().max(2000).optional(),
 })
 
 // ─── Orders ──────────────────────────────────────────────────────────────────
@@ -96,7 +104,7 @@ export const orderUnitInputSchema = z.object({
   serialNumber: z.string().trim().max(120).optional(),
   supplierId: z.string().trim().max(60).optional(),
   purchaseCost: z.number().min(0).max(100_000_000).optional(),
-  status: z.enum(["in_stock", "reserved", "assigned", "delivered", "returned", "maintenance", "damaged", "retired", "sold", "lost"]).optional(),
+  status: z.enum(["receiving_qc", "in_stock", "reserved", "assigned", "delivered", "returned", "maintenance", "damaged", "retired", "sold", "lost"]).optional(),
   notes: z.string().trim().max(1000).optional(),
 })
 

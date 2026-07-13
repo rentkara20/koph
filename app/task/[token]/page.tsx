@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
+import type { Customer } from "@/lib/db/schema"
 import { getLocale, getTranslations } from "next-intl/server"
 import { getTaskByToken, getTaskPhotosByToken } from "@/lib/actions/tasks"
 import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
@@ -14,6 +15,7 @@ import { PhotoUpload } from "./_components/photo-upload"
 import { TaskChecklist } from "./_components/task-checklist"
 import { SignatureStatus } from "./_components/signature-status"
 import { OnSiteSigningFlow } from "./_components/on-site-signing"
+import { PickupTaskView } from "./_components/pickup-task-view"
 import { Phone, MapPin, Mail, MessageCircle } from "lucide-react"
 
 export default async function TaskPage({
@@ -34,7 +36,17 @@ export default async function TaskPage({
 
   if (!data) notFound()
 
-  const { task, request, customer, requestType, items, isExpired, linkedContact } = data
+  // Supplier-pickup tasks are a first-class procurement capability, not a
+  // customer request — render the dedicated pickup UI (supplier address/contact,
+  // per-line collect quantities). Never falls through to the request layout.
+  if (data.task.kind === "supplier_pickup") {
+    return <PickupTaskView token={token} />
+  }
+
+  const { task, request, requestType, items, isExpired, linkedContact } = data
+  if (!request) notFound()
+  // request-kind branch always carries a customer row; narrow off the union.
+  const customer = data.customer as Customer | null
 
   const [photos, taskServices, allContacts, sigData, failureReasons] = await Promise.all([
     getTaskPhotosByToken(token),

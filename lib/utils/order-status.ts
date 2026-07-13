@@ -20,6 +20,7 @@ export const orderStatuses = [
 
 // Unit status badge variants (device instances).
 export const unitStatusVariant: Record<string, Variant> = {
+  receiving_qc: "warning",
   in_stock: "outline",
   assigned: "info",
   delivered: "success",
@@ -28,6 +29,7 @@ export const unitStatusVariant: Record<string, Variant> = {
 }
 
 export const unitStatuses = [
+  "receiving_qc",
   "in_stock",
   "reserved",
   "assigned",
@@ -52,7 +54,9 @@ export function deriveOrderStatus(
   if (currentStatus === "cancelled") return "cancelled"
   if (unitStatuses.length === 0) return "draft"
 
-  const fulfilled = unitStatuses.filter((s) => s !== "in_stock").length
+  // receiving_qc units are not yet available stock, but they are also not
+  // fulfilled toward the customer — treat like in_stock for order fulfilment.
+  const fulfilled = unitStatuses.filter((s) => s !== "in_stock" && s !== "receiving_qc").length
   if (fulfilled === 0) return "confirmed"
   if (fulfilled === unitStatuses.length) return "fulfilled"
   return "partially_fulfilled"

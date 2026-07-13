@@ -6,13 +6,18 @@
 // (source="system_manual") — never a second procurement workflow. Append-only
 // past creation and past its ERP-PO link being set (locked, 2026-07-10): a
 // change is a new row that supersedes the old one, never an edit.
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
 import {
   commercialApprovals,
+  orderUnits,
+  partners,
+  partnerTasks,
+  pickupTaskLines,
   procurementCases,
+  purchaseOrderLines,
   purchaseOrders,
   sourcingRequests,
   suppliers,
@@ -20,6 +25,10 @@ import {
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
+import {
+  canCloseProcurementCase,
+  deriveProcurementFulfilment,
+} from "@/lib/domain/procurement-fulfilment"
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type ActionResult = { error?: string; id?: string }
@@ -274,4 +283,156 @@ export async function getProcurementCasesForSourcingRequest(sourcingRequestId: s
     .orderBy(desc(procurementCases.createdAt))
 
   return cases.filter((c) => c.status !== "superseded")
+}
+
+// ─── Close (end of the procurement journey) ───────────────────────────────────
+// Allowed only when the fulfilment derivation says every ordered unit on the
+// case's PO has been received and no pickup task is still open — the "closed"
+// enum value finally gets a real transition.
+
+export async function closeProcurementCase(caseId: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const [procurementCase] = await db
+    .select()
+    .from(procurementCases)
+    .where(eq(procurementCases.id, caseId))
+  if (!procurementCase) return { error: "Procurement case not found" }
+
+  const [po] = await db
+    .select()
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.procurementCaseId, caseId))
+  const lines = po
+    ? await db.select().from(purchaseOrderLines).where(eq(purchaseOrderLines.purchaseOrderId, po.id))
+    : []
+  const pickupTasks = po
+    ? await db
+        .select({ status: partnerTasks.status })
+        .from(partnerTasks)
+        .where(eq(partnerTasks.purchaseOrderId, po.id))
+    : []
+
+  const closable = canCloseProcurementCase({
+    caseStatus: procurementCase.status,
+    po: po ? { status: po.status, paidAt: po.paidAt, readyForPickupAt: po.readyForPickupAt } : null,
+    lines: lines.map((l) => ({
+      status: l.status,
+      qtyOrdered: l.qtyOrdered,
+      qtyPickedUp: l.qtyPickedUp,
+      qtyReceived: l.qtyReceived,
+    })),
+    pickupTasks,
+  })
+  if (!closable) {
+    return { error: "Case can close only after every ordered unit has been received" }
+  }
+
+  let rowsChanged = 0
+  await db.transaction(async (tx) => {
+    const result = await tx
+      .update(procurementCases)
+      .set({ status: "closed", updatedAt: Date.now() })
+      .where(and(eq(procurementCases.id, caseId), eq(procurementCases.status, procurementCase.status)))
+    rowsChanged = (result as { rowsAffected?: number }).rowsAffected ?? 1
+    if (rowsChanged === 0) return
+
+    await emitDomainEvent(tx, {
+      aggregateType: "procurement_case",
+      aggregateId: caseId,
+      eventType: "ProcurementCaseClosed",
+      payload: { purchaseOrderId: po?.id ?? null },
+      dedupeKey: `procurement_case:${caseId}:ProcurementCaseClosed`,
+      actorUserId: session.user.id,
+    })
+  })
+  if (rowsChanged === 0) return { error: "Case status changed — refresh and retry" }
+
+  revalidatePath("/admin/procurement")
+  return { id: caseId }
+}
+
+// ─── End-to-end fulfilment view for a case/PO ────────────────────────────────
+// Derived, never stored: stage + qty rollup + the journey of every asset
+// minted from the PO (current status/customer), for the case detail page.
+
+export async function getProcurementFulfilment(purchaseOrderId: string) {
+  const session = await getStaffSession()
+  if (!session) return null
+
+  const [po] = await db
+    .select()
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.id, purchaseOrderId))
+  if (!po) return null
+
+  const [procurementCase] = await db
+    .select()
+    .from(procurementCases)
+    .where(eq(procurementCases.id, po.procurementCaseId))
+
+  const lines = await db
+    .select()
+    .from(purchaseOrderLines)
+    .where(eq(purchaseOrderLines.purchaseOrderId, purchaseOrderId))
+    .orderBy(purchaseOrderLines.createdAt)
+
+  const pickupTasks = await db
+    .select({
+      id: partnerTasks.id,
+      status: partnerTasks.status,
+      partnerId: partnerTasks.partnerId,
+      partnerName: partners.name,
+      taskToken: partnerTasks.taskToken,
+      destinationLocation: partnerTasks.destinationLocation,
+      assignedAt: partnerTasks.assignedAt,
+      arrivedAt: partnerTasks.arrivedAt,
+      pickedUpAt: partnerTasks.pickedUpAt,
+      closedAt: partnerTasks.closedAt,
+    })
+    .from(partnerTasks)
+    .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
+    .where(eq(partnerTasks.purchaseOrderId, purchaseOrderId))
+    .orderBy(desc(partnerTasks.createdAt))
+
+  const taskLines = pickupTasks.length
+    ? await db
+        .select()
+        .from(pickupTaskLines)
+        .where(
+          inArray(
+            pickupTaskLines.pickupTaskId,
+            pickupTasks.map((t) => t.id)
+          )
+        )
+    : []
+
+  const assets = await db
+    .select({
+      id: orderUnits.id,
+      assetTag: orderUnits.assetTag,
+      serialNumber: orderUnits.serialNumber,
+      status: orderUnits.status,
+      currentCustomerId: orderUnits.currentCustomerId,
+      purchaseOrderLineId: orderUnits.purchaseOrderLineId,
+      createdAt: orderUnits.createdAt,
+    })
+    .from(orderUnits)
+    .where(eq(orderUnits.purchaseOrderId, purchaseOrderId))
+    .orderBy(desc(orderUnits.createdAt))
+
+  const fulfilment = deriveProcurementFulfilment({
+    caseStatus: procurementCase?.status ?? "open",
+    po: { status: po.status, paidAt: po.paidAt, readyForPickupAt: po.readyForPickupAt },
+    lines: lines.map((l) => ({
+      status: l.status,
+      qtyOrdered: l.qtyOrdered,
+      qtyPickedUp: l.qtyPickedUp,
+      qtyReceived: l.qtyReceived,
+    })),
+    pickupTasks,
+  })
+
+  return { po, procurementCase: procurementCase ?? null, lines, pickupTasks, taskLines, assets, ...fulfilment }
 }

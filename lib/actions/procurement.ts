@@ -14,6 +14,10 @@ import {
   commercialApprovals,
   commercialEvaluations,
   orderUnits,
+  partnerContracts,
+  partnerPayments,
+  partnerTasks,
+  pickupTaskLines,
   procurementCases,
   purchaseOrderLines,
   purchaseOrders,
@@ -27,6 +31,8 @@ import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { createAssetCore } from "@/lib/actions/assets"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { createProcurementCaseCore } from "@/lib/actions/procurement-case"
+import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
+import { computePayment, type PricingModel } from "@/lib/domain/pricing"
 
 type ActionResult = { error?: string; id?: string }
 
@@ -320,6 +326,10 @@ const receiveLineSchema = z.object({
   purchaseOrderLineId: z.string().trim().min(1),
   serialNumber: z.string().trim().min(1).max(120),
   assetTag: z.string().trim().max(40).optional(),
+  // Present when the unit arrived via a supplier-pickup task: attributes the
+  // receipt to that task's line (qtyReceived ≤ qtyPickedUp) and auto-closes
+  // the task once all its lines are fully received.
+  pickupTaskId: z.string().trim().min(1).optional(),
 })
 
 // Exported separately so integration tests can exercise the atomic receiving
@@ -350,10 +360,50 @@ export async function receivePurchaseOrderLineCore(
   }
   const newQtyReceived = line.qtyReceived + 1
 
+  // Attribute the receipt to a pickup task when the unit arrived through one:
+  // guarded increment against that task line's collected quantity, so the
+  // warehouse can never confirm more than the partner picked up.
+  if (d.pickupTaskId) {
+    const [pickupTask] = await tx
+      .select()
+      .from(partnerTasks)
+      .where(eq(partnerTasks.id, d.pickupTaskId))
+    if (!pickupTask || pickupTask.kind !== "supplier_pickup") {
+      throw new Error("Pickup task not found")
+    }
+    if (pickupTask.status !== "picked_up") {
+      throw new Error("Pickup task has not collected the goods yet")
+    }
+    if (pickupTask.purchaseOrderId !== line.purchaseOrderId) {
+      throw new Error("Pickup task belongs to a different purchase order")
+    }
+    const taskLineIncrement = await tx
+      .update(pickupTaskLines)
+      .set({ qtyReceived: sql`${pickupTaskLines.qtyReceived} + 1`, updatedAt: Date.now() })
+      .where(
+        and(
+          eq(pickupTaskLines.pickupTaskId, d.pickupTaskId),
+          eq(pickupTaskLines.purchaseOrderLineId, line.id),
+          lt(pickupTaskLines.qtyReceived, pickupTaskLines.qtyPickedUp)
+        )
+      )
+    if (((taskLineIncrement as { rowsAffected?: number }).rowsAffected ?? 0) === 0) {
+      throw new Error("Cannot receive more than this pickup task collected for this line")
+    }
+  }
+
+  // QC gate: qcRequired POs mint units at receiving_qc — never straight into
+  // available inventory.
+  const [po] = await tx
+    .select({ qcRequired: purchaseOrders.qcRequired })
+    .from(purchaseOrders)
+    .where(eq(purchaseOrders.id, line.purchaseOrderId))
+
   const result = await createAssetCore(
     tx,
     { purchaseOrderLineId: line.id, serialNumber: d.serialNumber, assetTag: d.assetTag },
-    actorUserId
+    actorUserId,
+    po?.qcRequired ? "receiving_qc" : "in_stock"
   )
   const assetId = result.assetId
 
@@ -361,14 +411,101 @@ export async function receivePurchaseOrderLineCore(
     aggregateType: "purchase_order",
     aggregateId: line.purchaseOrderId,
     eventType: "PurchaseOrderLineReceived",
-    payload: { purchaseOrderLineId: line.id, assetId, qtyReceived: newQtyReceived },
+    payload: {
+      purchaseOrderLineId: line.id,
+      assetId,
+      qtyReceived: newQtyReceived,
+      pickupTaskId: d.pickupTaskId ?? null,
+      qc: Boolean(po?.qcRequired),
+    },
     dedupeKey: `purchase_order_line:${line.id}:received:${assetId}`,
     actorUserId,
   })
 
+  if (d.pickupTaskId) {
+    await tryClosePickupTaskCore(tx, d.pickupTaskId, actorUserId)
+  }
+
   await recomputePurchaseOrderStatus(tx, line.purchaseOrderId)
 
   return { assetId }
+}
+
+// Auto-close a pickup task once every line's received count matches what the
+// partner collected — the warehouse receipt IS the completion of the pickup;
+// there is no separate sign-off step to forget. Generates the partner payment
+// exactly like a request-task close would.
+export async function tryClosePickupTaskCore(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  pickupTaskId: string,
+  actorUserId: string | null
+): Promise<{ closed: boolean }> {
+  const [task] = await tx.select().from(partnerTasks).where(eq(partnerTasks.id, pickupTaskId))
+  if (!task || task.kind !== "supplier_pickup" || task.status !== "picked_up") {
+    return { closed: false }
+  }
+
+  const taskLines = await tx
+    .select()
+    .from(pickupTaskLines)
+    .where(eq(pickupTaskLines.pickupTaskId, pickupTaskId))
+  const allReceived =
+    taskLines.length > 0 && taskLines.every((l) => l.qtyReceived >= l.qtyPickedUp)
+  if (!allReceived) return { closed: false }
+
+  // Guard on picked_up so two concurrent final receipts can't both close and
+  // both mint a payment.
+  const result = await tx
+    .update(partnerTasks)
+    .set({ status: "closed", closedBy: actorUserId, closedAt: Date.now(), updatedAt: Date.now() })
+    .where(and(eq(partnerTasks.id, pickupTaskId), eq(partnerTasks.status, "picked_up")))
+  if (((result as { rowsAffected?: number }).rowsAffected ?? 0) === 0) return { closed: false }
+
+  const totalCollected = taskLines.reduce((s, l) => s + l.qtyPickedUp, 0)
+
+  await emitDomainEvent(tx, {
+    aggregateType: "task",
+    aggregateId: pickupTaskId,
+    eventType: "PickupTaskClosed",
+    payload: { purchaseOrderId: task.purchaseOrderId, quantity: totalCollected },
+    dedupeKey: `task:${pickupTaskId}:PickupTaskClosed`,
+    actorUserId,
+  })
+
+  if (task.contractId) {
+    const [contract] = await tx
+      .select()
+      .from(partnerContracts)
+      .where(eq(partnerContracts.id, task.contractId))
+    if (contract) {
+      const { quantity: finalQty, totalAmount } = computePayment(
+        contract.pricingModel as PricingModel,
+        contract.unitPrice,
+        totalCollected
+      )
+      const paymentId = createId()
+      await tx.insert(partnerPayments).values({
+        id: paymentId,
+        partnerId: task.partnerId,
+        partnerTaskId: task.id,
+        pricingModel: contract.pricingModel,
+        quantity: finalQty,
+        unitPrice: contract.unitPrice,
+        totalAmount,
+        status: "pending",
+      })
+      await emitDomainEvent(tx, {
+        aggregateType: "partner_payment",
+        aggregateId: paymentId,
+        eventType: "PartnerPaymentCreated",
+        payload: { partnerId: task.partnerId, partnerTaskId: task.id, totalAmount },
+        dedupeKey: `partner_payment:${paymentId}:PartnerPaymentCreated`,
+        actorUserId,
+      })
+    }
+  }
+
+  return { closed: true }
 }
 
 // Recompute a PO's aggregate status from its lines. Cancelled lines are
@@ -499,4 +636,135 @@ export async function receivePurchaseOrderLine(
   revalidatePath("/admin/procurement")
   revalidatePath("/admin/assets")
   return { id: assetId }
+}
+
+// ─── PO lifecycle milestones (paid / ready for pickup) ───────────────────────
+// Payment itself lives in the ERP (Zoho/Odoo) — paidAt only records that ops
+// confirmed it. readyForPickupAt is the gate for creating pickup tasks.
+
+export async function markPurchaseOrderPaid(purchaseOrderId: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, purchaseOrderId))
+  if (!po) return { error: "Purchase order not found" }
+  if (po.status === "cancelled") return { error: "Purchase order is cancelled" }
+  if (po.paidAt) return { error: "Purchase order is already marked paid" }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(purchaseOrders)
+      .set({ paidAt: Date.now(), updatedAt: Date.now() })
+      .where(eq(purchaseOrders.id, purchaseOrderId))
+    await emitDomainEvent(tx, {
+      aggregateType: "purchase_order",
+      aggregateId: purchaseOrderId,
+      eventType: "PurchaseOrderMarkedPaid",
+      payload: { poNumber: po.poNumber },
+      dedupeKey: `purchase_order:${purchaseOrderId}:PurchaseOrderMarkedPaid`,
+      actorUserId: session.user.id,
+    })
+  })
+
+  revalidatePath(`/admin/procurement/${purchaseOrderId}`)
+  return { id: purchaseOrderId }
+}
+
+export async function markReadyForPickup(purchaseOrderId: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, purchaseOrderId))
+  if (!po) return { error: "Purchase order not found" }
+  if (po.status !== "ordered" && po.status !== "partially_received") {
+    return { error: "Only an open purchase order can be marked ready for pickup" }
+  }
+  if (po.readyForPickupAt) return { error: "Purchase order is already ready for pickup" }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(purchaseOrders)
+      .set({ readyForPickupAt: Date.now(), updatedAt: Date.now() })
+      .where(eq(purchaseOrders.id, purchaseOrderId))
+    await emitDomainEvent(tx, {
+      aggregateType: "purchase_order",
+      aggregateId: purchaseOrderId,
+      eventType: "PurchaseOrderReadyForPickup",
+      payload: { poNumber: po.poNumber },
+      dedupeKey: `purchase_order:${purchaseOrderId}:PurchaseOrderReadyForPickup`,
+      actorUserId: session.user.id,
+    })
+  })
+
+  revalidatePath(`/admin/procurement/${purchaseOrderId}`)
+  return { id: purchaseOrderId }
+}
+
+// Toggle whether receiving this PO routes units through the QC gate. Only
+// meaningful before/during receiving; already-minted units keep their status.
+export async function setPurchaseOrderQcRequired(
+  purchaseOrderId: string,
+  qcRequired: boolean
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const [po] = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, purchaseOrderId))
+  if (!po) return { error: "Purchase order not found" }
+  if (po.status === "cancelled") return { error: "Purchase order is cancelled" }
+
+  await db
+    .update(purchaseOrders)
+    .set({ qcRequired, updatedAt: Date.now() })
+    .where(eq(purchaseOrders.id, purchaseOrderId))
+
+  revalidatePath(`/admin/procurement/${purchaseOrderId}`)
+  return { id: purchaseOrderId }
+}
+
+// ─── Receiving QC (pass / fail) ───────────────────────────────────────────────
+// Thin wrappers over the applyAssetTransition chokepoint: qc_pass moves a
+// receiving_qc unit into available inventory, qc_fail marks it damaged.
+
+export async function qcAsset(assetId: string, pass: boolean, notes?: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+  if (notes && notes.length > 500) return { error: "Notes are too long" }
+
+  try {
+    await db.transaction(async (tx) => {
+      await applyAssetTransition(tx, assetId, pass ? "qc_pass" : "qc_fail", {
+        notes: notes ?? null,
+        byUserId: session.user.id,
+      })
+    })
+  } catch (error) {
+    if (error instanceof AssetTransitionError) return { error: error.message }
+    return { error: error instanceof Error ? error.message : "QC update failed" }
+  }
+
+  revalidatePath("/admin/assets")
+  revalidatePath("/admin/procurement")
+  return { id: assetId }
+}
+
+// Units awaiting QC, joined to their PO for the receiving/QC queue UI.
+export async function getQcQueue() {
+  const session = await getStaffSession()
+  if (!session) return []
+  return db
+    .select({
+      id: orderUnits.id,
+      assetTag: orderUnits.assetTag,
+      serialNumber: orderUnits.serialNumber,
+      createdAt: orderUnits.createdAt,
+      purchaseOrderId: orderUnits.purchaseOrderId,
+      poNumber: purchaseOrders.poNumber,
+      supplierName: suppliers.name,
+    })
+    .from(orderUnits)
+    .leftJoin(purchaseOrders, eq(orderUnits.purchaseOrderId, purchaseOrders.id))
+    .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+    .where(eq(orderUnits.status, "receiving_qc"))
+    .orderBy(desc(orderUnits.createdAt))
 }

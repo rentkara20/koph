@@ -10,7 +10,15 @@ import { Input } from "@/components/ui/input"
 import { receivePurchaseOrderLine } from "@/lib/actions/procurement"
 import { translateActionError } from "@/lib/i18n/action-errors"
 
-export function ReceiveLineForm({ purchaseOrderLineId }: { purchaseOrderLineId: string }) {
+export function ReceiveLineForm({
+  purchaseOrderLineId,
+  pickupTaskId,
+}: {
+  purchaseOrderLineId: string
+  // When receiving units that arrived via a supplier pickup, attribute the
+  // receipt to that task so its collected count and auto-close stay correct.
+  pickupTaskId?: string
+}) {
   const t = useTranslations("procurement")
   const router = useRouter()
   const [serialNumber, setSerialNumber] = useState("")
@@ -24,6 +32,7 @@ export function ReceiveLineForm({ purchaseOrderLineId }: { purchaseOrderLineId: 
         purchaseOrderLineId,
         serialNumber: serialNumber.trim(),
         assetTag: assetTag.trim() || undefined,
+        pickupTaskId,
       })
       if (result.error) {
         toast.error(translateActionError(result.error))

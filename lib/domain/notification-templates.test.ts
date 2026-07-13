@@ -73,3 +73,25 @@ describe("notificationLinkUrl", () => {
     ).toBe("/admin/signatures")
   })
 })
+
+describe("pickup + procurement events", () => {
+  const ctx = (payload: Record<string, unknown>) => ({ aggregateType: "task", aggregateId: "task1", payload })
+
+  test("PickupTaskPickedUp → in-transit notification linking to the PO", () => {
+    const tpl = notificationTemplateForEvent("PickupTaskPickedUp", ctx({ purchaseOrderId: "po1", totalCollected: 8 }))
+    expect(tpl?.type).toBe("pickup_in_transit")
+    expect(tpl?.i18nData?.quantity).toBe(8)
+    expect(tpl?.entityId).toBe("po1")
+    expect(notificationLinkUrl(ctx({ purchaseOrderId: "po1" }))).toBe("/admin/procurement/po1")
+  })
+
+  test("PickupTaskClosed → received notification", () => {
+    const tpl = notificationTemplateForEvent("PickupTaskClosed", ctx({ purchaseOrderId: "po1" }))
+    expect(tpl?.type).toBe("pickup_received")
+  })
+
+  test("ProcurementCaseClosed surfaces", () => {
+    const tpl = notificationTemplateForEvent("ProcurementCaseClosed", ctx({ purchaseOrderId: "po1" }))
+    expect(tpl?.type).toBe("procurement_case_closed")
+  })
+})

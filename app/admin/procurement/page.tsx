@@ -22,12 +22,20 @@ export default async function ProcurementPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Link
-          href="/admin/procurement/new"
-          className="inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90"
-        >
-          {t("createPo")}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/procurement/receiving"
+            className="inline-flex h-9 items-center rounded-lg border px-4 text-sm font-medium hover:bg-muted/40"
+          >
+            {t("pickup.inTransit")}
+          </Link>
+          <Link
+            href="/admin/procurement/new"
+            className="inline-flex h-9 items-center rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:opacity-90"
+          >
+            {t("createPo")}
+          </Link>
+        </div>
       </div>
 
       {pos.length === 0 ? (

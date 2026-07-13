@@ -276,9 +276,18 @@ export const partnerContracts = sqliteTable("partner_contract", {
 
 export const partnerTasks = sqliteTable("partner_task", {
   id: text("id").primaryKey(),
-  requestId: text("request_id")
+  // Task origin: exactly one of requestId (customer request) or
+  // purchaseOrderId (supplier pickup) — enforced by partner_task_single_origin_chk.
+  requestId: text("request_id").references(() => requests.id),
+  // Supplier-pickup origin (kind = "supplier_pickup"). procurementCaseId is
+  // denormalized from the PO for direct case-level queries; always set together.
+  procurementCaseId: text("procurement_case_id").references(() => procurementCases.id),
+  purchaseOrderId: text("purchase_order_id").references(() => purchaseOrders.id),
+  kind: text("kind", { enum: ["request", "supplier_pickup"] })
     .notNull()
-    .references(() => requests.id),
+    .default("request"),
+  // Where the pickup is delivered to (free text until a warehouse module exists).
+  destinationLocation: text("destination_location"),
   partnerId: text("partner_id")
     .notNull()
     .references(() => partners.id),
@@ -301,6 +310,10 @@ export const partnerTasks = sqliteTable("partner_task", {
       "accepted",
       "in_progress",
       "pending_signoff",
+      // Supplier-pickup kind only: accepted → arrived → picked_up → closed.
+      // "picked_up" means in transit; closure happens only via warehouse receipt.
+      "arrived",
+      "picked_up",
       "closed",
       "rejected",
       "failed",
@@ -329,6 +342,8 @@ export const partnerTasks = sqliteTable("partner_task", {
   assignedAt: integer("assigned_at"),
   acceptedAt: integer("accepted_at"),
   completedAt: integer("completed_at"), // partner marked done
+  arrivedAt: integer("arrived_at"), // pickup kind: partner arrived at supplier
+  pickedUpAt: integer("picked_up_at"), // pickup kind: goods collected, in transit
   closedBy: text("closed_by").references(() => users.id),
   closedAt: integer("closed_at"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
@@ -336,6 +351,12 @@ export const partnerTasks = sqliteTable("partner_task", {
 }, (t) => [
   index("partner_task_request_idx").on(t.requestId),
   index("partner_task_partner_status_idx").on(t.partnerId, t.status),
+  index("partner_task_po_idx").on(t.purchaseOrderId),
+  index("partner_task_case_idx").on(t.procurementCaseId),
+  check(
+    "partner_task_single_origin_chk",
+    sql`(${t.requestId} IS NOT NULL AND ${t.purchaseOrderId} IS NULL) OR (${t.requestId} IS NULL AND ${t.purchaseOrderId} IS NOT NULL)`
+  ),
 ])
 
 // ─── Services catalog ───────────────────────────────────────────────────────
@@ -570,7 +591,7 @@ export const attachments = sqliteTable("attachment", {
 export const activityLogs = sqliteTable("activity_log", {
   id: text("id").primaryKey(),
   entityType: text("entity_type", {
-    enum: ["request", "partner_task", "signature_request", "payment_batch"],
+    enum: ["request", "partner_task", "signature_request", "payment_batch", "purchase_order"],
   }).notNull(),
   entityId: text("entity_id").notNull(),
   action: text("action").notNull(), // e.g. "status_changed", "task_assigned"
@@ -687,6 +708,11 @@ export const suppliers = sqliteTable("supplier", {
   city: text("city"),
   address: text("address"),
   notes: text("notes"),
+  // Supplier-pickup logistics: inherited onto pickup tasks at creation time.
+  pickupContactName: text("pickup_contact_name"),
+  pickupContactMobile: text("pickup_contact_mobile"),
+  pickupMapsUrl: text("pickup_maps_url"),
+  pickupNotes: text("pickup_notes"),
   createdBy: text("created_by").references(() => users.id),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
@@ -781,6 +807,7 @@ export const orderUnits = sqliteTable(
     assetTag: text("asset_tag"),
     status: text("status", {
       enum: [
+        "receiving_qc",
         "in_stock",
         "reserved",
         "assigned",
@@ -864,6 +891,13 @@ export const purchaseOrders = sqliteTable(
       .default("draft"),
     invoiceRef: text("invoice_ref"),
     orderedAt: integer("ordered_at"),
+    // Optional lifecycle milestones. Payment itself lives in the ERP; paidAt
+    // only records that ops confirmed it. readyForPickupAt gates pickup tasks.
+    paidAt: integer("paid_at"),
+    readyForPickupAt: integer("ready_for_pickup_at"),
+    // When true, received assets mint at "receiving_qc" and require an
+    // explicit qc_pass before becoming available inventory.
+    qcRequired: integer("qc_required", { mode: "boolean" }).notNull().default(false),
     notes: text("notes"),
     // Commercial & Sourcing (M4.5): the operational anchor. Every PO (manual
     // or commercial-flow) gets one at write time — enforced NOT NULL since
@@ -897,6 +931,9 @@ export const purchaseOrderLines = sqliteTable(
     requiresSerial: integer("requires_serial", { mode: "boolean" }).notNull().default(true),
     qtyOrdered: integer("qty_ordered").notNull(),
     qtyReceived: integer("qty_received").notNull().default(0),
+    // Units collected from the supplier by pickup partners (in transit until
+    // received). Guarded increment: qtyPickedUp never exceeds qtyOrdered.
+    qtyPickedUp: integer("qty_picked_up").notNull().default(0),
     unitCost: real("unit_cost"),
     // A line is never deleted once it may carry history — it is cancelled
     // instead (only allowed while qtyReceived = 0). Cancelled lines are
@@ -911,6 +948,38 @@ export const purchaseOrderLines = sqliteTable(
   },
   (t) => [index("purchase_order_line_po_idx").on(t.purchaseOrderId)]
 )
+
+// ─── Pickup task lines (supplier pickup — partial pickups/receipts) ─────────
+// One row per (pickup task × PO line). qtyPlanned is what this task should
+// collect; qtyPickedUp what the partner actually collected; qtyReceived what
+// the warehouse confirmed against THIS task. Invariants (app-level, FKs off):
+// Σ qtyPlanned over open tasks ≤ line.qtyOrdered − line.qtyPickedUp at plan
+// time; qtyPickedUp ≤ qtyPlanned; qtyReceived ≤ qtyPickedUp.
+
+export const pickupTaskLines = sqliteTable(
+  "pickup_task_line",
+  {
+    id: text("id").primaryKey(),
+    pickupTaskId: text("pickup_task_id")
+      .notNull()
+      .references(() => partnerTasks.id, { onDelete: "cascade" }),
+    purchaseOrderLineId: text("purchase_order_line_id")
+      .notNull()
+      .references(() => purchaseOrderLines.id, { onDelete: "restrict" }),
+    qtyPlanned: integer("qty_planned").notNull(),
+    qtyPickedUp: integer("qty_picked_up").notNull().default(0),
+    qtyReceived: integer("qty_received").notNull().default(0),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    uniqueIndex("pickup_task_line_task_line_idx").on(t.pickupTaskId, t.purchaseOrderLineId),
+    index("pickup_task_line_po_line_idx").on(t.purchaseOrderLineId),
+  ]
+)
+
+export type PickupTaskLine = typeof pickupTaskLines.$inferSelect
+export type NewPickupTaskLine = typeof pickupTaskLines.$inferInsert
 
 // ─── Commercial & Sourcing (M4.5) ────────────────────────────────────────────
 // KOPH owns Need→Sourcing→RFQ→Quotations→Evaluation→Approval→Procurement Case.

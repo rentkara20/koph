@@ -108,6 +108,30 @@ export default function NewSupplierPage() {
                 <Input id="address" name="address" />
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="pickupContactName">
+                  {t("pickupContactName")}{" "}
+                  <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
+                </Label>
+                <Input id="pickupContactName" name="pickupContactName" />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="pickupContactMobile">
+                  {t("pickupContactMobile")}{" "}
+                  <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
+                </Label>
+                <Input id="pickupContactMobile" name="pickupContactMobile" dir="ltr" />
+              </div>
+
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="pickupMapsUrl">
+                  {t("pickupMapsUrl")}{" "}
+                  <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
+                </Label>
+                <Input id="pickupMapsUrl" name="pickupMapsUrl" dir="ltr" />
+              </div>
+
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="notes">
                   {tCommon("notes")}{" "}

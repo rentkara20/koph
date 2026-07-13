@@ -19,6 +19,10 @@ function parseSupplierForm(formData: FormData) {
     city: (formData.get("city") as string) || undefined,
     address: (formData.get("address") as string) || undefined,
     notes: (formData.get("notes") as string) || undefined,
+    pickupContactName: (formData.get("pickupContactName") as string) || undefined,
+    pickupContactMobile: (formData.get("pickupContactMobile") as string) || undefined,
+    pickupMapsUrl: (formData.get("pickupMapsUrl") as string) || undefined,
+    pickupNotes: (formData.get("pickupNotes") as string) || undefined,
   })
 }
 
@@ -40,6 +44,10 @@ export async function createSupplier(formData: FormData): Promise<ActionResult> 
     city: data.city || null,
     address: data.address || null,
     notes: data.notes || null,
+    pickupContactName: data.pickupContactName || null,
+    pickupContactMobile: data.pickupContactMobile || null,
+    pickupMapsUrl: data.pickupMapsUrl || null,
+    pickupNotes: data.pickupNotes || null,
     createdBy: session.user.id,
   })
 
@@ -65,6 +73,10 @@ export async function updateSupplier(id: string, formData: FormData): Promise<Ac
       city: data.city || null,
       address: data.address || null,
       notes: data.notes || null,
+      pickupContactName: data.pickupContactName || null,
+      pickupContactMobile: data.pickupContactMobile || null,
+      pickupMapsUrl: data.pickupMapsUrl || null,
+      pickupNotes: data.pickupNotes || null,
       updatedAt: Date.now(),
     })
     .where(eq(suppliers.id, id))

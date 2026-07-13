@@ -12,6 +12,7 @@ import {
   partnerContracts,
   partnerPayments,
   partnerTasks,
+  pickupTaskLines,
   requestItems,
   requests,
   requestTypes,
@@ -231,6 +232,13 @@ export async function signOffTask(
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Task not found" }
 
+  // Supplier-pickup tasks NEVER close through admin sign-off — completion
+  // happens only via warehouse receipt (receivePurchaseOrderLineCore).
+  if (task.kind === "supplier_pickup" || !task.requestId) {
+    return { error: "Pickup tasks are closed by warehouse receipt, not sign-off" }
+  }
+  const taskRequestId = task.requestId
+
   // Admins can override a failed task straight to closed (partner actually
   // delivered but marked it failed by mistake) instead of only accepting
   // sign-off from the normal pending_signoff state
@@ -242,7 +250,7 @@ export async function signOffTask(
   // Never generate payment for work under a cancelled/deleted request. A
   // failed request is allowed through when this is itself the override that
   // rescues the request out of that failed state.
-  const [parentRequest] = await db.select().from(requests).where(eq(requests.id, task.requestId))
+  const [parentRequest] = await db.select().from(requests).where(eq(requests.id, taskRequestId))
   if (!parentRequest || parentRequest.deletedAt) return { error: "Request no longer exists" }
   if (parentRequest.status === "cancelled" || (parentRequest.status === "failed" && !isOverride)) {
     return { error: "Cannot sign off a task on a cancelled request" }
@@ -288,7 +296,7 @@ export async function signOffTask(
             eq(signatureRequests.status, "signed"),
             or(
               eq(signatureRequests.partnerTaskId, taskId),
-              eq(signatureRequests.requestId, task.requestId)
+              eq(signatureRequests.requestId, taskRequestId)
             )
           )
         )
@@ -323,7 +331,7 @@ export async function signOffTask(
       aggregateType: "task",
       aggregateId: taskId,
       eventType: "TaskClosed",
-      payload: { requestId: task.requestId, isOverride, quantity: quantity ?? null },
+      payload: { requestId: taskRequestId, isOverride, quantity: quantity ?? null },
       dedupeKey: `task:${taskId}:TaskClosed`,
       actorUserId: session.user.id,
     })
@@ -380,13 +388,13 @@ export async function signOffTask(
       const pulled = await tx
         .select({ orderUnitId: requestItems.orderUnitId })
         .from(requestItems)
-        .where(and(eq(requestItems.requestId, task.requestId), isNotNull(requestItems.orderUnitId)))
+        .where(and(eq(requestItems.requestId, taskRequestId), isNotNull(requestItems.orderUnitId)))
       const unitIds = pulled.map((r) => r.orderUnitId).filter((v): v is string => Boolean(v))
 
       for (const unitId of unitIds) {
         try {
           await applyAssetTransition(tx, unitId, assetAction, {
-            requestId: task.requestId,
+            requestId: taskRequestId,
             customerId: parentRequest.customerId,
             byUserId: session.user.id,
           })
@@ -408,7 +416,7 @@ export async function signOffTask(
 
   await logActivity({
     entityType: "request",
-    entityId: task.requestId,
+    entityId: taskRequestId,
     action: isOverride ? "task_force_completed" : "task_signed_off",
     i18nKey: isOverride ? "activity.taskForceCompleted" : "activity.taskSignedOff",
     performedBy: session.user.id,
@@ -419,7 +427,7 @@ export async function signOffTask(
   if (!contract) {
     await logActivity({
       entityType: "request",
-      entityId: task.requestId,
+      entityId: taskRequestId,
       action: "task_closed_no_payment",
       i18nKey: "activity.taskClosedNoPayment",
       i18nData: { reason: noPaymentReason ?? "no_contract" },
@@ -427,8 +435,8 @@ export async function signOffTask(
     })
   }
 
-  await syncRequestStatus(task.requestId)
-  revalidatePath(`/admin/requests/${task.requestId}`)
+  await syncRequestStatus(taskRequestId)
+  revalidatePath(`/admin/requests/${taskRequestId}`)
   return { id: taskId }
 }
 
@@ -445,6 +453,10 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
 
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Task not found" }
+  if (task.kind === "supplier_pickup" || !task.requestId) {
+    return { error: "Pickup tasks have no sign-off proof to reject" }
+  }
+  const taskRequestId = task.requestId
   if (task.status !== "pending_signoff") {
     return { error: "Task is not awaiting sign-off" }
   }
@@ -475,7 +487,7 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
     await logActivity(
       {
         entityType: "request",
-        entityId: task.requestId,
+        entityId: taskRequestId,
         action: "task_proof_rejected",
         i18nKey: "activity.taskProofRejected",
         i18nData: reason ? { reason } : undefined,
@@ -488,7 +500,7 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
       aggregateType: "task",
       aggregateId: taskId,
       eventType: "TaskProofRejected",
-      payload: { requestId: task.requestId, reason: reason ?? null },
+      payload: { requestId: taskRequestId, reason: reason ?? null },
       dedupeKey: `task:${taskId}:TaskProofRejected:${createId()}`,
       actorUserId: session.user.id,
     })
@@ -506,7 +518,7 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
     const [request] = await db
       .select({ requestNumber: requests.requestNumber })
       .from(requests)
-      .where(eq(requests.id, task.requestId))
+      .where(eq(requests.id, taskRequestId))
 
     if (partner?.userId) {
       await notify({
@@ -524,8 +536,8 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
     // Notification failures must not block the rejection itself.
   }
 
-  await syncRequestStatus(task.requestId)
-  revalidatePath(`/admin/requests/${task.requestId}`)
+  await syncRequestStatus(taskRequestId)
+  revalidatePath(`/admin/requests/${taskRequestId}`)
   return { id: taskId }
 }
 
@@ -541,6 +553,11 @@ export async function cancelTask(taskId: string): Promise<ActionResult> {
   // leave that payment flowing into the next batch for cancelled work
   if (task.status === "closed") return { error: "Closed tasks cannot be cancelled" }
   if (task.status === "cancelled") return { error: "Task is already cancelled" }
+  // After pickup the goods physically sit with the partner — the task must be
+  // resolved by warehouse receipt (or admin failure handling), never vanish.
+  if (task.kind === "supplier_pickup" && task.status === "picked_up") {
+    return { error: "Cannot cancel a pickup that already collected goods — receive or fail it" }
+  }
 
   await db.transaction(async (tx) => {
     await tx
@@ -550,8 +567,8 @@ export async function cancelTask(taskId: string): Promise<ActionResult> {
 
     await logActivity(
       {
-        entityType: "request",
-        entityId: task.requestId,
+        entityType: task.requestId ? "request" : "purchase_order",
+        entityId: task.requestId ?? task.purchaseOrderId ?? task.id,
         action: "task_cancelled",
         i18nKey: "activity.taskCancelled",
         performedBy: session.user.id,
@@ -569,8 +586,12 @@ export async function cancelTask(taskId: string): Promise<ActionResult> {
     })
   })
 
-  await syncRequestStatus(task.requestId)
-  revalidatePath(`/admin/requests/${task.requestId}`)
+  if (task.requestId) {
+    await syncRequestStatus(task.requestId)
+    revalidatePath(`/admin/requests/${task.requestId}`)
+  } else if (task.purchaseOrderId) {
+    revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
+  }
   return { id: taskId }
 }
 
@@ -592,14 +613,15 @@ export async function regenerateTaskLink(taskId: string): Promise<ActionResult> 
     .where(eq(partnerTasks.id, taskId))
 
   await logActivity({
-    entityType: "request",
-    entityId: task.requestId,
+    entityType: task.requestId ? "request" : "purchase_order",
+    entityId: task.requestId ?? task.purchaseOrderId ?? task.id,
     action: "task_link_regenerated",
     i18nKey: "activity.taskLinkRegenerated",
     performedBy: session.user.id,
   })
 
-  revalidatePath(`/admin/requests/${task.requestId}`)
+  if (task.requestId) revalidatePath(`/admin/requests/${task.requestId}`)
+  else if (task.purchaseOrderId) revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
   return { id: taskId, taskToken }
 }
 
@@ -613,10 +635,18 @@ export async function getTaskByToken(token: string) {
 
   if (!task) return null
 
+  // Supplier-pickup tasks have no request/customer — the partner page shows
+  // supplier pickup info + expected PO lines instead (getPickupTaskByToken in
+  // lib/actions/procurement-pickup.ts). Signal the kind so the route branches.
+  if (task.kind === "supplier_pickup" || !task.requestId) {
+    return { task, request: null, partner: null, customer: null, items: [], requestType: null, linkedContact: null, isExpired: task.taskTokenExpiresAt < Date.now() }
+  }
+  const taskRequestId = task.requestId
+
   const [[request], [partner], items] = await Promise.all([
-    db.select().from(requests).where(eq(requests.id, task.requestId)),
+    db.select().from(requests).where(eq(requests.id, taskRequestId)),
     db.select().from(partners).where(eq(partners.id, task.partnerId)),
-    db.select().from(requestItems).where(eq(requestItems.requestId, task.requestId)),
+    db.select().from(requestItems).where(eq(requestItems.requestId, taskRequestId)),
   ])
 
   if (!request) return null
@@ -689,8 +719,12 @@ export async function updateTaskByToken(
     }
   }
 
+  // Pickup collection is quantity-carrying: it must go through
+  // markPickupCollectedByToken (procurement-pickup.ts), never this generic path.
+  if (action === "mark_picked_up") return { error: "Invalid action" }
+
   const newStatus = ACTION_STATUS[action]
-  if (!canTransition(task.status, action)) {
+  if (!canTransition(task.status, action, task.kind)) {
     return { error: "Invalid action for current task status" }
   }
 
@@ -716,6 +750,7 @@ export async function updateTaskByToken(
 
   if (newStatus === "accepted") updates.acceptedAt = Date.now()
   if (newStatus === "pending_signoff") updates.completedAt = Date.now()
+  if (newStatus === "arrived") updates.arrivedAt = Date.now()
   if (newStatus === "failed") {
     if (!data?.failureReason) return { error: "Failure reason is required" }
     updates.failureReason = data.failureReason as typeof task.failureReason
@@ -738,8 +773,8 @@ export async function updateTaskByToken(
 
     await logActivity(
       {
-        entityType: "request",
-        entityId: task.requestId,
+        entityType: task.requestId ? "request" : "purchase_order",
+        entityId: task.requestId ?? task.purchaseOrderId ?? task.id,
         action: `task_${action}`,
         i18nKey: `activity.task_${action}`,
         performedAs: "partner_link",
@@ -762,7 +797,8 @@ export async function updateTaskByToken(
     return { error: "Task status changed. Please refresh and try again." }
   }
 
-  await syncRequestStatus(task.requestId)
+  if (task.requestId) await syncRequestStatus(task.requestId)
+  if (task.purchaseOrderId) revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
   revalidatePath(`/task/${token}`)
   return { id: task.id }
 }
@@ -815,12 +851,22 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
   if (!session) return { error: "Unauthorized" }
 
   const [task] = await db
-    .select({ requestId: partnerTasks.requestId, status: partnerTasks.status })
+    .select({
+      requestId: partnerTasks.requestId,
+      purchaseOrderId: partnerTasks.purchaseOrderId,
+      kind: partnerTasks.kind,
+      status: partnerTasks.status,
+    })
     .from(partnerTasks)
     .where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Not found" }
   // Closed tasks have payment records referencing them — deleting would orphan the payment
   if (task.status === "closed") return { error: "Closed tasks cannot be deleted" }
+  // A pickup that collected goods carries in-transit quantities on PO lines —
+  // deleting it would orphan those counters. Resolve via receipt/failure instead.
+  if (task.kind === "supplier_pickup" && task.status === "picked_up") {
+    return { error: "Cannot delete a pickup that already collected goods" }
+  }
 
   // FK pragma is off in this project (see orders.ts), so a hard-delete here
   // would silently orphan attachment rows/photos and notification rows that
@@ -832,9 +878,13 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
     await tx
       .delete(notifications)
       .where(and(eq(notifications.entityId, taskId), eq(notifications.entityType, "partner_task")))
+    await tx
+      .delete(pickupTaskLines)
+      .where(eq(pickupTaskLines.pickupTaskId, taskId))
     await tx.delete(partnerTasks).where(eq(partnerTasks.id, taskId))
   })
 
-  revalidatePath(`/admin/requests/${task.requestId}`)
+  if (task.requestId) revalidatePath(`/admin/requests/${task.requestId}`)
+  else if (task.purchaseOrderId) revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
   return {}
 }

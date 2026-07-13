@@ -375,7 +375,11 @@ const createAssetSchema = z
 export async function createAssetCore(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   input: z.infer<typeof createAssetSchema>,
-  actorUserId: string | null
+  actorUserId: string | null,
+  // Receiving-QC gate: a PO with qcRequired mints at "receiving_qc" so the
+  // unit is not available inventory until an explicit qc_pass. Only the
+  // receiving flow sets this — direct entry always mints at in_stock.
+  initialStatus: "in_stock" | "receiving_qc" = "in_stock"
 ): Promise<{ assetId: string }> {
   const d = createAssetSchema.parse(input)
 
@@ -432,14 +436,14 @@ export async function createAssetCore(
     purchaseOrderId,
     serialNumber: d.serialNumber,
     assetTag,
-    status: "in_stock",
+    status: initialStatus,
   })
 
   await tx.insert(assetEvents).values({
     id: createId(),
     assetId,
     type: "created",
-    toStatus: "in_stock",
+    toStatus: initialStatus,
     notes: assetTag,
     byUserId: actorUserId,
   })

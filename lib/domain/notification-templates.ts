@@ -36,6 +36,7 @@ function num(v: unknown): number | undefined {
 // (signatures, tasks) points at the owning request page.
 export function notificationLinkUrl(ctx: EventContext): string | undefined {
   const requestId = str(ctx.payload.requestId)
+  const purchaseOrderId = str(ctx.payload.purchaseOrderId)
   switch (ctx.aggregateType) {
     case "request":
       return `/admin/requests/${ctx.aggregateId}`
@@ -50,6 +51,7 @@ export function notificationLinkUrl(ctx: EventContext): string | undefined {
     case "signature_request":
       return requestId ? `/admin/requests/${requestId}` : "/admin/signatures"
     case "task":
+      if (purchaseOrderId) return `/admin/procurement/${purchaseOrderId}`
       return requestId ? `/admin/requests/${requestId}` : "/admin/requests"
     default:
       return undefined
@@ -130,6 +132,26 @@ const TEMPLATES: Partial<Record<DomainEventType, TemplateFn>> = {
     i18nKey: "notifications.poLineReceived",
     entityType: "purchase_order",
     entityId: ctx.aggregateId,
+  }),
+
+  PickupTaskPickedUp: (ctx) => ({
+    type: "pickup_in_transit",
+    i18nKey: "notifications.pickupInTransit",
+    i18nData: { quantity: num(ctx.payload.totalCollected) ?? 0 },
+    entityType: "purchase_order",
+    entityId: str(ctx.payload.purchaseOrderId) ?? ctx.aggregateId,
+  }),
+  PickupTaskClosed: (ctx) => ({
+    type: "pickup_received",
+    i18nKey: "notifications.pickupReceived",
+    entityType: "purchase_order",
+    entityId: str(ctx.payload.purchaseOrderId) ?? ctx.aggregateId,
+  }),
+  ProcurementCaseClosed: (ctx) => ({
+    type: "procurement_case_closed",
+    i18nKey: "notifications.procurementCaseClosed",
+    entityType: "purchase_order",
+    entityId: str(ctx.payload.purchaseOrderId) ?? ctx.aggregateId,
   }),
 
   WarrantyActivated: (ctx) => ({

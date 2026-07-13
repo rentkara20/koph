@@ -30,6 +30,31 @@ describe("canTransition", () => {
   })
 })
 
+describe("canTransition — supplier_pickup kind", () => {
+  it("follows pending → accepted → arrived → picked_up", () => {
+    expect(canTransition("pending", "accept", "supplier_pickup")).toBe(true)
+    expect(canTransition("pending", "reject", "supplier_pickup")).toBe(true)
+    expect(canTransition("accepted", "mark_arrived", "supplier_pickup")).toBe(true)
+    expect(canTransition("arrived", "mark_picked_up", "supplier_pickup")).toBe(true)
+  })
+  it("partner can never complete a pickup (no mark_done, no exit from picked_up)", () => {
+    expect(canTransition("accepted", "mark_done", "supplier_pickup")).toBe(false)
+    expect(canTransition("arrived", "mark_done", "supplier_pickup")).toBe(false)
+    expect(canTransition("picked_up", "mark_done", "supplier_pickup")).toBe(false)
+    expect(canTransition("picked_up", "mark_failed", "supplier_pickup")).toBe(false)
+    expect(canTransition("picked_up", "mark_picked_up", "supplier_pickup")).toBe(false)
+  })
+  it("allows failure only before goods are collected", () => {
+    expect(canTransition("accepted", "mark_failed", "supplier_pickup")).toBe(true)
+    expect(canTransition("arrived", "mark_failed", "supplier_pickup")).toBe(true)
+  })
+  it("pickup statuses are not reachable for request kind", () => {
+    expect(canTransition("accepted", "mark_arrived")).toBe(false)
+    expect(canTransition("arrived", "mark_picked_up", "request")).toBe(false)
+    expect(canTransition("accepted", "start", "supplier_pickup")).toBe(false)
+  })
+})
+
 describe("ACTION_STATUS", () => {
   it("maps each action to its target status", () => {
     expect(ACTION_STATUS.accept).toBe("accepted")

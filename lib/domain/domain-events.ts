@@ -27,6 +27,8 @@ export function buildDedupeKey(aggregateType: string, aggregateId: string, event
 }
 
 const ASSET_ACTION_EVENT_TYPE: Partial<Record<string, string>> = {
+  qc_pass: "AssetQcPassed",
+  qc_fail: "AssetQcFailed",
   reserve: "AssetReserved",
   unreserve: "AssetUnreserved",
   assign: "AssetAssigned",
@@ -56,6 +58,8 @@ const TASK_ACTION_EVENT_TYPE: Partial<Record<string, string>> = {
   mark_done: "TaskPendingSignoff",
   reject: "TaskRejected",
   mark_failed: "TaskFailed",
+  mark_arrived: "PickupTaskArrived",
+  mark_picked_up: "PickupTaskPickedUp",
 }
 
 export function domainEventTypeForTaskAction(action: string): DomainEventType | null {
@@ -80,6 +84,8 @@ export const DOMAIN_EVENT_TYPES = [
   "AssetLost",
   "AssetFound",
   "AssetStatusCorrected",
+  "AssetQcPassed",
+  "AssetQcFailed",
   "RequestCreated",
   "RequestAssigned",
   "RequestCompleted",
@@ -106,6 +112,13 @@ export const DOMAIN_EVENT_TYPES = [
   "PurchaseOrderCreated",
   "PurchaseOrderLineReceived",
   "PurchaseOrderLineCancelled",
+  "PurchaseOrderMarkedPaid",
+  "PurchaseOrderReadyForPickup",
+  "PickupTaskCreated",
+  "PickupTaskArrived",
+  "PickupTaskPickedUp",
+  "PickupTaskClosed",
+  "ProcurementCaseClosed",
   "SourcingRequestCreated",
   "SourcingRequestItemAdded",
   "SupplierRfqSent",

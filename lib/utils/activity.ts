@@ -2,7 +2,7 @@ import { db } from "@/lib/db"
 import { activityLogs } from "@/lib/db/schema"
 import { createId } from "./ids"
 
-type EntityType = "request" | "partner_task" | "signature_request" | "payment_batch"
+type EntityType = "request" | "partner_task" | "signature_request" | "payment_batch" | "purchase_order"
 type PerformedAs = "user" | "partner_link" | "system"
 
 interface LogActivityOptions {

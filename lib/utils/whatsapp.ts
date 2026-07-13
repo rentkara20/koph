@@ -47,6 +47,39 @@ export function partnerAssignmentMessage(opts: {
   ].join("\n")
 }
 
+export function partnerPickupAssignmentMessage(opts: {
+  partnerName: string
+  poNumber: string
+  supplierName: string
+  pickupAddress?: string | null
+  pickupContactName?: string | null
+  pickupContactMobile?: string | null
+  pickupMapsUrl?: string | null
+  destinationLocation: string
+  itemsSummary: string
+  taskLink: string
+}): string {
+  const lines = [
+    `مرحباً ${opts.partnerName}،`,
+    `مهمة استلام جديدة من كارا للطلب الشرائي رقم ${opts.poNumber}.`,
+    `المورّد: ${opts.supplierName}.`,
+  ]
+  if (opts.pickupAddress) lines.push(`العنوان: ${opts.pickupAddress}`)
+  if (opts.pickupContactName || opts.pickupContactMobile) {
+    lines.push(
+      `جهة الاتصال: ${[opts.pickupContactName, opts.pickupContactMobile].filter(Boolean).join(" - ")}`
+    )
+  }
+  if (opts.pickupMapsUrl) lines.push(`الموقع على الخريطة: ${opts.pickupMapsUrl}`)
+  lines.push(
+    `الأصناف المتوقعة: ${opts.itemsSummary}.`,
+    `التسليم إلى: ${opts.destinationLocation}.`,
+    `افتح الرابط لقبول المهمة وتأكيد الاستلام:`,
+    opts.taskLink
+  )
+  return lines.join("\n")
+}
+
 export function customerGreetingMessage(opts: {
   courierName: string
   customerName: string | null

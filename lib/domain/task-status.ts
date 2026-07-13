@@ -1,6 +1,19 @@
 // Pure partner-task state machine, extracted from tasks.ts for unit testing.
+// Two task kinds share the table but have distinct partner flows:
+//   request:          pending → accepted → in_progress → pending_signoff → closed (admin sign-off)
+//   supplier_pickup:  pending → accepted → arrived → picked_up → closed (warehouse receipt only —
+//                     "picked_up" means in transit; the partner can never close a pickup).
 
-export type PartnerAction = "accept" | "reject" | "start" | "mark_done" | "mark_failed"
+export type TaskKind = "request" | "supplier_pickup"
+
+export type PartnerAction =
+  | "accept"
+  | "reject"
+  | "start"
+  | "mark_done"
+  | "mark_failed"
+  | "mark_arrived"
+  | "mark_picked_up"
 
 export const ACTION_STATUS: Record<PartnerAction, string> = {
   accept: "accepted",
@@ -8,6 +21,8 @@ export const ACTION_STATUS: Record<PartnerAction, string> = {
   start: "in_progress",
   mark_done: "pending_signoff",
   mark_failed: "failed",
+  mark_arrived: "arrived",
+  mark_picked_up: "picked_up",
 }
 
 export const ALLOWED_TRANSITIONS: Record<string, string[]> = {
@@ -16,8 +31,25 @@ export const ALLOWED_TRANSITIONS: Record<string, string[]> = {
   in_progress: ["pending_signoff", "failed"],
 }
 
+// Pickup kind: no in_progress/pending_signoff; failure allowed until the goods
+// are collected — after picked_up the units physically exist with the partner,
+// so the only exits are warehouse receipt (closed) or admin intervention.
+export const PICKUP_ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  pending: ["accepted", "rejected"],
+  accepted: ["arrived", "failed"],
+  arrived: ["picked_up", "failed"],
+}
+
+export function transitionsForKind(kind: TaskKind): Record<string, string[]> {
+  return kind === "supplier_pickup" ? PICKUP_ALLOWED_TRANSITIONS : ALLOWED_TRANSITIONS
+}
+
 // True when `action` is a legal transition from the task's current status.
-export function canTransition(fromStatus: string, action: PartnerAction): boolean {
+export function canTransition(
+  fromStatus: string,
+  action: PartnerAction,
+  kind: TaskKind = "request"
+): boolean {
   const target = ACTION_STATUS[action]
-  return ALLOWED_TRANSITIONS[fromStatus]?.includes(target) ?? false
+  return transitionsForKind(kind)[fromStatus]?.includes(target) ?? false
 }
