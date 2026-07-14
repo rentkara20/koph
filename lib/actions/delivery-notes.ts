@@ -11,6 +11,7 @@ import {
   signatureRequests,
   signatureItemConditions,
 } from "@/lib/db/schema"
+import { parseSignatureSnapshot } from "@/lib/domain/signature-snapshot"
 
 type SignatureParty = {
   fullName: string
@@ -197,6 +198,40 @@ export async function getDeliveryNoteData(
 
   const receiverParty = await loadSignatureParty(receiverSig.id)
   const authorizedParty = authorizedSig ? await loadSignatureParty(authorizedSig.id) : null
+
+  // Prefer the immutable snapshot frozen at signing time. Falls back to the
+  // live rows loaded above for legacy signatures (signed before snapshots
+  // existed) or requests that were never signed.
+  const [snapRow] = await db
+    .select({ snapshot: customerSignatures.snapshot })
+    .from(customerSignatures)
+    .where(eq(customerSignatures.signatureRequestId, receiverSig.id))
+  const snapshot = parseSignatureSnapshot(snapRow?.snapshot)
+  if (snapshot) {
+    if (snapshot.items.length > 0) {
+      items = snapshot.items.map((i) => ({
+        id: i.id,
+        description: i.description,
+        brand: i.brand,
+        model: i.model,
+        serialNumber: i.serialNumber,
+        quantity: i.quantity,
+        accessories: i.accessories,
+        condition: i.condition,
+        receivedQuantity: i.receivedQuantity,
+      }))
+    }
+    if (snapshot.customer && customerRow) {
+      // Keep email from the live customer row (not snapshotted); freeze the rest.
+      customerRow.name = snapshot.customer.name ?? customerRow.name
+      customerRow.contactPerson = snapshot.customer.contactPerson ?? customerRow.contactPerson
+      customerRow.mobile = snapshot.customer.mobile ?? customerRow.mobile
+      customerRow.city = snapshot.customer.city ?? customerRow.city
+    }
+    if (requestRow && snapshot.requestNumber) {
+      requestRow = { ...requestRow, requestNumber: snapshot.requestNumber, quoteNumber: snapshot.quoteNumber }
+    }
+  }
 
   return {
     sig: {

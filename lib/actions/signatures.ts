@@ -19,6 +19,11 @@ import {
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { publicUrl } from "@/lib/utils/public-url"
+import {
+  buildSignatureSnapshot,
+  type DeliveryOutcome,
+  type SnapshotItem,
+} from "@/lib/domain/signature-snapshot"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { logActivity } from "@/lib/utils/activity"
 import { sendEmail } from "@/lib/email/resend"
@@ -63,6 +68,71 @@ async function buildAuditHash(payload: (string | null | undefined)[]): Promise<s
 }
 
 export type SignatureActionResult = { error?: string; id?: string; token?: string }
+
+// Freezes the receipt as presented at signing into a JSON snapshot. Reads live
+// item/customer rows once, at signing time; the stored snapshot is what the
+// delivery note renders thereafter, so later request edits never rewrite it.
+// Returns null when there is no linked request (nothing to snapshot).
+async function buildSnapshotJson(input: {
+  requestId: string | null
+  requestNumber: string
+  quoteNumber: string
+  customerId: string
+  itemConditions?: { requestItemId: string; condition: "good" | "damaged" | "missing"; receivedQuantity?: number }[]
+  deliveryOutcome: DeliveryOutcome | null
+  remarks: string | null
+  signer: { fullName: string; position: string | null; nationalId: string | null }
+  signedAt: number
+}): Promise<string | null> {
+  if (!input.requestId) return null
+
+  const [customer] = await db
+    .select({
+      name: customers.name,
+      contactPerson: customers.contactPerson,
+      mobile: customers.mobile,
+      city: customers.city,
+    })
+    .from(customers)
+    .where(eq(customers.id, input.customerId))
+
+  const rawItems = await db
+    .select({
+      id: requestItems.id,
+      description: requestItems.description,
+      brand: requestItems.brand,
+      model: requestItems.model,
+      serialNumber: requestItems.serialNumber,
+      quantity: requestItems.quantity,
+      accessories: requestItems.accessories,
+    })
+    .from(requestItems)
+    .where(eq(requestItems.requestId, input.requestId))
+
+  const condMap = new Map(
+    (input.itemConditions ?? []).map((c) => [c.requestItemId, c])
+  )
+  const items: SnapshotItem[] = rawItems.map((i) => {
+    const c = condMap.get(i.id)
+    return {
+      ...i,
+      condition: c?.condition ?? null,
+      receivedQuantity: c?.receivedQuantity ?? null,
+    }
+  })
+
+  const snapshot = buildSignatureSnapshot({
+    requestNumber: input.requestNumber || null,
+    quoteNumber: input.quoteNumber || null,
+    customer: customer ?? null,
+    items,
+    deliveryOutcome: input.deliveryOutcome,
+    remarks: input.remarks,
+    signer: input.signer,
+    signedAt: input.signedAt,
+  })
+  return JSON.stringify(snapshot)
+}
 
 // ─── Admin: create signature request ─────────────────────────────────────────
 
@@ -323,7 +393,10 @@ export async function submitSignature(
     fullName: string
     mobile?: string
     nationalId?: string
+    position?: string
     signatureData: string
+    deliveryOutcome?: DeliveryOutcome
+    remarks?: string
     itemConditions?: {
       requestItemId: string
       condition: "good" | "damaged" | "missing"
@@ -415,6 +488,19 @@ export async function submitSignature(
     if (owned.length !== itemIds.length) return { error: "Invalid item in signature" }
   }
 
+  // Freeze an immutable snapshot of the receipt as presented at signing time.
+  const snapshotJson = await buildSnapshotJson({
+    requestId: sig.requestId,
+    requestNumber,
+    quoteNumber,
+    customerId: sig.customerId,
+    itemConditions: data.itemConditions,
+    deliveryOutcome: data.deliveryOutcome ?? null,
+    remarks: data.remarks ?? null,
+    signer: { fullName, position: data.position ?? null, nationalId },
+    signedAt: now,
+  })
+
   try {
     await db.transaction(async (tx) => {
     // Guarded status flip FIRST: if a concurrent submit already signed this
@@ -431,7 +517,12 @@ export async function submitSignature(
       fullName,
       mobile: data.mobile?.trim() ?? "",
       nationalId,
+      position: data.position?.trim() || null,
       signatureData: data.signatureData,
+      signatureMethod: "electronic",
+      deliveryOutcome: data.deliveryOutcome ?? null,
+      remarks: data.remarks?.trim() || null,
+      snapshot: snapshotJson,
       consentVersion: consent?.version ?? null,
       consentAcceptedAt: now,
       signedAt: now,
@@ -644,7 +735,19 @@ export async function getSignatureForTaskToken(taskToken: string) {
 
 export async function signOnSiteByTaskToken(
   taskToken: string,
-  data: { fullName: string; nationalId: string; signatureData: string }
+  data: {
+    fullName: string
+    nationalId: string
+    signatureData: string
+    position?: string
+    deliveryOutcome?: DeliveryOutcome
+    remarks?: string
+    itemConditions?: {
+      requestItemId: string
+      condition: "good" | "damaged" | "missing"
+      receivedQuantity?: number
+    }[]
+  }
 ): Promise<SignatureActionResult> {
   if (!checkRateLimit(`sig-onsite:${taskToken}`, 10)) {
     return { error: "Too many attempts. Please wait a minute and try again." }
@@ -747,6 +850,18 @@ export async function signOnSiteByTaskToken(
     userAgent,
   ])
 
+  const snapshotJson = await buildSnapshotJson({
+    requestId: task.requestId,
+    requestNumber: req.requestNumber,
+    quoteNumber: req.quoteNumber ?? "",
+    customerId: req.customerId,
+    itemConditions: data.itemConditions,
+    deliveryOutcome: data.deliveryOutcome ?? null,
+    remarks: data.remarks ?? null,
+    signer: { fullName, position: data.position ?? null, nationalId },
+    signedAt: now,
+  })
+
   try {
     await db.transaction(async (tx) => {
     // Guarded status flip first — abort on a concurrent double-submit so a
@@ -762,7 +877,12 @@ export async function signOnSiteByTaskToken(
       fullName,
       mobile: "",
       nationalId,
+      position: data.position?.trim() || null,
       signatureData: data.signatureData,
+      signatureMethod: "electronic",
+      deliveryOutcome: data.deliveryOutcome ?? null,
+      remarks: data.remarks?.trim() || null,
+      snapshot: snapshotJson,
       consentAcceptedAt: now,
       signedAt: now,
       signedAtTz: "Asia/Riyadh",
