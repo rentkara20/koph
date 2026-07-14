@@ -3,7 +3,9 @@
 // sender's own WhatsApp. Message templates are the single source of truth so
 // admin and partner surfaces send consistent wording.
 
-const appUrl = () => process.env.NEXT_PUBLIC_APP_URL ?? ""
+import { appBaseUrl } from "@/lib/utils/public-url"
+
+const appUrl = () => appBaseUrl()
 
 /**
  * Normalises a Saudi mobile number to bare international digits for wa.me.

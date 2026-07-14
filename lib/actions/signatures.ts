@@ -1,7 +1,7 @@
 "use server"
 
 import { checkRateLimit } from "@/lib/utils/rate-limit"
-import { desc, eq, and, inArray } from "drizzle-orm"
+import { desc, eq, and, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { db } from "@/lib/db"
@@ -18,6 +18,12 @@ import {
   requestItems,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
+import { publicUrl } from "@/lib/utils/public-url"
+import {
+  buildSignatureSnapshot,
+  type DeliveryOutcome,
+  type SnapshotItem,
+} from "@/lib/domain/signature-snapshot"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { logActivity } from "@/lib/utils/activity"
 import { sendEmail } from "@/lib/email/resend"
@@ -62,6 +68,71 @@ async function buildAuditHash(payload: (string | null | undefined)[]): Promise<s
 }
 
 export type SignatureActionResult = { error?: string; id?: string; token?: string }
+
+// Freezes the receipt as presented at signing into a JSON snapshot. Reads live
+// item/customer rows once, at signing time; the stored snapshot is what the
+// delivery note renders thereafter, so later request edits never rewrite it.
+// Returns null when there is no linked request (nothing to snapshot).
+async function buildSnapshotJson(input: {
+  requestId: string | null
+  requestNumber: string
+  quoteNumber: string
+  customerId: string
+  itemConditions?: { requestItemId: string; condition: "good" | "damaged" | "missing"; receivedQuantity?: number }[]
+  deliveryOutcome: DeliveryOutcome | null
+  remarks: string | null
+  signer: { fullName: string; position: string | null; nationalId: string | null }
+  signedAt: number
+}): Promise<string | null> {
+  if (!input.requestId) return null
+
+  const [customer] = await db
+    .select({
+      name: customers.name,
+      contactPerson: customers.contactPerson,
+      mobile: customers.mobile,
+      city: customers.city,
+    })
+    .from(customers)
+    .where(eq(customers.id, input.customerId))
+
+  const rawItems = await db
+    .select({
+      id: requestItems.id,
+      description: requestItems.description,
+      brand: requestItems.brand,
+      model: requestItems.model,
+      serialNumber: requestItems.serialNumber,
+      quantity: requestItems.quantity,
+      accessories: requestItems.accessories,
+    })
+    .from(requestItems)
+    .where(eq(requestItems.requestId, input.requestId))
+
+  const condMap = new Map(
+    (input.itemConditions ?? []).map((c) => [c.requestItemId, c])
+  )
+  const items: SnapshotItem[] = rawItems.map((i) => {
+    const c = condMap.get(i.id)
+    return {
+      ...i,
+      condition: c?.condition ?? null,
+      receivedQuantity: c?.receivedQuantity ?? null,
+    }
+  })
+
+  const snapshot = buildSignatureSnapshot({
+    requestNumber: input.requestNumber || null,
+    quoteNumber: input.quoteNumber || null,
+    customer: customer ?? null,
+    items,
+    deliveryOutcome: input.deliveryOutcome,
+    remarks: input.remarks,
+    signer: input.signer,
+    signedAt: input.signedAt,
+  })
+  return JSON.stringify(snapshot)
+}
 
 // ─── Admin: create signature request ─────────────────────────────────────────
 
@@ -129,6 +200,10 @@ export async function getSignatureRequestsForRequest(requestId: string) {
       parentSignatureRequestId: signatureRequests.parentSignatureRequestId,
       signerName: customerSignatures.fullName,
       signedAt: customerSignatures.signedAt,
+      signatureMethod: customerSignatures.signatureMethod,
+      uploadedFileUrl: customerSignatures.uploadedFileUrl,
+      approvedAt: customerSignatures.approvedAt,
+      reviewNotes: customerSignatures.reviewNotes,
     })
     .from(signatureRequests)
     .leftJoin(customerSignatures, eq(customerSignatures.signatureRequestId, signatureRequests.id))
@@ -221,7 +296,8 @@ export async function cancelSignatureRequest(id: string): Promise<SignatureActio
   await db.transaction(async (tx) => {
     await tx
       .update(signatureRequests)
-      .set({ status: "cancelled", updatedAt: Date.now() })
+      // Cancellation invalidates any live OTP immediately.
+      .set({ status: "cancelled", otpHash: null, otpExpiresAt: null, updatedAt: Date.now() })
       .where(eq(signatureRequests.id, id))
 
     await emitDomainEvent(tx, {
@@ -322,7 +398,10 @@ export async function submitSignature(
     fullName: string
     mobile?: string
     nationalId?: string
+    position?: string
     signatureData: string
+    deliveryOutcome?: DeliveryOutcome
+    remarks?: string
     itemConditions?: {
       requestItemId: string
       condition: "good" | "damaged" | "missing"
@@ -414,6 +493,19 @@ export async function submitSignature(
     if (owned.length !== itemIds.length) return { error: "Invalid item in signature" }
   }
 
+  // Freeze an immutable snapshot of the receipt as presented at signing time.
+  const snapshotJson = await buildSnapshotJson({
+    requestId: sig.requestId,
+    requestNumber,
+    quoteNumber,
+    customerId: sig.customerId,
+    itemConditions: data.itemConditions,
+    deliveryOutcome: data.deliveryOutcome ?? null,
+    remarks: data.remarks ?? null,
+    signer: { fullName, position: data.position ?? null, nationalId },
+    signedAt: now,
+  })
+
   try {
     await db.transaction(async (tx) => {
     // Guarded status flip FIRST: if a concurrent submit already signed this
@@ -421,7 +513,8 @@ export async function submitSignature(
     // second customerSignatures row for the same request.
     assertSigned(await tx
       .update(signatureRequests)
-      .set({ status: "signed", updatedAt: now })
+      // Signing invalidates any live OTP immediately (single-use).
+      .set({ status: "signed", otpHash: null, otpExpiresAt: null, updatedAt: now })
       .where(and(eq(signatureRequests.id, sig.id), eq(signatureRequests.status, sig.status))))
 
     await tx.insert(customerSignatures).values({
@@ -430,7 +523,12 @@ export async function submitSignature(
       fullName,
       mobile: data.mobile?.trim() ?? "",
       nationalId,
+      position: data.position?.trim() || null,
       signatureData: data.signatureData,
+      signatureMethod: "electronic",
+      deliveryOutcome: data.deliveryOutcome ?? null,
+      remarks: data.remarks?.trim() || null,
+      snapshot: snapshotJson,
       consentVersion: consent?.version ?? null,
       consentAcceptedAt: now,
       signedAt: now,
@@ -455,6 +553,29 @@ export async function submitSignature(
       payload: { requestId: sig.requestId ?? null, signatoryRole: sig.signatoryRole },
       dedupeKey: `signature_request:${sig.id}:SignatureCompleted`,
     })
+
+    // Remote/electronic signature counts as accepted proof of delivery. Record
+    // the signature-received time on the delivery task awaiting sign-off; never
+    // closes it (admin sign-off remains the sole closer/payment gate). Only the
+    // receiver stage (not authorised stage-2) advances the delivery task.
+    if (sig.requestId && sig.signatoryRole !== "authorized" && data.deliveryOutcome !== "refused") {
+      // Scope to the exact task this signature belongs to. The requestId-only
+      // fallback is for legacy signature requests created before per-task
+      // linkage existed (partnerTaskId null) — every new signature request is
+      // created with partnerTaskId set, so multi-task requests are unaffected.
+      await tx
+        .update(partnerTasks)
+        .set({ signatureReceivedAt: now, updatedAt: now })
+        .where(
+          sig.partnerTaskId
+            ? and(eq(partnerTasks.id, sig.partnerTaskId), isNull(partnerTasks.signatureReceivedAt))
+            : and(
+                eq(partnerTasks.requestId, sig.requestId),
+                eq(partnerTasks.status, "pending_signoff"),
+                isNull(partnerTasks.signatureReceivedAt)
+              )
+        )
+    }
 
     // Per-item acknowledgement of received condition (ownership validated above).
     if (data.itemConditions && data.itemConditions.length > 0) {
@@ -524,7 +645,7 @@ async function handlePostSignature(ctx: PostSignatureCtx) {
       .from(customers)
       .where(eq(customers.id, sig.customerId))
     if (customerRow?.email) {
-      const printUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${sig.secureToken}/print`
+      const printUrl = publicUrl(`/sign/${sig.secureToken}/print`)
       const { subject, html } = deliveryNoteSignedEmail({
         customerName: customerRow.name,
         requestNumber,
@@ -635,7 +756,7 @@ export async function getSignatureForTaskToken(taskToken: string) {
   return {
     sigReq,
     sig: sig ?? null,
-    signLink: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${sigReq.secureToken}`,
+    signLink: publicUrl(`/sign/${sigReq.secureToken}`),
   }
 }
 
@@ -643,7 +764,19 @@ export async function getSignatureForTaskToken(taskToken: string) {
 
 export async function signOnSiteByTaskToken(
   taskToken: string,
-  data: { fullName: string; nationalId: string; signatureData: string }
+  data: {
+    fullName: string
+    nationalId: string
+    signatureData: string
+    position?: string
+    deliveryOutcome?: DeliveryOutcome
+    remarks?: string
+    itemConditions?: {
+      requestItemId: string
+      condition: "good" | "damaged" | "missing"
+      receivedQuantity?: number
+    }[]
+  }
 ): Promise<SignatureActionResult> {
   if (!checkRateLimit(`sig-onsite:${taskToken}`, 10)) {
     return { error: "Too many attempts. Please wait a minute and try again." }
@@ -746,13 +879,34 @@ export async function signOnSiteByTaskToken(
     userAgent,
   ])
 
+  const snapshotJson = await buildSnapshotJson({
+    requestId: task.requestId,
+    requestNumber: req.requestNumber,
+    quoteNumber: req.quoteNumber ?? "",
+    customerId: req.customerId,
+    itemConditions: data.itemConditions,
+    deliveryOutcome: data.deliveryOutcome ?? null,
+    remarks: data.remarks ?? null,
+    signer: { fullName, position: data.position ?? null, nationalId },
+    signedAt: now,
+  })
+
+  // Outcome drives both the signature record and the task/request transition.
+  // refused → signature stands as evidence (status "rejected", NOT an accepted
+  // proof of delivery) and the task fails. full_*/partial → accepted proof:
+  // record delivery + signature-received time and leave the task at
+  // pending_signoff for admin sign-off (partial also holds the request).
+  const outcome = data.deliveryOutcome ?? null
+  const refused = outcome === "refused"
+  const sigStatus = refused ? "rejected" : "signed"
+
   try {
     await db.transaction(async (tx) => {
     // Guarded status flip first — abort on a concurrent double-submit so a
     // second signature record is never persisted for the same request.
     assertSigned(await tx
       .update(signatureRequests)
-      .set({ status: "signed", updatedAt: now })
+      .set({ status: sigStatus, otpHash: null, otpExpiresAt: null, updatedAt: now })
       .where(and(eq(signatureRequests.id, sigReq.id), eq(signatureRequests.status, sigReq.status))))
 
     await tx.insert(customerSignatures).values({
@@ -761,7 +915,12 @@ export async function signOnSiteByTaskToken(
       fullName,
       mobile: "",
       nationalId,
+      position: data.position?.trim() || null,
       signatureData: data.signatureData,
+      signatureMethod: "electronic",
+      deliveryOutcome: outcome,
+      remarks: data.remarks?.trim() || null,
+      snapshot: snapshotJson,
       consentAcceptedAt: now,
       signedAt: now,
       signedAtTz: "Asia/Riyadh",
@@ -773,16 +932,48 @@ export async function signOnSiteByTaskToken(
     await tx.insert(signatureEvents).values({
       id: createId(),
       signatureRequestId: sigReq.id,
-      eventType: "signed",
+      eventType: refused ? "rejected" : "signed",
     })
 
     await emitDomainEvent(tx, {
       aggregateType: "signature_request",
       aggregateId: sigReq.id,
-      eventType: "SignatureCompleted",
+      eventType: refused ? "SignatureRejected" : "SignatureCompleted",
       payload: { requestId: sigReq.requestId ?? null, signatoryRole: sigReq.signatoryRole },
-      dedupeKey: `signature_request:${sigReq.id}:SignatureCompleted`,
+      dedupeKey: `signature_request:${sigReq.id}:${refused ? "SignatureRejected" : "SignatureCompleted"}`,
     })
+
+    // Task + request transition. Never closes the task — admin sign-off is the
+    // sole closer/payment gate — but records delivery/proof times and moves the
+    // task into the correct holding state.
+    if (refused) {
+      await tx
+        .update(partnerTasks)
+        .set({
+          status: "failed",
+          failureReason: task.failureReason ?? "other",
+          failureNotes: data.remarks?.trim() || task.failureNotes || null,
+          deliveredAt: task.deliveredAt ?? now,
+          taskTokenExpiresAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(partnerTasks.id, task.id), eq(partnerTasks.status, task.status)))
+      await tx.update(requests).set({ status: "failed", updatedAt: now }).where(eq(requests.id, task.requestId!))
+    } else {
+      await tx
+        .update(partnerTasks)
+        .set({
+          status: task.status === "in_progress" ? "pending_signoff" : task.status,
+          completedAt: task.completedAt ?? now,
+          deliveredAt: task.deliveredAt ?? now,
+          signatureReceivedAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(partnerTasks.id, task.id), eq(partnerTasks.status, task.status)))
+      if (outcome === "partial") {
+        await tx.update(requests).set({ status: "on_hold", updatedAt: now }).where(eq(requests.id, task.requestId!))
+      }
+    }
     })
   } catch (e) {
     if (e instanceof StaleSignatureError) return { error: "This document is already signed or cancelled" }
@@ -857,6 +1048,229 @@ export async function rejectSignature(
   }
 
   return { id: sig.id }
+}
+
+// ─── Manual returned signed receipt (upload → review → approve/reject) ───────
+// Preserves the original unsigned printable receipt. The uploaded file is
+// pending until an admin approves it; approval is what makes it an accepted
+// proof of delivery. Task closure still happens ONLY via admin signOffTask.
+
+export async function uploadManualSignature(
+  signatureRequestId: string,
+  data: { fileUrl: string; fileName: string; fullName: string; nationalId?: string }
+): Promise<SignatureActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const fileUrl = data.fileUrl?.trim()
+  const fullName = data.fullName?.trim()
+  if (!fileUrl) return { error: "A file is required" }
+  if (!fullName) return { error: "Signer name is required" }
+
+  const [sig] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, signatureRequestId))
+  if (!sig) return { error: "Signature request not found" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) {
+    return { error: "This signature request is no longer active" }
+  }
+
+  const now = Date.now()
+  const id = createId()
+  // One signature row per request — upsert so a rejected upload can be replaced.
+  await db
+    .insert(customerSignatures)
+    .values({
+      id,
+      signatureRequestId: sig.id,
+      fullName,
+      mobile: "",
+      nationalId: data.nationalId?.trim() || null,
+      signatureData: "", // artefact lives in uploadedFileUrl for manual uploads
+      signatureMethod: "manual_upload",
+      uploadedFileUrl: fileUrl,
+      uploadedBy: session.user.id,
+      uploadedAt: now,
+      approvedBy: null,
+      approvedAt: null,
+      reviewNotes: null,
+      signedAt: now,
+      signedAtTz: "Asia/Riyadh",
+    })
+    .onConflictDoUpdate({
+      target: customerSignatures.signatureRequestId,
+      set: {
+        fullName,
+        nationalId: data.nationalId?.trim() || null,
+        signatureMethod: "manual_upload",
+        uploadedFileUrl: fileUrl,
+        uploadedBy: session.user.id,
+        uploadedAt: now,
+        approvedBy: null,
+        approvedAt: null,
+        reviewNotes: null,
+      },
+    })
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: sig.id,
+    action: "manual_signature_uploaded",
+    i18nKey: "activity.manualSignatureUploaded",
+    i18nData: { fileName: data.fileName },
+    performedBy: session.user.id,
+  })
+
+  if (sig.requestId) revalidatePath(`/admin/requests/${sig.requestId}`)
+  return { id: sig.id }
+}
+
+export async function approveManualSignature(
+  signatureRequestId: string,
+  data?: { reviewNotes?: string }
+): Promise<SignatureActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const [sig] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, signatureRequestId))
+  if (!sig) return { error: "Signature request not found" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) {
+    return { error: "This signature request is no longer active" }
+  }
+
+  const [existing] = await db
+    .select()
+    .from(customerSignatures)
+    .where(eq(customerSignatures.signatureRequestId, sig.id))
+  if (!existing || existing.signatureMethod !== "manual_upload" || !existing.uploadedFileUrl) {
+    return { error: "No uploaded file to approve" }
+  }
+  if (existing.approvedAt) return { error: "Already approved" }
+
+  const now = Date.now()
+  // Freeze the receipt as approved (manual uploads carry no outcome → full).
+  const snapshotJson = await buildSnapshotJson({
+    requestId: sig.requestId,
+    requestNumber: "",
+    quoteNumber: "",
+    customerId: sig.customerId,
+    itemConditions: undefined,
+    deliveryOutcome: null,
+    remarks: null,
+    signer: { fullName: existing.fullName, position: existing.position ?? null, nationalId: existing.nationalId },
+    signedAt: now,
+  })
+
+  try {
+    await db.transaction(async (tx) => {
+      assertSigned(
+        await tx
+          .update(signatureRequests)
+          .set({ status: "signed", otpHash: null, otpExpiresAt: null, updatedAt: now })
+          .where(and(eq(signatureRequests.id, sig.id), eq(signatureRequests.status, sig.status)))
+      )
+
+      await tx
+        .update(customerSignatures)
+        .set({
+          approvedBy: session.user.id,
+          approvedAt: now,
+          reviewNotes: data?.reviewNotes?.trim() || null,
+          snapshot: snapshotJson,
+          signedAt: now,
+        })
+        .where(eq(customerSignatures.id, existing.id))
+
+      await tx.insert(signatureEvents).values({
+        id: createId(),
+        signatureRequestId: sig.id,
+        eventType: "signed",
+      })
+
+      await emitDomainEvent(tx, {
+        aggregateType: "signature_request",
+        aggregateId: sig.id,
+        eventType: "SignatureCompleted",
+        payload: { requestId: sig.requestId ?? null, signatoryRole: sig.signatoryRole },
+        dedupeKey: `signature_request:${sig.id}:SignatureCompleted`,
+      })
+
+      // Approved manual upload = accepted proof; record signature-received time
+      // on the exact delivery task this signature belongs to. Admin sign-off
+      // still closes it. requestId-only fallback is legacy-data only (see
+      // submitSignature for the same rule).
+      if (sig.requestId) {
+        await tx
+          .update(partnerTasks)
+          .set({ signatureReceivedAt: now, updatedAt: now })
+          .where(
+            sig.partnerTaskId
+              ? and(eq(partnerTasks.id, sig.partnerTaskId), isNull(partnerTasks.signatureReceivedAt))
+              : and(
+                  eq(partnerTasks.requestId, sig.requestId),
+                  eq(partnerTasks.status, "pending_signoff"),
+                  isNull(partnerTasks.signatureReceivedAt)
+                )
+          )
+      }
+    })
+  } catch (e) {
+    if (e instanceof StaleSignatureError) return { error: "This request is no longer active" }
+    throw e
+  }
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: sig.id,
+    action: "manual_signature_approved",
+    i18nKey: "activity.manualSignatureApproved",
+    performedBy: session.user.id,
+  })
+
+  if (sig.requestId) revalidatePath(`/admin/requests/${sig.requestId}`)
+  return { id: sig.id }
+}
+
+export async function rejectManualSignature(
+  signatureRequestId: string,
+  data: { reviewNotes: string }
+): Promise<SignatureActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const reviewNotes = data.reviewNotes?.trim()
+  if (!reviewNotes) return { error: "A rejection reason is required" }
+
+  const [existing] = await db
+    .select()
+    .from(customerSignatures)
+    .where(eq(customerSignatures.signatureRequestId, signatureRequestId))
+  if (!existing || existing.signatureMethod !== "manual_upload") {
+    return { error: "No uploaded file to reject" }
+  }
+  if (existing.approvedAt) return { error: "Cannot reject an approved signature" }
+
+  // Keep the review trail; clear the artefact so a corrected file can be
+  // re-uploaded. The unsigned printable receipt is never affected.
+  await db
+    .update(customerSignatures)
+    .set({ uploadedFileUrl: null, reviewNotes })
+    .where(eq(customerSignatures.id, existing.id))
+
+  const [sig] = await db
+    .select({ requestId: signatureRequests.requestId })
+    .from(signatureRequests)
+    .where(eq(signatureRequests.id, signatureRequestId))
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: signatureRequestId,
+    action: "manual_signature_rejected",
+    i18nKey: "activity.manualSignatureRejected",
+    i18nData: { reason: reviewNotes },
+    performedBy: session.user.id,
+  })
+
+  if (sig?.requestId) revalidatePath(`/admin/requests/${sig.requestId}`)
+  return { id: signatureRequestId }
 }
 
 export async function deleteSignatureRequest(id: string): Promise<SignatureActionResult> {

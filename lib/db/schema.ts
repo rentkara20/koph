@@ -222,9 +222,21 @@ export const requestItems = sqliteTable("request_item", {
   orderUnitId: text("order_unit_id").references(() => orderUnits.id, {
     onDelete: "set null",
   }),
+  // Admin-approved cumulative delivered quantity across all delivery tasks for
+  // this item. Only incremented at final admin signOffTask, guarded to never
+  // exceed quantity. Independent of partner payment (see partner_payment_decision).
+  deliveredQuantity: integer("delivered_quantity").notNull().default(0),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-})
+}, (t) => [
+  // A request item pulled from a specific serialized order unit must represent
+  // exactly one physical device — quantity>1 on such a row would make serial
+  // tracking on delivery_task_item ambiguous.
+  check(
+    "request_item_order_unit_qty_chk",
+    sql`${t.orderUnitId} IS NULL OR ${t.quantity} = 1`
+  ),
+])
 
 // ─── Partners ───────────────────────────────────────────────────────────────
 
@@ -346,6 +358,12 @@ export const partnerTasks = sqliteTable("partner_task", {
   pickedUpAt: integer("picked_up_at"), // pickup kind: goods collected, in transit
   closedBy: text("closed_by").references(() => users.id),
   closedAt: integer("closed_at"),
+  // Phase-0 delivery/signature: physical delivery and proof-of-signature are
+  // tracked separately from partner marked-done (completedAt) and admin close
+  // (closedAt). deliveredAt = handover happened; signatureReceivedAt = an
+  // accepted proof (on-site / remote / approved manual upload) was captured.
+  deliveredAt: integer("delivered_at"),
+  signatureReceivedAt: integer("signature_received_at"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 }, (t) => [
@@ -454,6 +472,14 @@ export const signatureRequests = sqliteTable("signature_request", {
     .notNull()
     .default(false),
   otpEnabled: integer("otp_enabled", { mode: "boolean" }).notNull().default(false),
+  // Phase-0 delivery OTP: admin generates a 6-digit code, sends it manually,
+  // courier enters the recipient's code to unlock the review+signature stage.
+  // Only the salted hash is ever stored — plaintext is shown once to admin and
+  // never persisted/logged. Consumed on first successful verify.
+  otpHash: text("otp_hash"),
+  otpExpiresAt: integer("otp_expires_at"),
+  otpAttempts: integer("otp_attempts").notNull().default(0),
+  otpVerifiedAt: integer("otp_verified_at"),
   expiryEnabled: integer("expiry_enabled", { mode: "boolean" }).notNull().default(false),
   expiresAt: integer("expires_at"),
   reminderEnabled: integer("reminder_enabled", { mode: "boolean" }).notNull().default(false),
@@ -503,7 +529,35 @@ export const customerSignatures = sqliteTable("customer_signature", {
   fullName: text("full_name").notNull(),
   mobile: text("mobile").notNull(),
   nationalId: text("national_id"), // nullable — encrypted at app layer
-  signatureData: text("signature_data").notNull(), // base64 SVG
+  // Receiver's role at handover (free text, e.g. "Warehouse manager").
+  position: text("position"),
+  // base64 PNG for electronic signatures; "" for manual_upload (the signed
+  // artefact lives in uploadedFileUrl instead — distinguish via signatureMethod).
+  signatureData: text("signature_data").notNull(), // base64 SVG/PNG
+  // How the signed receipt was captured. electronic = on-device or remote
+  // signature pad; manual_upload = customer printed, signed, returned a file.
+  signatureMethod: text("signature_method", { enum: ["electronic", "manual_upload"] })
+    .notNull()
+    .default("electronic"),
+  // Delivery outcome selected by the receiver at signing time. Drives the
+  // signOffTask gate: full_* → closable; partial → on_hold; refused → failed.
+  deliveryOutcome: text("delivery_outcome", {
+    enum: ["full_no_remarks", "full_with_remarks", "partial", "refused"],
+  }),
+  // Free-text remarks (required for full_with_remarks / partial / refused).
+  remarks: text("remarks"),
+  // Immutable frozen snapshot of the signed receipt (JSON): request/quote
+  // numbers, customer block, items with per-item condition + received qty,
+  // outcome, remarks, signer. Rendered in preference to live tables so later
+  // edits to the request never rewrite an already-signed historical receipt.
+  snapshot: text("snapshot"),
+  // Manual-upload review trail (signatureMethod = manual_upload).
+  uploadedFileUrl: text("uploaded_file_url"),
+  uploadedBy: text("uploaded_by").references(() => users.id),
+  uploadedAt: integer("uploaded_at"),
+  approvedBy: text("approved_by").references(() => users.id),
+  approvedAt: integer("approved_at"),
+  reviewNotes: text("review_notes"),
   consentVersion: text("consent_version").references(() => consentVersions.version),
   consentAcceptedAt: integer("consent_accepted_at"),
   signedAt: integer("signed_at").notNull().$defaultFn(now),
@@ -530,6 +584,28 @@ export const signatureItemConditions = sqliteTable("signature_item_condition", {
   notes: text("notes"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
 }, (t) => [index("signature_item_condition_sig_idx").on(t.signatureRequestId)])
+
+// ─── Communication log (manual-channel audit) ───────────────────────────────
+// Phase-0 manual comms are prepared in the admin UI and sent by a human via
+// WhatsApp / Outlook / mailto / copy. Opening a channel is NOT proof of send,
+// so status starts at "prepared" and only an explicit admin confirmation moves
+// it to "manually_confirmed_sent". OTP plaintext is NEVER written here.
+
+export const communicationLog = sqliteTable("communication_log", {
+  id: text("id").primaryKey(),
+  entityType: text("entity_type").notNull(), // e.g. "signature_request", "partner_task", "request"
+  entityId: text("entity_id").notNull(),
+  channel: text("channel", { enum: ["whatsapp", "outlook", "mailto", "copy"] }).notNull(),
+  messageType: text("message_type").notNull(), // e.g. "otp_delivery", "remote_signature", "signed_receipt"
+  recipient: text("recipient"), // mobile or email (never the OTP)
+  status: text("status", { enum: ["prepared", "manually_confirmed_sent", "cancelled"] })
+    .notNull()
+    .default("prepared"),
+  preparedBy: text("prepared_by").references(() => users.id),
+  preparedAt: integer("prepared_at").notNull().$defaultFn(now),
+  confirmedAt: integer("confirmed_at"),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [index("communication_log_entity_idx").on(t.entityType, t.entityId)])
 
 // ─── Notifications (in-app bell for admin + partner users) ───────────────────
 
@@ -661,6 +737,90 @@ export const partnerPayments = sqliteTable("partner_payment", {
   index("partner_payment_partner_status_idx").on(t.partnerId, t.status),
   index("partner_payment_batch_idx").on(t.batchId),
 ])
+
+// ─── Partner payment decisions ────────────────────────────────────────────────
+// Separate, always-created audit record for the admin's payment decision at
+// sign-off — independent of whether a partner_payment row exists (decision
+// "none"/"hold" never create one). One decision per task (UNIQUE), upserted
+// while the task is still open, immutable in practice once the task closes.
+
+export const partnerPaymentDecisions = sqliteTable("partner_payment_decision", {
+  id: text("id").primaryKey(),
+  partnerTaskId: text("partner_task_id")
+    .notNull()
+    .unique()
+    .references(() => partnerTasks.id),
+  decision: text("decision", { enum: ["full", "partial", "none", "hold"] }).notNull(),
+  approvedAmount: real("approved_amount"),
+  reason: text("reason"),
+  decidedBy: text("decided_by")
+    .notNull()
+    .references(() => users.id),
+  decidedAt: integer("decided_at").notNull(),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+})
+
+// ─── Delivery task items ───────────────────────────────────────────────────────
+// Per-task allocation against a request_item (mirrors pickup_task_line). Also
+// carries the serial report-and-approve trail for serialized items: partner-
+// reported evidence is never authoritative until admin approves/corrects it.
+
+export const deliveryTaskItems = sqliteTable("delivery_task_item", {
+  id: text("id").primaryKey(),
+  partnerTaskId: text("partner_task_id")
+    .notNull()
+    .references(() => partnerTasks.id),
+  requestItemId: text("request_item_id")
+    .notNull()
+    .references(() => requestItems.id),
+  qtyPlanned: integer("qty_planned").notNull(),
+  qtyDelivered: integer("qty_delivered").notNull().default(0),
+  reportedSerial: text("reported_serial"),
+  reportedBy: text("reported_by").references(() => users.id),
+  reportedAt: integer("reported_at"),
+  correctedSerial: text("corrected_serial"),
+  correctedBy: text("corrected_by").references(() => users.id),
+  correctedAt: integer("corrected_at"),
+  verificationStatus: text("verification_status", {
+    enum: ["unreported", "reported", "mismatch", "approved", "rejected"],
+  })
+    .notNull()
+    .default("unreported"),
+  approvedBy: text("approved_by").references(() => users.id),
+  approvedAt: integer("approved_at"),
+  // Required when an approved serial materially replaces the pre-allocated
+  // request_item.orderUnitId (a different physical unit than expected).
+  relinkReason: text("relink_reason"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [
+  uniqueIndex("delivery_task_item_task_item_idx").on(t.partnerTaskId, t.requestItemId),
+  index("delivery_task_item_request_item_idx").on(t.requestItemId),
+])
+
+// ─── Delivery snapshot amendments ──────────────────────────────────────────────
+// The customer-signed snapshot (customer_signature.snapshot) is permanently
+// immutable. When an approved admin correction changes customer-facing
+// delivery content (e.g. a relinked serial), it is recorded here as a linked,
+// versioned amendment — never merged back into the original signed JSON.
+
+export const deliverySnapshotAmendments = sqliteTable("delivery_snapshot_amendment", {
+  id: text("id").primaryKey(),
+  signatureRequestId: text("signature_request_id")
+    .notNull()
+    .references(() => signatureRequests.id),
+  deliveryTaskItemId: text("delivery_task_item_id")
+    .notNull()
+    .references(() => deliveryTaskItems.id),
+  fieldChanged: text("field_changed").notNull(),
+  originalValue: text("original_value").notNull(),
+  correctedValue: text("corrected_value").notNull(),
+  reason: text("reason").notNull(),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+})
 
 // ─── Type exports ─────────────────────────────────────────────────────────────
 

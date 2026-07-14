@@ -155,6 +155,20 @@
       "when": 1783889433359,
       "tag": "0021_past_master_chief",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1784053985569,
+      "tag": "0022_flowery_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1784060258531,
+      "tag": "0023_optimal_la_nuit",
+      "breakpoints": true
     }
   ]
 }

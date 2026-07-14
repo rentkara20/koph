@@ -7,6 +7,7 @@ import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
 import { getServicesForTaskToken } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
+import { isDeliveryStageUnlocked } from "@/lib/actions/otp"
 import { formatDate } from "@/lib/utils/format"
 import { buildWhatsappUrl, customerGreetingMessage } from "@/lib/utils/whatsapp"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
@@ -386,6 +387,7 @@ export default async function TaskPage({
             taskToken={token}
             customerName={customer?.name ?? null}
             customerMobile={customer?.mobile ?? null}
+            stageUnlocked={await isDeliveryStageUnlocked(token)}
           />
         )}
 

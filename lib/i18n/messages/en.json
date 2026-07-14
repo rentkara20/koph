@@ -145,7 +145,7 @@
       "pending": "Pending",
       "accepted": "Accepted",
       "in_progress": "In Progress",
-      "pending_signoff": "Pending Sign-off",
+      "pending_signoff": "Delivery completed — Signature pending",
       "closed": "Closed",
       "rejected": "Rejected",
       "failed": "Failed",
@@ -336,7 +336,26 @@
       "typedSignLabel": "Type your full name as signature",
       "expiringSoon": "This link expires within 24 hours",
       "receiverConfirmedTitle": "Confirmed received by",
-      "receiverSignedAtLabel": "Signed on"
+      "receiverSignedAtLabel": "Signed on",
+      "otpTitle": "Enter delivery code",
+      "otpHint": "Ask the recipient for the 6-digit code the office sent them.",
+      "otpPlaceholder": "6-digit code",
+      "otpVerify": "Verify",
+      "otpVerified": "Code verified",
+      "otpNeeded": "A verification code is required before signing.",
+      "outcomeTitle": "Delivery outcome",
+      "outcomeHint": "Select what was actually received.",
+      "outcomeFullNoRemarks": "Received in full",
+      "outcomeFullWithRemarks": "Received in full — with remarks",
+      "outcomePartial": "Partially received",
+      "outcomeRefused": "Refused",
+      "remarks": "Remarks",
+      "remarksRequired": "Remarks are required for this outcome",
+      "position": "Position / title",
+      "positionPlaceholder": "e.g. Warehouse manager",
+      "positionRequired": "Enter the position / title",
+      "next": "Next",
+      "continueBtn": "Continue"
     }
   },
   "payments": {
@@ -1386,5 +1405,11 @@
         "payment_batch": "Payment batch"
       }
     }
+  },
+  "activity": {
+    "deliveryOtpGenerated": "Delivery code generated",
+    "manualSignatureUploaded": "Signed file uploaded: {fileName}",
+    "manualSignatureApproved": "Manually signed receipt approved",
+    "manualSignatureRejected": "Signed file rejected: {reason}"
   }
 }
