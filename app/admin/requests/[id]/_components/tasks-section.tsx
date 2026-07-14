@@ -133,6 +133,9 @@ function SignOffButton({
   const tToast = useTranslations("toast")
   const [open, setOpen] = useState(false)
   const [qty, setQty] = useState("")
+  const [decision, setDecision] = useState<"full" | "partial" | "none" | "hold">("full")
+  const [approvedAmount, setApprovedAmount] = useState("")
+  const [reason, setReason] = useState("")
   const [loading, setLoading] = useState(false)
   const needsQty = pricingModel === "per_day" || pricingModel === "per_hour" || pricingModel === "per_item"
 
@@ -146,10 +149,20 @@ function SignOffButton({
         : unitPrice
       : null
 
+  const canConfirm =
+    !(needsQty && !qty) &&
+    !(decision === "partial" && (!approvedAmount || !reason.trim())) &&
+    !(decision === "none" && !reason.trim())
+
   async function handleSignOff() {
     setLoading(true)
     try {
-      const result = await signOffTask(taskId, needsQty && qty ? parseInt(qty) : undefined)
+      const result = await signOffTask(taskId, {
+        decision,
+        quantity: needsQty && qty ? parseInt(qty) : undefined,
+        approvedAmount: decision === "partial" ? parseFloat(approvedAmount) : undefined,
+        reason: reason.trim() || undefined,
+      })
       if (result?.error) {
         toast.error(translateActionError(result.error))
         setLoading(false)
@@ -172,35 +185,64 @@ function SignOffButton({
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
+    <div className="flex flex-col gap-2">
       {isOverride && (
         <span className="text-xs text-destructive">
-          Task failed — marking complete will still generate payment.
+          Task failed — closing here can still generate payment per your decision below.
         </span>
       )}
-      {needsQty && (
-        <Input
-          type="number"
-          min={1}
-          placeholder={QTY_LABEL[pricingModel!] ?? "qty"}
-          value={qty}
-          onChange={(e) => setQty(e.target.value)}
-          className="h-7 w-20 text-xs"
+      <div className="flex items-center gap-2 flex-wrap">
+        <Select
+          value={decision}
+          onChange={(e) => setDecision(e.target.value as typeof decision)}
+          className="h-7 w-28 text-xs"
+        >
+          <option value="full">Full payment</option>
+          <option value="partial">Partial payment</option>
+          <option value="none">No payment</option>
+          <option value="hold">Hold</option>
+        </Select>
+        {needsQty && decision !== "hold" && (
+          <Input
+            type="number"
+            min={1}
+            placeholder={QTY_LABEL[pricingModel!] ?? "qty"}
+            value={qty}
+            onChange={(e) => setQty(e.target.value)}
+            className="h-7 w-20 text-xs"
+          />
+        )}
+        {decision === "partial" && (
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="Approved amount"
+            value={approvedAmount}
+            onChange={(e) => setApprovedAmount(e.target.value)}
+            className="h-7 w-28 text-xs"
+          />
+        )}
+        {total != null && decision === "full" && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            SAR {total.toFixed(2)}
+          </span>
+        )}
+      </div>
+      {(decision === "partial" || decision === "none" || decision === "hold") && (
+        <Textarea
+          placeholder="Reason (required)"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+          className="h-14 text-xs"
         />
       )}
-      {total != null && (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          SAR {total.toFixed(2)}
-        </span>
-      )}
-      <Button
-        size="sm"
-        disabled={loading || (needsQty && !qty)}
-        onClick={handleSignOff}
-      >
-        {loading ? "…" : "Confirm"}
-      </Button>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      <div className="flex items-center gap-2">
+        <Button size="sm" disabled={loading || !canConfirm} onClick={handleSignOff}>
+          {loading ? "…" : "Confirm"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      </div>
     </div>
   )
 }

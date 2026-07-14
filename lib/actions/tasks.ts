@@ -1,15 +1,17 @@
 "use server"
 
-import { and, count, desc, eq, gt, isNotNull, isNull, or } from "drizzle-orm"
+import { and, count, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
   attachments,
   customerContacts,
   customers,
+  deliveryTaskItems,
   notifications,
   partners,
   partnerContracts,
+  partnerPaymentDecisions,
   partnerPayments,
   partnerTasks,
   pickupTaskLines,
@@ -223,13 +225,19 @@ export async function getTasksForRequest(requestId: string) {
 
 // ─── Admin: sign off task ─────────────────────────────────────────────────────
 
-export async function signOffTask(
-  taskId: string,
-  quantity?: number,
-  noPaymentReason?: string
-): Promise<ActionResult> {
+export type PaymentDecision = "full" | "partial" | "none" | "hold"
+
+export type SignOffInput = {
+  decision: PaymentDecision
+  quantity?: number
+  approvedAmount?: number
+  reason?: string
+}
+
+export async function signOffTask(taskId: string, input: SignOffInput): Promise<ActionResult> {
   const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
+  const { decision, quantity, approvedAmount, reason } = input
 
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Task not found" }
@@ -269,21 +277,37 @@ export async function signOffTask(
 
   // For quantity-based pricing an omitted quantity would silently pay for 1
   // unit — require an explicit number instead of guessing
-  if (contract && requiresQuantity(contract.pricingModel as PricingModel) && !quantity) {
+  if (
+    decision !== "hold" &&
+    contract &&
+    requiresQuantity(contract.pricingModel as PricingModel) &&
+    !quantity
+  ) {
     return { error: "Quantity is required for this contract's pricing model" }
   }
 
-  // Payment gate: "admin-approved proof that physical delivery occurred".
+  if (decision === "partial" && (!approvedAmount || approvedAmount <= 0)) {
+    return { error: "Approved amount is required for a partial payment decision" }
+  }
+  if ((decision === "partial" || decision === "none") && !reason?.trim()) {
+    return { error: "A reason is required for this payment decision" }
+  }
+
+  // Payment gate: "admin-approved proof that the delivery visit occurred".
+  // Outcome-agnostic — partial/refused/unavailable/rescheduled outcomes remain
+  // fully eligible for admin payment review; only accepted-proof presence
+  // (when enforcement is on) is checked here.
   //
   // requiresSignature — only when proof enforcement is enabled AND the resolved
   // proof config for this request type includes a signature. Enforcement is OFF
   // by default so operators can author proof config before it blocks.
   //
-  // Accepted proof = a "signed" signature request for this task/request (on-site
+  // Accepted proof = a "signed" signature request scoped to THIS task (on-site
   // receiver signature, remote e-signature, or an approved manual upload — all
-  // land as status "signed"). A refused delivery lands as "rejected" and fails
-  // the task instead. Authorised stage-2 sign-off is documentation-only and is
-  // NOT consulted here, so a pending stage-2 never blocks payment.
+  // land as status "signed"). Falls back to a request-scoped lookup only for
+  // legacy signature requests that predate per-task linkage (partnerTaskId
+  // null) — new multi-task requests are never affected by this fallback since
+  // every new signature request is created with partnerTaskId set.
   let requiresSignature = false
   if (!isOverride && (await isProofEnforcementEnabled())) {
     const systemDefault = await getSystemDefaultProof()
@@ -308,28 +332,65 @@ export async function signOffTask(
         eq(signatureRequests.status, "signed"),
         or(
           eq(signatureRequests.partnerTaskId, taskId),
-          eq(signatureRequests.requestId, taskRequestId)
+          and(isNull(signatureRequests.partnerTaskId), eq(signatureRequests.requestId, taskRequestId))
         )
       )
     )
     .orderBy(desc(customerSignatures.signedAt))
     .limit(1)
 
-  const decision = canSignOff({
+  const gateDecision = canSignOff({
     isOverride,
     requiresSignature,
     hasAcceptedProof: !!proofRow,
-    latestSignedOutcome: proofRow?.outcome ?? null,
   })
-  if (!decision.ok) {
-    return {
-      error:
-        decision.reason === "signature_required"
-          ? "A signed customer signature is required before this task can be closed"
-          : decision.reason === "partial_unresolved"
-            ? "Partial delivery — resolve the outstanding items before sign-off"
-            : "Delivery was refused — cannot sign off; use the failed / reschedule workflow",
+  if (!gateDecision.ok) {
+    return { error: "A signed customer signature is required before this task can be closed" }
+  }
+
+  // Task-scoped delivery allocation (new multi-task model). Legacy tasks
+  // created before this feature have no rows here — fall back to the
+  // whole-request behavior below rather than blocking sign-off on old data.
+  const taskItems = await db
+    .select()
+    .from(deliveryTaskItems)
+    .where(eq(deliveryTaskItems.partnerTaskId, taskId))
+
+  // Serial gate: any serialized allocation (request_item.orderUnitId set) with
+  // qty_delivered > 0 must have an admin-approved serial before this task can
+  // close — partner-reported serials are evidence only until approved.
+  if (decision !== "hold" && taskItems.length > 0) {
+    const itemIds = taskItems.map((ti) => ti.requestItemId)
+    const items = await db.select().from(requestItems).where(inArray(requestItems.id, itemIds))
+    const serializedItemIds = new Set(items.filter((i) => i.orderUnitId).map((i) => i.id))
+    const unapproved = taskItems.find(
+      (ti) => serializedItemIds.has(ti.requestItemId) && ti.qtyDelivered > 0 && ti.verificationStatus !== "approved"
+    )
+    if (unapproved) {
+      return { error: "Reported serials are pending approval — approve or correct them before sign-off" }
     }
+  }
+
+  if (decision === "hold") {
+    // Hold never closes the task and never creates a payment — upsert the
+    // decision only, so the intent is recorded and revisitable.
+    await db
+      .insert(partnerPaymentDecisions)
+      .values({
+        id: createId(),
+        partnerTaskId: taskId,
+        decision: "hold",
+        reason: reason?.trim() || null,
+        decidedBy: session.user.id,
+        decidedAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .onConflictDoUpdate({
+        target: partnerPaymentDecisions.partnerTaskId,
+        set: { decision: "hold", reason: reason?.trim() || null, updatedAt: Date.now() },
+      })
+    revalidatePath(`/admin/requests/${taskRequestId}`)
+    return { id: taskId }
   }
 
   try {
@@ -360,9 +421,60 @@ export async function signOffTask(
       actorUserId: session.user.id,
     })
 
-    // Auto-create partner_payment when task has a contract
-    if (contract) {
-      const { quantity: finalQty, totalAmount } = computePayment(
+    // Guarded cumulative delivered-quantity increment — physical delivery
+    // truth is independent of payment truth, so this runs for every non-hold
+    // decision including "none". Never exceeds request_item.quantity (CAS).
+    for (const ti of taskItems) {
+      if (ti.qtyDelivered <= 0) continue
+      await tx
+        .update(requestItems)
+        .set({ deliveredQuantity: sql`${requestItems.deliveredQuantity} + ${ti.qtyDelivered}`, updatedAt: Date.now() })
+        .where(
+          and(
+            eq(requestItems.id, ti.requestItemId),
+            sql`${requestItems.deliveredQuantity} + ${ti.qtyDelivered} <= ${requestItems.quantity}`
+          )
+        )
+    }
+
+    // Payment decision — always recorded, one per task (idempotent upsert).
+    const finalAmount =
+      decision === "full"
+        ? contract
+          ? computePayment(contract.pricingModel as PricingModel, contract.unitPrice, quantity).totalAmount
+          : 0
+        : decision === "partial"
+          ? (approvedAmount as number)
+          : null
+
+    await tx
+      .insert(partnerPaymentDecisions)
+      .values({
+        id: createId(),
+        partnerTaskId: taskId,
+        decision,
+        approvedAmount: finalAmount,
+        reason: reason?.trim() || null,
+        decidedBy: session.user.id,
+        decidedAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .onConflictDoUpdate({
+        target: partnerPaymentDecisions.partnerTaskId,
+        set: {
+          decision,
+          approvedAmount: finalAmount,
+          reason: reason?.trim() || null,
+          decidedBy: session.user.id,
+          decidedAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      })
+
+    // Only full/partial ever create a partner_payment row — "none" must never
+    // produce a zero-value accounting record.
+    if ((decision === "full" || decision === "partial") && contract) {
+      const { quantity: finalQty } = computePayment(
         contract.pricingModel as PricingModel,
         contract.unitPrice,
         quantity
@@ -376,7 +488,7 @@ export async function signOffTask(
         pricingModel: contract.pricingModel,
         quantity: finalQty,
         unitPrice: contract.unitPrice,
-        totalAmount,
+        totalAmount: finalAmount as number,
         status: "pending",
       })
 
@@ -384,20 +496,16 @@ export async function signOffTask(
         aggregateType: "partner_payment",
         aggregateId: paymentId,
         eventType: "PartnerPaymentCreated",
-        payload: { partnerId: task.partnerId, partnerTaskId: task.id, totalAmount },
+        payload: { partnerId: task.partnerId, partnerTaskId: task.id, totalAmount: finalAmount },
         dedupeKey: `partner_payment:${paymentId}:PartnerPaymentCreated`,
         actorUserId: session.user.id,
       })
     }
 
-    // OI-1: move the request's pulled devices through the asset lifecycle in
-    // the SAME transaction as the task close — delivery-type sign-off ->
-    // delivered (with customer); collection-type -> returned (back for
-    // inspection). Previously this ran best-effort AFTER the tx committed, so
-    // a crash between the two could close a task with no matching asset
-    // movement, or write an asset_event with no corresponding status change.
-    // A unit already in an unexpected status (e.g. an earlier manual
-    // override) is skipped, not fatal — it must not block the sign-off itself.
+    // OI-1: move devices through the asset lifecycle in the SAME transaction as
+    // the task close. Scoped to THIS task's approved serialized allocations
+    // when delivery_task_item rows exist; legacy tasks (no rows) fall back to
+    // the whole-request set, matching pre-existing behavior exactly.
     const [reqType] = await tx
       .select({ slug: requestTypes.slug })
       .from(requestTypes)
@@ -409,11 +517,25 @@ export async function signOffTask(
       : null
 
     if (assetAction) {
-      const pulled = await tx
-        .select({ orderUnitId: requestItems.orderUnitId })
-        .from(requestItems)
-        .where(and(eq(requestItems.requestId, taskRequestId), isNotNull(requestItems.orderUnitId)))
-      const unitIds = pulled.map((r) => r.orderUnitId).filter((v): v is string => Boolean(v))
+      let unitIds: string[] = []
+      if (taskItems.length > 0) {
+        const approvedSerialized = taskItems.filter(
+          (ti) => ti.verificationStatus === "approved" && ti.qtyDelivered > 0
+        )
+        if (approvedSerialized.length > 0) {
+          const items = await tx
+            .select()
+            .from(requestItems)
+            .where(inArray(requestItems.id, approvedSerialized.map((ti) => ti.requestItemId)))
+          unitIds = items.map((i) => i.orderUnitId).filter((v): v is string => Boolean(v))
+        }
+      } else {
+        const pulled = await tx
+          .select({ orderUnitId: requestItems.orderUnitId })
+          .from(requestItems)
+          .where(and(eq(requestItems.requestId, taskRequestId), isNotNull(requestItems.orderUnitId)))
+        unitIds = pulled.map((r) => r.orderUnitId).filter((v): v is string => Boolean(v))
+      }
 
       for (const unitId of unitIds) {
         try {
@@ -446,15 +568,15 @@ export async function signOffTask(
     performedBy: session.user.id,
   })
 
-  // OI-0: a task closed with no contract produces no partner payment. Record why,
-  // so a zero-payment close is an explicit, audited decision rather than silent.
-  if (!contract) {
+  // OI-0: a "none" decision produces no partner payment. Record why, so a
+  // zero-payment close is an explicit, audited decision rather than silent.
+  if (decision === "none") {
     await logActivity({
       entityType: "request",
       entityId: taskRequestId,
       action: "task_closed_no_payment",
       i18nKey: "activity.taskClosedNoPayment",
-      i18nData: { reason: noPaymentReason ?? "no_contract" },
+      i18nData: { reason: reason ?? "no_contract" },
       performedBy: session.user.id,
     })
   }

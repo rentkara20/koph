@@ -4,7 +4,9 @@
 //   - no signature path auto-closes the task or auto-creates payment;
 //   - all accepted proof paths leave the task at pending_signoff;
 //   - only admin signOffTask closes + creates partner payment;
-//   - partial / refused block sign-off (no payment);
+//   - outcome (partial/refused) never blocks sign-off — payment is a fully
+//     independent admin decision (full/partial/none/hold);
+//   - a "none" decision never creates a partner_payment row;
 //   - authorised stage-2 is documentation-only (never gates payment).
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest"
 import { createClient } from "@libsql/client"
@@ -202,7 +204,7 @@ describe("proof paths → task/request transitions + payment gate", () => {
     expect(t1.signatureReceivedAt).toBeTruthy()
     expect(await paymentsForTask(taskId)).toHaveLength(0) // NOT auto-created
 
-    const off = await signOffTask(taskId)
+    const off = await signOffTask(taskId, { decision: "full" })
     expect(off.error).toBeUndefined()
     expect((await task(taskId)).status).toBe("closed")
     expect((await request(requestId)).status).toBe("completed")
@@ -213,21 +215,50 @@ describe("proof paths → task/request transitions + payment gate", () => {
     const { taskId, taskToken } = await seedScenario("in_progress")
     await signOnSite(taskToken, "full_with_remarks", "Box slightly dented")
     expect((await task(taskId)).status).toBe("pending_signoff")
-    expect((await signOffTask(taskId)).error).toBeUndefined()
+    expect((await signOffTask(taskId, { decision: "full" })).error).toBeUndefined()
     expect((await task(taskId)).status).toBe("closed")
     expect(await paymentsForTask(taskId)).toHaveLength(1)
   })
 
-  test("partial: request on_hold, task pending_signoff, sign-off BLOCKED, no payment", async () => {
+  test("partial outcome: request on_hold, but sign-off is NOT blocked — outcome and payment are independent", async () => {
     const { requestId, taskId, taskToken } = await seedScenario("in_progress")
     await signOnSite(taskToken, "partial", "Only 1 of 2 delivered")
     expect((await task(taskId)).status).toBe("pending_signoff")
     expect((await request(requestId)).status).toBe("on_hold")
 
-    const off = await signOffTask(taskId)
-    expect(off.error).toMatch(/Partial/i)
+    // Admin may still decide full payment for a partial-outcome visit.
+    const off = await signOffTask(taskId, { decision: "full" })
+    expect(off.error).toBeUndefined()
+    expect((await task(taskId)).status).toBe("closed")
+    expect(await paymentsForTask(taskId)).toHaveLength(1)
+  })
+
+  test("partial outcome + none decision: closes, no payment row, reason required", async () => {
+    const { taskId, taskToken } = await seedScenario("in_progress")
+    await signOnSite(taskToken, "partial", "Only 1 of 2 delivered")
+
+    const missingReason = await signOffTask(taskId, { decision: "none" })
+    expect(missingReason.error).toMatch(/reason/i)
+
+    const off = await signOffTask(taskId, { decision: "none", reason: "Partner did not fulfil visit terms" })
+    expect(off.error).toBeUndefined()
+    expect((await task(taskId)).status).toBe("closed")
+    expect(await paymentsForTask(taskId)).toHaveLength(0)
+  })
+
+  test("hold decision: task stays pending_signoff, no payment, revisitable", async () => {
+    const { taskId, taskToken } = await seedScenario("in_progress")
+    await signOnSite(taskToken, "full_no_remarks")
+
+    const off = await signOffTask(taskId, { decision: "hold", reason: "Awaiting finance review" })
+    expect(off.error).toBeUndefined()
     expect((await task(taskId)).status).toBe("pending_signoff")
     expect(await paymentsForTask(taskId)).toHaveLength(0)
+
+    const final = await signOffTask(taskId, { decision: "full" })
+    expect(final.error).toBeUndefined()
+    expect((await task(taskId)).status).toBe("closed")
+    expect(await paymentsForTask(taskId)).toHaveLength(1)
   })
 
   test("refused: task failed, sig rejected, no signature_received_at, no payment", async () => {
@@ -257,7 +288,7 @@ describe("manual returned signed receipt", () => {
     expect((await task(taskId)).signatureReceivedAt).toBeTruthy()
     expect((await task(taskId)).status).toBe("pending_signoff") // still NOT closed
 
-    expect((await signOffTask(taskId)).error).toBeUndefined()
+    expect((await signOffTask(taskId, { decision: "full" })).error).toBeUndefined()
     expect((await task(taskId)).status).toBe("closed")
     expect(await paymentsForTask(taskId)).toHaveLength(1)
   })
@@ -278,7 +309,7 @@ describe("stage-2 authorised sign-off is documentation-only", () => {
     const { taskId, taskToken } = await seedScenario("in_progress")
     await signOnSite(taskToken, "full_no_remarks")
     // No authorised stage-2 signature exists at all.
-    const off = await signOffTask(taskId)
+    const off = await signOffTask(taskId, { decision: "full" })
     expect(off.error).toBeUndefined()
     expect((await task(taskId)).status).toBe("closed")
     expect(await paymentsForTask(taskId)).toHaveLength(1)

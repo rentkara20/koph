@@ -2,81 +2,37 @@ import { describe, it, expect } from "vitest"
 import { canSignOff } from "./delivery-signoff"
 
 describe("canSignOff", () => {
-  it("allows sign-off with accepted full-receipt proof", () => {
+  it("allows sign-off with accepted proof", () => {
     expect(
-      canSignOff({
-        isOverride: false,
-        requiresSignature: true,
-        hasAcceptedProof: true,
-        latestSignedOutcome: "full_no_remarks",
-      })
+      canSignOff({ isOverride: false, requiresSignature: true, hasAcceptedProof: true })
     ).toEqual({ ok: true })
-  })
-
-  it("allows full_with_remarks", () => {
-    expect(
-      canSignOff({
-        isOverride: false,
-        requiresSignature: true,
-        hasAcceptedProof: true,
-        latestSignedOutcome: "full_with_remarks",
-      }).ok
-    ).toBe(true)
   })
 
   it("blocks when a signature is required but no accepted proof exists", () => {
     expect(
-      canSignOff({
-        isOverride: false,
-        requiresSignature: true,
-        hasAcceptedProof: false,
-        latestSignedOutcome: null,
-      })
+      canSignOff({ isOverride: false, requiresSignature: true, hasAcceptedProof: false })
     ).toEqual({ ok: false, reason: "signature_required" })
-  })
-
-  it("blocks a partial delivery regardless of enforcement flag", () => {
-    expect(
-      canSignOff({
-        isOverride: false,
-        requiresSignature: false,
-        hasAcceptedProof: true,
-        latestSignedOutcome: "partial",
-      })
-    ).toEqual({ ok: false, reason: "partial_unresolved" })
-  })
-
-  it("blocks a refused delivery", () => {
-    expect(
-      canSignOff({
-        isOverride: false,
-        requiresSignature: false,
-        hasAcceptedProof: true,
-        latestSignedOutcome: "refused",
-      })
-    ).toEqual({ ok: false, reason: "refused" })
   })
 
   it("allows sign-off when no signature is required and none present", () => {
     // Backward-compat: proof enforcement OFF, no signature — admin discretion.
     expect(
-      canSignOff({
-        isOverride: false,
-        requiresSignature: false,
-        hasAcceptedProof: false,
-        latestSignedOutcome: null,
-      })
+      canSignOff({ isOverride: false, requiresSignature: false, hasAcceptedProof: false })
     ).toEqual({ ok: true })
   })
 
   it("override bypasses every gate", () => {
     expect(
-      canSignOff({
-        isOverride: true,
-        requiresSignature: true,
-        hasAcceptedProof: false,
-        latestSignedOutcome: "partial",
-      })
+      canSignOff({ isOverride: true, requiresSignature: true, hasAcceptedProof: false })
+    ).toEqual({ ok: true })
+  })
+
+  it("is outcome-agnostic — accepted proof is enough regardless of delivery outcome", () => {
+    // Outcome/payment independence: partial and refused deliveries must remain
+    // eligible for admin payment review (full/partial/none/hold) — the gate
+    // itself never inspects the delivery outcome.
+    expect(
+      canSignOff({ isOverride: false, requiresSignature: true, hasAcceptedProof: true })
     ).toEqual({ ok: true })
   })
 })

@@ -559,15 +559,21 @@ export async function submitSignature(
     // closes it (admin sign-off remains the sole closer/payment gate). Only the
     // receiver stage (not authorised stage-2) advances the delivery task.
     if (sig.requestId && sig.signatoryRole !== "authorized" && data.deliveryOutcome !== "refused") {
+      // Scope to the exact task this signature belongs to. The requestId-only
+      // fallback is for legacy signature requests created before per-task
+      // linkage existed (partnerTaskId null) — every new signature request is
+      // created with partnerTaskId set, so multi-task requests are unaffected.
       await tx
         .update(partnerTasks)
         .set({ signatureReceivedAt: now, updatedAt: now })
         .where(
-          and(
-            eq(partnerTasks.requestId, sig.requestId),
-            eq(partnerTasks.status, "pending_signoff"),
-            isNull(partnerTasks.signatureReceivedAt)
-          )
+          sig.partnerTaskId
+            ? and(eq(partnerTasks.id, sig.partnerTaskId), isNull(partnerTasks.signatureReceivedAt))
+            : and(
+                eq(partnerTasks.requestId, sig.requestId),
+                eq(partnerTasks.status, "pending_signoff"),
+                isNull(partnerTasks.signatureReceivedAt)
+              )
         )
     }
 
@@ -1188,17 +1194,21 @@ export async function approveManualSignature(
       })
 
       // Approved manual upload = accepted proof; record signature-received time
-      // on the delivery task. Admin sign-off still closes it.
+      // on the exact delivery task this signature belongs to. Admin sign-off
+      // still closes it. requestId-only fallback is legacy-data only (see
+      // submitSignature for the same rule).
       if (sig.requestId) {
         await tx
           .update(partnerTasks)
           .set({ signatureReceivedAt: now, updatedAt: now })
           .where(
-            and(
-              eq(partnerTasks.requestId, sig.requestId),
-              eq(partnerTasks.status, "pending_signoff"),
-              isNull(partnerTasks.signatureReceivedAt)
-            )
+            sig.partnerTaskId
+              ? and(eq(partnerTasks.id, sig.partnerTaskId), isNull(partnerTasks.signatureReceivedAt))
+              : and(
+                  eq(partnerTasks.requestId, sig.requestId),
+                  eq(partnerTasks.status, "pending_signoff"),
+                  isNull(partnerTasks.signatureReceivedAt)
+                )
           )
       }
     })
