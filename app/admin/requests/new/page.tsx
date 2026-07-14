@@ -11,9 +11,9 @@ import { cn } from "@/lib/utils"
 export default async function NewRequestPage({
   searchParams,
 }: {
-  searchParams: Promise<{ orderNumber?: string }>
+  searchParams: Promise<{ orderNumber?: string; type?: string }>
 }) {
-  const [{ orderNumber }, t, requestTypes, customerList] = await Promise.all([
+  const [{ orderNumber, type }, t, requestTypes, customerList] = await Promise.all([
     searchParams,
     getTranslations("requests"),
     getRequestTypes(),
@@ -37,7 +37,7 @@ export default async function NewRequestPage({
           <CardTitle className="text-base">{t("title")}</CardTitle>
         </CardHeader>
         <CardContent>
-          <RequestForm requestTypes={requestTypes} customers={customerList} initialOrderNumber={orderNumber} />
+          <RequestForm requestTypes={requestTypes} customers={customerList} initialOrderNumber={orderNumber} initialTypeSlug={type} />
         </CardContent>
       </Card>
     </div>

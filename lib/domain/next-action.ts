@@ -239,7 +239,7 @@ export function deriveNextActions(facts: WorkspaceFacts): NextAction[] {
       actions.push({
         key: "receiveDevices",
         ownerRole: "warehouse",
-        href: `/admin/procurement/receiving?po=${encodeURIComponent(po.id)}`,
+        href: `/admin/procurement/${po.id}`,
         urgency: "now",
         entityRef: { type: "purchase_order", id: po.id },
       })
@@ -250,7 +250,7 @@ export function deriveNextActions(facts: WorkspaceFacts): NextAction[] {
       actions.push({
         key: "qcDevices",
         ownerRole: "warehouse",
-        href: `/admin/procurement/receiving?po=${encodeURIComponent(po.id)}`,
+        href: `/admin/procurement/${po.id}`,
         urgency: "now",
         entityRef: { type: "purchase_order", id: po.id },
       })

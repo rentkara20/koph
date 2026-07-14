@@ -256,7 +256,7 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
       owner: "warehouse" as const,
       waitingKey: "awaitingReceipt",
       actionKey: "receiveDevices",
-      href: `/admin/procurement/receiving?po=${r.poId}`,
+      href: `/admin/procurement/${r.poId}`,
       requestRef: r.poNumber ?? "—",
       customerName: r.supplierName,
       since: r.since,

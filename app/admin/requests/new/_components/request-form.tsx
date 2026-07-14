@@ -50,11 +50,17 @@ export function RequestForm({
   requestTypes,
   customers,
   initialOrderNumber,
+  initialTypeSlug,
 }: {
   requestTypes: RequestType[]
   customers: Customer[]
   initialOrderNumber?: string
+  initialTypeSlug?: string
 }) {
+  // Preselect the request type when the Next Action arrives with ?type=… (e.g.
+  // a "Schedule collection" action pre-picks the collection type).
+  const initialTypeId =
+    requestTypes.find((rt) => rt.slug === initialTypeSlug)?.id ?? ""
   const t = useTranslations("requests")
   const tCommon = useTranslations("common")
   const router = useRouter()
@@ -308,7 +314,7 @@ export function RequestForm({
           <Label htmlFor="typeId">
             {t("type")} <span className="text-destructive">*</span>
           </Label>
-          <Select id="typeId" name="typeId" required>
+          <Select id="typeId" name="typeId" required defaultValue={initialTypeId}>
             <option value="">— Select type —</option>
             {requestTypes.map((rt) => (
               <option key={rt.id} value={rt.id}>
