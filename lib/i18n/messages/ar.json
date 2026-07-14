@@ -336,7 +336,26 @@
       "typedSignLabel": "اكتب اسمك الكامل كتوقيع",
       "expiringSoon": "تنتهي صلاحية هذا الرابط خلال ٢٤ ساعة",
       "receiverConfirmedTitle": "تم استلام الطلب بواسطة",
-      "receiverSignedAtLabel": "تاريخ التوقيع"
+      "receiverSignedAtLabel": "تاريخ التوقيع",
+      "otpTitle": "أدخل رمز التسليم",
+      "otpHint": "اطلب من المستلم الرمز المكوّن من 6 أرقام المرسل من المكتب.",
+      "otpPlaceholder": "رمز من 6 أرقام",
+      "otpVerify": "تحقّق",
+      "otpVerified": "تم التحقق من الرمز",
+      "otpNeeded": "يلزم إدخال رمز التحقق قبل التوقيع.",
+      "outcomeTitle": "نتيجة التسليم",
+      "outcomeHint": "اختر ما تم استلامه فعلياً.",
+      "outcomeFullNoRemarks": "تم الاستلام بالكامل",
+      "outcomeFullWithRemarks": "تم الاستلام بالكامل — مع ملاحظات",
+      "outcomePartial": "استلام جزئي",
+      "outcomeRefused": "مرفوض",
+      "remarks": "ملاحظات",
+      "remarksRequired": "الملاحظات مطلوبة لهذه الحالة",
+      "position": "الصفة / المنصب",
+      "positionPlaceholder": "مثال: مدير المستودع",
+      "positionRequired": "أدخل الصفة / المنصب",
+      "next": "التالي",
+      "continueBtn": "متابعة"
     }
   },
   "payments": {

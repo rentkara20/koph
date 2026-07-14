@@ -5,24 +5,43 @@ import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { CheckCircle2, ChevronRight, PenLine, X } from "lucide-react"
 import { signOnSiteByTaskToken } from "@/lib/actions/signatures"
+import { verifyDeliveryOtp } from "@/lib/actions/otp"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { translateActionError } from "@/lib/i18n/action-errors"
 
-type Step = "form" | "pad" | "done"
+type Step = "otp" | "outcome" | "form" | "pad" | "done"
+
+type DeliveryOutcome = "full_no_remarks" | "full_with_remarks" | "partial" | "refused"
+
+// Outcomes that make remarks mandatory.
+const REMARKS_REQUIRED: DeliveryOutcome[] = ["full_with_remarks", "partial", "refused"]
+
+const OUTCOMES: DeliveryOutcome[] = [
+  "full_no_remarks",
+  "full_with_remarks",
+  "partial",
+  "refused",
+]
 
 type Props = {
   taskToken: string
   customerName: string | null
   customerMobile: string | null
+  // False when a delivery OTP is configured and not yet verified for this task.
+  stageUnlocked: boolean
 }
 
-export function OnSiteSigningFlow({ taskToken, customerName }: Props) {
+export function OnSiteSigningFlow({ taskToken, customerName, stageUnlocked }: Props) {
   const t = useTranslations("signatures.signing")
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [step, setStep] = useState<Step>("form")
+  const [step, setStep] = useState<Step>("outcome")
+  const [otp, setOtp] = useState("")
+  const [outcome, setOutcome] = useState<DeliveryOutcome | null>(null)
+  const [remarks, setRemarks] = useState("")
+  const [position, setPosition] = useState("")
   const [fullName, setFullName] = useState("")
   const [nationalId, setNationalId] = useState("")
   const [error, setError] = useState("")
@@ -31,14 +50,38 @@ export function OnSiteSigningFlow({ taskToken, customerName }: Props) {
   function handleStart() {
     setFullName(customerName ?? "")
     setNationalId("")
+    setOtp("")
+    setOutcome(null)
+    setRemarks("")
+    setPosition("")
     setError("")
-    setStep("form")
+    setStep(stageUnlocked ? "outcome" : "otp")
     setOpen(true)
   }
 
+  async function handleVerifyOtp() {
+    if (!/^\d{6}$/.test(otp.trim())) { setError(t("otpPlaceholder")); return }
+    setSaving(true)
+    setError("")
+    const result = await verifyDeliveryOtp(taskToken, otp.trim())
+    setSaving(false)
+    if (result.error) { setError(translateActionError(result.error)); return }
+    setStep("outcome")
+  }
+
+  function handleOutcomeNext() {
+    if (!outcome) { setError(t("outcomeTitle")); return }
+    if (REMARKS_REQUIRED.includes(outcome) && !remarks.trim()) {
+      setError(t("remarksRequired")); return
+    }
+    setError("")
+    setStep("form")
+  }
+
   function handleFormNext() {
-    if (!fullName.trim()) { setError(t("fullName")); return }
-    if (!nationalId.trim()) { setError(t("nationalId")); return }
+    if (!fullName.trim()) { setError(t("nameRequired")); return }
+    if (!position.trim()) { setError(t("positionRequired")); return }
+    if (!nationalId.trim()) { setError(t("nationalIdRequired")); return }
     setError("")
     setStep("pad")
   }
@@ -49,6 +92,9 @@ export function OnSiteSigningFlow({ taskToken, customerName }: Props) {
     const result = await signOnSiteByTaskToken(taskToken, {
       fullName: fullName.trim(),
       nationalId: nationalId.trim(),
+      position: position.trim(),
+      deliveryOutcome: outcome ?? undefined,
+      remarks: remarks.trim() || undefined,
       signatureData: data,
     })
     setSaving(false)
@@ -72,6 +118,96 @@ export function OnSiteSigningFlow({ taskToken, customerName }: Props) {
 
   return (
     <div className="rounded-xl border border-border bg-background overflow-hidden">
+      {/* Step: OTP entry (only when a delivery code is configured + unverified) */}
+      {step === "otp" && (
+        <div className="space-y-4 p-4">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </button>
+            <p className="text-sm font-semibold text-kara-purple">{t("otpTitle")}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("otpHint")}</p>
+          <Input
+            value={otp}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            placeholder={t("otpPlaceholder")}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            className="text-center font-mono text-2xl tracking-[0.4em]"
+            autoFocus
+          />
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <Button
+            className="h-12 w-full bg-kara-purple text-base font-semibold hover:bg-kara-purple-hover"
+            onClick={handleVerifyOtp}
+            disabled={saving}
+          >
+            {saving ? "…" : t("otpVerify")}
+            <ChevronRight className="size-4 rtl:rotate-180" />
+          </Button>
+        </div>
+      )}
+
+      {/* Step: delivery outcome */}
+      {step === "outcome" && (
+        <div className="space-y-4 p-4">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </button>
+            <p className="text-sm font-semibold text-kara-purple">{t("outcomeTitle")}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("outcomeHint")}</p>
+          <div className="space-y-2">
+            {OUTCOMES.map((o) => (
+              <label
+                key={o}
+                className={`flex cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${
+                  outcome === o ? "border-kara-purple bg-kara-purple/5 font-semibold" : "border-border"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="delivery-outcome"
+                  className="accent-kara-purple"
+                  checked={outcome === o}
+                  onChange={() => setOutcome(o)}
+                />
+                {t(
+                  o === "full_no_remarks"
+                    ? "outcomeFullNoRemarks"
+                    : o === "full_with_remarks"
+                      ? "outcomeFullWithRemarks"
+                      : o === "partial"
+                        ? "outcomePartial"
+                        : "outcomeRefused"
+                )}
+              </label>
+            ))}
+          </div>
+          {outcome && REMARKS_REQUIRED.includes(outcome) && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("remarks")} <span className="text-destructive">*</span></Label>
+              <textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows={3}
+                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-kara-purple/40"
+              />
+            </div>
+          )}
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <Button
+            className="h-12 w-full bg-kara-purple text-base font-semibold hover:bg-kara-purple-hover"
+            onClick={handleOutcomeNext}
+          >
+            {t("continueBtn")}
+            <ChevronRight className="size-4 rtl:rotate-180" />
+          </Button>
+        </div>
+      )}
+
       {/* Step: customer details */}
       {step === "form" && (
         <div className="space-y-4 p-4">
@@ -90,6 +226,14 @@ export function OnSiteSigningFlow({ taskToken, customerName }: Props) {
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder={t("namePlaceholder")}
                 autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("position")} <span className="text-destructive">*</span></Label>
+              <Input
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+                placeholder={t("positionPlaceholder")}
               />
             </div>
             <div className="space-y-1.5">
