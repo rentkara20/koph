@@ -570,7 +570,12 @@
       "openRequest": "Open request",
       "generateBatch": "Generate batch",
       "blockedErpPo": "Waiting on Zoho/Odoo PO",
-      "blockedOverdue": "Past due date"
+      "blockedOverdue": "Past due date",
+      "rentalEndingSoon": "Rental ending — schedule collection",
+      "scheduleCollection": "Schedule collection",
+      "blockedRentalEnd": "Rental term ending soon",
+      "stalledRequest": "No progress recently",
+      "blockedStalled": "Stalled — needs a push"
     }
   },
   "nextStep": {

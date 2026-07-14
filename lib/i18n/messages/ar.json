@@ -570,7 +570,12 @@
       "openRequest": "فتح الطلب",
       "generateBatch": "إنشاء دفعة",
       "blockedErpPo": "بانتظار أمر شراء في زوهو/أودو",
-      "blockedOverdue": "تجاوز الموعد"
+      "blockedOverdue": "تجاوز الموعد",
+      "rentalEndingSoon": "الإيجار يقترب من نهايته — جدوِل الاسترجاع",
+      "scheduleCollection": "جدولة الاسترجاع",
+      "blockedRentalEnd": "مدة الإيجار تقترب من نهايتها",
+      "stalledRequest": "لا تقدّم مؤخراً",
+      "blockedStalled": "متوقّف — يحتاج متابعة"
     }
   },
   "nextStep": {

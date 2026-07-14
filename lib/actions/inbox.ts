@@ -48,6 +48,16 @@ export type RoleInbox = {
 }
 
 const LIMIT = 15
+const DAY_MS = 86_400_000
+const AVG_MONTH_MS = 2_629_800_000
+// Reminder windows. Rental-end is approximated from quoteDate + rentalPeriodMonths
+// because the order carries no explicit rental-start; surface a collection
+// reminder once the approximate end is within 30 days (and up to 90 days past,
+// so an overdue collection stays visible). Stalled = active request untouched
+// for this many days.
+const RENTAL_SOON_MS = 30 * DAY_MS
+const RENTAL_OVERDUE_GRACE_MS = 90 * DAY_MS
+const STALLED_DAYS = 7
 
 export async function getInbox(): Promise<RoleInbox[] | null> {
   const session = await getStaffSession()
@@ -67,6 +77,9 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
     signoff,
     overdue,
     unbatched,
+    activeRentals,
+    deliveredOrderRows,
+    stalled,
   ] = await Promise.all([
     // PROCUREMENT — RFQs sent, no quotes recorded yet
     db
@@ -207,6 +220,51 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
       .where(eq(partnerPayments.status, "pending"))
       .orderBy(partnerPayments.createdAt)
       .limit(LIMIT),
+    // OPERATIONS — active rentals with a known term, to derive collection reminders
+    db
+      .select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        customerName: customers.name,
+        quoteDate: orders.quoteDate,
+        rentalPeriodMonths: orders.rentalPeriodMonths,
+      })
+      .from(orders)
+      .leftJoin(customers, eq(orders.customerId, customers.id))
+      .where(
+        and(
+          isNull(orders.deletedAt),
+          inArray(orders.status, ["confirmed", "partially_fulfilled", "fulfilled"]),
+          sql`${orders.quoteDate} is not null`,
+          sql`${orders.rentalPeriodMonths} is not null`
+        )
+      )
+      .limit(100),
+    // Order ids that actually have delivered units (so we only remind on live rentals)
+    db
+      .select({ orderId: orderUnits.orderId })
+      .from(orderUnits)
+      .where(eq(orderUnits.status, "delivered"))
+      .groupBy(orderUnits.orderId),
+    // OPERATIONS — active requests untouched for STALLED_DAYS (oversight signal)
+    db
+      .select({
+        id: orders.id,
+        orderNumber: orders.orderNumber,
+        customerName: customers.name,
+        since: orders.updatedAt,
+      })
+      .from(orders)
+      .leftJoin(customers, eq(orders.customerId, customers.id))
+      .where(
+        and(
+          isNull(orders.deletedAt),
+          inArray(orders.status, ["draft", "confirmed", "partially_fulfilled"]),
+          lt(orders.updatedAt, todayTs - STALLED_DAYS * DAY_MS)
+        )
+      )
+      .orderBy(orders.updatedAt)
+      .limit(LIMIT),
   ])
 
   const sourcingHref = (orderId: string | null, sourcingId: string) =>
@@ -276,7 +334,35 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
     })
   }
 
+  // Collection reminders: approximate rental end from quoteDate +
+  // rentalPeriodMonths, keep only live rentals (delivered units) whose end is
+  // within the soon/overdue window.
+  const deliveredOrderIds = new Set(
+    deliveredOrderRows.map((r) => r.orderId).filter((id): id is string => Boolean(id))
+  )
+  const now = Date.now()
+  const rentalsEndingSoon = activeRentals
+    .filter((r) => deliveredOrderIds.has(r.id) && r.quoteDate && r.rentalPeriodMonths)
+    .map((r) => ({
+      ...r,
+      endAt: (r.quoteDate as number) + (r.rentalPeriodMonths as number) * AVG_MONTH_MS,
+    }))
+    .filter((r) => r.endAt <= now + RENTAL_SOON_MS && r.endAt >= now - RENTAL_OVERDUE_GRACE_MS)
+    .sort((a, b) => a.endAt - b.endAt)
+    .slice(0, LIMIT)
+
   const operations: InboxCard[] = [
+    ...rentalsEndingSoon.map((r) => ({
+      key: `rental:${r.id}`,
+      owner: "operations" as const,
+      waitingKey: "rentalEndingSoon",
+      actionKey: "scheduleCollection",
+      href: `/admin/orders/${r.id}`,
+      requestRef: r.orderNumber ?? "—",
+      customerName: r.customerName,
+      since: null,
+      blockerKey: "blockedRentalEnd",
+    })),
     ...signoff.map((r) => ({
       key: `signoff:${r.taskId}`,
       owner: "operations" as const,
@@ -297,6 +383,17 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
       customerName: r.customerName,
       since: r.since,
       blockerKey: "blockedOverdue",
+    })),
+    ...stalled.map((r) => ({
+      key: `stalled:${r.id}`,
+      owner: "operations" as const,
+      waitingKey: "stalledRequest",
+      actionKey: "openRequest",
+      href: `/admin/orders/${r.id}`,
+      requestRef: r.orderNumber ?? "—",
+      customerName: r.customerName,
+      since: r.since,
+      blockerKey: "blockedStalled",
     })),
   ]
 
