@@ -292,7 +292,8 @@ export async function cancelSignatureRequest(id: string): Promise<SignatureActio
   await db.transaction(async (tx) => {
     await tx
       .update(signatureRequests)
-      .set({ status: "cancelled", updatedAt: Date.now() })
+      // Cancellation invalidates any live OTP immediately.
+      .set({ status: "cancelled", otpHash: null, otpExpiresAt: null, updatedAt: Date.now() })
       .where(eq(signatureRequests.id, id))
 
     await emitDomainEvent(tx, {
@@ -508,7 +509,8 @@ export async function submitSignature(
     // second customerSignatures row for the same request.
     assertSigned(await tx
       .update(signatureRequests)
-      .set({ status: "signed", updatedAt: now })
+      // Signing invalidates any live OTP immediately (single-use).
+      .set({ status: "signed", otpHash: null, otpExpiresAt: null, updatedAt: now })
       .where(and(eq(signatureRequests.id, sig.id), eq(signatureRequests.status, sig.status))))
 
     await tx.insert(customerSignatures).values({
@@ -868,7 +870,7 @@ export async function signOnSiteByTaskToken(
     // second signature record is never persisted for the same request.
     assertSigned(await tx
       .update(signatureRequests)
-      .set({ status: "signed", updatedAt: now })
+      .set({ status: "signed", otpHash: null, otpExpiresAt: null, updatedAt: now })
       .where(and(eq(signatureRequests.id, sigReq.id), eq(signatureRequests.status, sigReq.status))))
 
     await tx.insert(customerSignatures).values({

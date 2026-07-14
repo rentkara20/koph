@@ -41,7 +41,12 @@ const DEFAULTS = {
   taskTokenTtlDays: 7,
   activationTokenTtlHours: 72,
   businessMonthOffsetHours: 3, // Riyadh (UTC+3) — see lib/actions/payments.ts
+  deliveryOtpExpiryHours: 24, // Phase-0 default; admin-configurable up to 72
 } as const
+
+// Phase-0 delivery OTP expiry, admin-configurable. Default 24h, max 72h.
+export const OTP_EXPIRY_MIN_HOURS = 1
+export const OTP_EXPIRY_MAX_HOURS = 72
 
 export type RequestTaskSettings = {
   requiredDeliveryPhotoCount: number
@@ -127,6 +132,42 @@ export async function readRequestTaskSettingsForAdmin(): Promise<RequestTaskSett
   const session = await getStaffSession()
   if (!session) return null
   return getRequestTaskSettings()
+}
+
+// ─── Delivery OTP settings ────────────────────────────────────────────────────
+
+/** OTP expiry in hours, bounded 1–72 (default 24) regardless of stored value. */
+export async function getDeliveryOtpExpiryHours(): Promise<number> {
+  const h = await getSetting("deliveryOtpExpiryHours", DEFAULTS.deliveryOtpExpiryHours)
+  return Math.min(OTP_EXPIRY_MAX_HOURS, Math.max(OTP_EXPIRY_MIN_HOURS, Math.floor(h)))
+}
+
+export async function getDeliveryOtpExpiryMs(): Promise<number> {
+  return (await getDeliveryOtpExpiryHours()) * 60 * 60 * 1000
+}
+
+export async function readDeliveryOtpSettingsForAdmin(): Promise<{ expiryHours: number } | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+  return { expiryHours: await getDeliveryOtpExpiryHours() }
+}
+
+export async function updateDeliveryOtpSettings(
+  input: Partial<{ expiryHours: number }>
+): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  if (input.expiryHours !== undefined) {
+    const n = input.expiryHours
+    if (!Number.isInteger(n) || n < OTP_EXPIRY_MIN_HOURS || n > OTP_EXPIRY_MAX_HOURS) {
+      return { error: `OTP expiry must be ${OTP_EXPIRY_MIN_HOURS}–${OTP_EXPIRY_MAX_HOURS} hours` }
+    }
+    await setSetting("deliveryOtpExpiryHours", n, session.user.id)
+  }
+
+  revalidatePath("/admin/settings/request-tasks")
+  return {}
 }
 
 // ─── Pricing & payments settings ────────────────────────────────────────────
