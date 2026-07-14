@@ -18,6 +18,7 @@ import { ReopenRequestButton } from "./_components/reopen-request-button"
 import { DeleteButton } from "@/components/delete-button"
 import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
+import { PartialResolutionPanel } from "./_components/follow-up-delivery"
 import { SignaturesSection } from "./_components/signatures-section"
 import { ItemsSection } from "./_components/items-section"
 import { ReceiverSection } from "./_components/receiver-section"
@@ -237,6 +238,13 @@ export default async function RequestDetailPage({
                 taskServicesMap={taskServicesMap}
                 allServices={allServices}
               />
+              <div className="mt-3">
+                <PartialResolutionPanel
+                  requestId={request.id}
+                  requestStatus={request.status}
+                  partners={partnersWithContracts}
+                />
+              </div>
             </CardContent>
           </Card>
 

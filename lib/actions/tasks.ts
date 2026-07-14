@@ -104,19 +104,150 @@ async function syncRequestStatus(requestId: string) {
   }
 }
 
+// ─── Delivery-task-item allocation ────────────────────────────────────────────
+// Guarded, atomic per-item allocation (mirrors the pickup_task_line / CAS
+// pattern already used for purchase_order_line quantities). The remaining-
+// quantity computation and the INSERT happen in a single statement — SQLite's
+// single-writer model serializes this, so two concurrent allocations can never
+// both succeed against the same over-committed remaining quantity. Terminal
+// tasks (closed/cancelled/rejected/failed) are excluded from the open-
+// allocation sum, so cancelling a task immediately releases its reservation
+// with no separate release step.
+const OPEN_TASK_STATUSES = sql`('closed','cancelled','rejected','failed')`
+
+async function allocateTaskItem(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  taskId: string,
+  requestItemId: string,
+  qty: number
+): Promise<boolean> {
+  if (qty <= 0) return false
+  const id = createId()
+  const now = Date.now()
+  const result = await tx.run(sql`
+    INSERT INTO delivery_task_item (id, partner_task_id, request_item_id, qty_planned, created_at, updated_at)
+    SELECT ${id}, ${taskId}, ${requestItemId}, ${qty}, ${now}, ${now}
+    WHERE (
+      SELECT ri.quantity - ri.delivered_quantity - COALESCE((
+        SELECT SUM(dti.qty_planned) FROM delivery_task_item dti
+        JOIN partner_task pt ON pt.id = dti.partner_task_id
+        WHERE dti.request_item_id = ${requestItemId} AND pt.status NOT IN ${OPEN_TASK_STATUSES}
+      ), 0)
+      FROM request_item ri WHERE ri.id = ${requestItemId}
+    ) >= ${qty}
+  `)
+  const changed = (result as unknown as { rowsAffected?: number }).rowsAffected ?? 0
+  return changed > 0
+}
+
+// Read-only: remaining = ordered − admin-approved delivered − open-allocation sum.
+async function getRemainingQuantities(requestId: string) {
+  const items = await db.select().from(requestItems).where(eq(requestItems.requestId, requestId))
+  const rows = await Promise.all(
+    items.map(async (item) => {
+      const result = await db.run(sql`
+        SELECT COALESCE(SUM(dti.qty_planned), 0) AS allocated FROM delivery_task_item dti
+        JOIN partner_task pt ON pt.id = dti.partner_task_id
+        WHERE dti.request_item_id = ${item.id} AND pt.status NOT IN ${OPEN_TASK_STATUSES}
+      `)
+      const allocated = Number((result.rows[0] as unknown as { allocated: number } | undefined)?.allocated ?? 0)
+      return {
+        requestItemId: item.id,
+        description: item.description,
+        quantity: item.quantity,
+        deliveredQuantity: item.deliveredQuantity,
+        remaining: Math.max(0, item.quantity - item.deliveredQuantity - allocated),
+      }
+    })
+  )
+  return rows
+}
+
+export async function getRemainingQuantitiesForRequest(requestId: string) {
+  const session = await getStaffSession()
+  if (!session) return []
+  return getRemainingQuantities(requestId)
+}
+
 // ─── Admin: create task ───────────────────────────────────────────────────────
+
+type CreateTaskData = {
+  partnerId: string
+  contractId?: string
+  contactId?: string
+  taskTypeId?: string
+  executionMode?: "manual" | "api_courier"
+  photoRequired?: boolean
+  notes?: string
+  // Explicit per-item allocation (used by createFollowUpDeliveryTask). When
+  // omitted, the task claims all currently-remaining quantity on every item —
+  // the common single-task-per-request case, unchanged from before this
+  // allocation layer existed.
+  items?: { requestItemId: string; qty: number }[]
+}
+
+async function createTaskCore(
+  requestId: string,
+  data: CreateTaskData,
+  actorUserId: string
+): Promise<ActionResult> {
+  const taskToken = generateToken()
+  const taskTokenExpiresAt = Date.now() + (await getTaskTokenTtlMs())
+  const id = createId()
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx.insert(partnerTasks).values({
+        id,
+        requestId,
+        partnerId: data.partnerId,
+        contractId: data.contractId || null,
+        contactId: data.contactId || null,
+        taskTypeId: data.taskTypeId || null,
+        executionMode: data.executionMode ?? "manual",
+        photoRequired: data.photoRequired ?? true,
+        taskToken,
+        taskTokenExpiresAt,
+        status: "pending",
+        notes: data.notes || null,
+        assignedBy: actorUserId,
+        assignedAt: Date.now(),
+      })
+
+      if (data.items) {
+        for (const item of data.items) {
+          if (item.qty <= 0) continue
+          const ok = await allocateTaskItem(tx, id, item.requestItemId, item.qty)
+          if (!ok) throw new Error("ALLOCATION_FAILED")
+        }
+      } else {
+        const remaining = await getRemainingQuantities(requestId)
+        if (remaining.length > 0 && remaining.every((r) => r.remaining <= 0)) {
+          // Nothing left to allocate — a second plain createTask on an
+          // already-fully-allocated request is almost certainly a mistake;
+          // use createFollowUpDeliveryTask with explicit items instead.
+          throw new Error("ALLOCATION_FAILED")
+        }
+        for (const r of remaining) {
+          if (r.remaining <= 0) continue
+          const ok = await allocateTaskItem(tx, id, r.requestItemId, r.remaining)
+          if (!ok) throw new Error("ALLOCATION_FAILED")
+        }
+      }
+    })
+  } catch (error) {
+    if (error instanceof Error && error.message === "ALLOCATION_FAILED") {
+      return { error: "Not enough remaining quantity to allocate — another task may have claimed it. Refresh and retry." }
+    }
+    throw error
+  }
+
+  return { id, taskToken }
+}
 
 export async function createTask(
   requestId: string,
-  data: {
-    partnerId: string
-    contractId?: string
-    contactId?: string
-    taskTypeId?: string
-    executionMode?: "manual" | "api_courier"
-    photoRequired?: boolean
-    notes?: string
-  }
+  data: CreateTaskData
 ): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
@@ -124,26 +255,9 @@ export async function createTask(
   const parsed = createTaskSchema.safeParse(data)
   if (!parsed.success) return { error: firstError(parsed.error) }
 
-  const taskToken = generateToken()
-  const taskTokenExpiresAt = Date.now() + (await getTaskTokenTtlMs())
-
-  const id = createId()
-  await db.insert(partnerTasks).values({
-    id,
-    requestId,
-    partnerId: data.partnerId,
-    contractId: data.contractId || null,
-    contactId: data.contactId || null,
-    taskTypeId: data.taskTypeId || null,
-    executionMode: data.executionMode ?? "manual",
-    photoRequired: data.photoRequired ?? true,
-    taskToken,
-    taskTokenExpiresAt,
-    status: "pending",
-    notes: data.notes || null,
-    assignedBy: session.user.id,
-    assignedAt: Date.now(),
-  })
+  const created = await createTaskCore(requestId, data, session.user.id)
+  if (created.error) return created
+  const { id, taskToken } = created
 
   await logActivity({
     entityType: "request",
@@ -183,6 +297,141 @@ export async function createTask(
   await syncRequestStatus(requestId)
   revalidatePath(`/admin/requests/${requestId}`)
   return { id, taskToken }
+}
+
+// ─── Admin: create follow-up delivery (remaining quantities) ─────────────────
+// Never reuses a prior task's OTP/signature/proof — this is a brand-new task
+// with its own token/lifecycle. Partner/contract may be the same or different;
+// the caller must pass an explicit contractId belonging to the chosen partner
+// (never silently inherited) — validated below.
+
+export async function createFollowUpDeliveryTask(
+  requestId: string,
+  data: {
+    partnerId: string
+    contractId?: string
+    contactId?: string
+    taskTypeId?: string
+    executionMode?: "manual" | "api_courier"
+    photoRequired?: boolean
+    notes?: string
+    items: { requestItemId: string; qty: number }[]
+  }
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = createTaskSchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
+
+  if (!data.items.length || data.items.every((i) => i.qty <= 0)) {
+    return { error: "Select at least one item with a quantity to allocate" }
+  }
+
+  // A request item can only be allocated on this request — reject cross-request ids.
+  const requestItemRows = await db
+    .select({ id: requestItems.id })
+    .from(requestItems)
+    .where(eq(requestItems.requestId, requestId))
+  const validIds = new Set(requestItemRows.map((r) => r.id))
+  if (data.items.some((i) => !validIds.has(i.requestItemId))) {
+    return { error: "One or more items do not belong to this request" }
+  }
+
+  // Contract must belong to the chosen partner — never let Partner A's
+  // contract remain selected for Partner B.
+  if (data.contractId) {
+    const [contract] = await db
+      .select()
+      .from(partnerContracts)
+      .where(eq(partnerContracts.id, data.contractId))
+    if (!contract || contract.partnerId !== data.partnerId) {
+      return { error: "Selected contract does not belong to the selected partner" }
+    }
+    if (contract.status !== "active") {
+      return { error: "Selected contract is not active" }
+    }
+  }
+
+  const created = await createTaskCore(requestId, data, session.user.id)
+  if (created.error) return created
+  const { id, taskToken } = created
+
+  await logActivity({
+    entityType: "request",
+    entityId: requestId,
+    action: "task_assigned",
+    i18nKey: "activity.taskAssigned",
+    performedBy: session.user.id,
+  })
+
+  await syncRequestStatus(requestId)
+  revalidatePath(`/admin/requests/${requestId}`)
+  return { id, taskToken }
+}
+
+// ─── Admin: partial-delivery resolution (minimum slice) ──────────────────────
+// After a partial/refused/unavailable delivery, admin picks how the request
+// itself resolves. This is independent of task close/payment (already
+// admin-decided via signOffTask) — it only sets the customer-request status.
+
+export async function resolveRequestAfterPartialDelivery(
+  requestId: string,
+  resolution: "on_hold" | "rescheduled" | "cancelled" | "failed"
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const [req] = await db.select().from(requests).where(eq(requests.id, requestId))
+  if (!req || req.deletedAt) return { error: "Request not found" }
+
+  await db
+    .update(requests)
+    .set({ status: resolution, updatedAt: Date.now() })
+    .where(eq(requests.id, requestId))
+
+  await logActivity({
+    entityType: "request",
+    entityId: requestId,
+    action: "status_changed",
+    i18nKey: "activity.statusChanged",
+    i18nData: { status: resolution },
+    performedBy: session.user.id,
+  })
+
+  revalidatePath(`/admin/requests/${requestId}`)
+  return { id: requestId }
+}
+
+// Admin explicitly accepts partial delivery as final — waives remaining
+// quantity (no further follow-up expected) and completes the request.
+export async function acceptPartialDeliveryAsFinal(
+  requestId: string,
+  reason: string
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+  if (!reason.trim()) return { error: "A reason is required to accept partial delivery as final" }
+
+  const [req] = await db.select().from(requests).where(eq(requests.id, requestId))
+  if (!req || req.deletedAt) return { error: "Request not found" }
+
+  await db
+    .update(requests)
+    .set({ status: "completed", updatedAt: Date.now() })
+    .where(eq(requests.id, requestId))
+
+  await logActivity({
+    entityType: "request",
+    entityId: requestId,
+    action: "status_changed",
+    i18nKey: "activity.statusChanged",
+    i18nData: { status: "completed", reason },
+    performedBy: session.user.id,
+  })
+
+  revalidatePath(`/admin/requests/${requestId}`)
+  return { id: requestId }
 }
 
 // ─── Admin: get tasks for a request ──────────────────────────────────────────
