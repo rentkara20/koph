@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react"
 import { getRequest, getRequestContacts, deleteRequest } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
 import { getSignatureRequestsForRequest } from "@/lib/actions/signatures"
+import { appBaseUrl } from "@/lib/utils/public-url"
 import { getTaskServicesForRequest } from "@/lib/actions/task-services"
 import { getActiveServices } from "@/lib/actions/services"
 import { buttonVariants } from "@/components/ui/button"
@@ -257,6 +258,18 @@ export default async function RequestDetailPage({
                 }
                 authorizedContact={contacts.find((c) => c.isAuthorizedSignatory) ?? null}
                 defaultDocumentName={`Delivery Note #${request.quoteNumber ?? request.requestNumber}${customer ? " " + customer.name : ""}`}
+                baseUrl={appBaseUrl()}
+                customerName={customer?.name ?? null}
+                receiverEmail={
+                  contacts.find((c) => c.id === request.receiverContactId)?.email ??
+                  customer?.email ??
+                  null
+                }
+                itemsSummary={
+                  items.length > 0
+                    ? items.map((i) => `${i.description}${i.quantity > 1 ? ` ×${i.quantity}` : ""}`).join("، ")
+                    : "الأصناف المتفق عليها"
+                }
               />
             </CardContent>
           </Card>

@@ -145,7 +145,7 @@
       "pending": "في الانتظار",
       "accepted": "مقبولة",
       "in_progress": "جارٍ التنفيذ",
-      "pending_signoff": "بانتظار الموافقة",
+      "pending_signoff": "تم التسليم — بانتظار التوقيع",
       "closed": "مغلقة",
       "rejected": "مرفوضة",
       "failed": "فشلت",

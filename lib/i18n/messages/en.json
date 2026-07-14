@@ -145,7 +145,7 @@
       "pending": "Pending",
       "accepted": "Accepted",
       "in_progress": "In Progress",
-      "pending_signoff": "Pending Sign-off",
+      "pending_signoff": "Delivery completed — Signature pending",
       "closed": "Closed",
       "rejected": "Rejected",
       "failed": "Failed",

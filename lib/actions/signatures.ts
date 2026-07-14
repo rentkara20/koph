@@ -200,6 +200,10 @@ export async function getSignatureRequestsForRequest(requestId: string) {
       parentSignatureRequestId: signatureRequests.parentSignatureRequestId,
       signerName: customerSignatures.fullName,
       signedAt: customerSignatures.signedAt,
+      signatureMethod: customerSignatures.signatureMethod,
+      uploadedFileUrl: customerSignatures.uploadedFileUrl,
+      approvedAt: customerSignatures.approvedAt,
+      reviewNotes: customerSignatures.reviewNotes,
     })
     .from(signatureRequests)
     .leftJoin(customerSignatures, eq(customerSignatures.signatureRequestId, signatureRequests.id))

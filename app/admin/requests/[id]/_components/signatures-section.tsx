@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { DeliveryProofActions } from "./delivery-proof-actions"
 
 type StatusVariant = "outline" | "info" | "success" | "secondary"
 
@@ -56,14 +57,18 @@ type SigRow = {
   parentSignatureRequestId: string | null
   signerName: string | null
   signedAt: number | null
+  signatureMethod?: string | null
+  uploadedFileUrl?: string | null
+  approvedAt?: number | null
+  reviewNotes?: string | null
 }
 
-type WhatsappContact = { name: string; mobile: string | null } | null
+type WhatsappContact = { name: string; mobile: string | null; email?: string | null } | null
 
-function CopySignLink({ token }: { token: string }) {
+function CopySignLink({ token, baseUrl }: { token: string; baseUrl: string }) {
   const tToast = useTranslations("toast")
   const [copied, setCopied] = useState(false)
-  const url = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${token}`
+  const url = `${baseUrl}/sign/${token}`
 
   async function handleCopy() {
     await navigator.clipboard.writeText(url)
@@ -94,6 +99,10 @@ export function SignaturesSection({
   receiverContact,
   authorizedContact,
   defaultDocumentName,
+  baseUrl,
+  customerName,
+  receiverEmail,
+  itemsSummary,
 }: {
   requestId: string
   requestNumber: string
@@ -102,6 +111,10 @@ export function SignaturesSection({
   receiverContact: WhatsappContact
   authorizedContact: WhatsappContact
   defaultDocumentName?: string
+  baseUrl: string
+  customerName: string | null
+  receiverEmail: string | null
+  itemsSummary: string
 }) {
   const hasAuthorizedContact = !!authorizedContact
   const router = useRouter()
@@ -250,7 +263,7 @@ export function SignaturesSection({
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 pt-1">
-                  {isActive && <CopySignLink token={sig.secureToken} />}
+                  {isActive && <CopySignLink token={sig.secureToken} baseUrl={baseUrl} />}
 
                   {isActive && whatsappUrl && (
                     <a
@@ -334,6 +347,32 @@ export function SignaturesSection({
                     {formatDate(sig.createdAt)}
                   </span>
                 </div>
+
+                {/* Delivery-proof channels + OTP + manual return (receiver rows only) */}
+                {!isAuthorizedRow && (
+                  <DeliveryProofActions
+                    signatureRequestId={sig.id}
+                    requestId={requestId}
+                    secureToken={sig.secureToken}
+                    status={sig.status}
+                    requestNumber={requestNumber}
+                    baseUrl={baseUrl}
+                    itemsSummary={itemsSummary}
+                    customerName={customerName ?? receiverContact?.name ?? null}
+                    recipientMobile={receiverContact?.mobile ?? null}
+                    recipientEmail={receiverEmail}
+                    manual={
+                      sig.signatureMethod === "manual_upload"
+                        ? {
+                            hasUpload: !!sig.uploadedFileUrl,
+                            approved: !!sig.approvedAt,
+                            fileUrl: sig.uploadedFileUrl ?? null,
+                            reviewNotes: sig.reviewNotes ?? null,
+                          }
+                        : null
+                    }
+                  />
+                )}
               </div>
             )
           })}
