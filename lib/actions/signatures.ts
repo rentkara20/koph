@@ -1,7 +1,7 @@
 "use server"
 
 import { checkRateLimit } from "@/lib/utils/rate-limit"
-import { desc, eq, and, inArray } from "drizzle-orm"
+import { desc, eq, and, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { headers } from "next/headers"
 import { db } from "@/lib/db"
@@ -550,6 +550,23 @@ export async function submitSignature(
       dedupeKey: `signature_request:${sig.id}:SignatureCompleted`,
     })
 
+    // Remote/electronic signature counts as accepted proof of delivery. Record
+    // the signature-received time on the delivery task awaiting sign-off; never
+    // closes it (admin sign-off remains the sole closer/payment gate). Only the
+    // receiver stage (not authorised stage-2) advances the delivery task.
+    if (sig.requestId && sig.signatoryRole !== "authorized" && data.deliveryOutcome !== "refused") {
+      await tx
+        .update(partnerTasks)
+        .set({ signatureReceivedAt: now, updatedAt: now })
+        .where(
+          and(
+            eq(partnerTasks.requestId, sig.requestId),
+            eq(partnerTasks.status, "pending_signoff"),
+            isNull(partnerTasks.signatureReceivedAt)
+          )
+        )
+    }
+
     // Per-item acknowledgement of received condition (ownership validated above).
     if (data.itemConditions && data.itemConditions.length > 0) {
       await tx.insert(signatureItemConditions).values(
@@ -864,13 +881,22 @@ export async function signOnSiteByTaskToken(
     signedAt: now,
   })
 
+  // Outcome drives both the signature record and the task/request transition.
+  // refused → signature stands as evidence (status "rejected", NOT an accepted
+  // proof of delivery) and the task fails. full_*/partial → accepted proof:
+  // record delivery + signature-received time and leave the task at
+  // pending_signoff for admin sign-off (partial also holds the request).
+  const outcome = data.deliveryOutcome ?? null
+  const refused = outcome === "refused"
+  const sigStatus = refused ? "rejected" : "signed"
+
   try {
     await db.transaction(async (tx) => {
     // Guarded status flip first — abort on a concurrent double-submit so a
     // second signature record is never persisted for the same request.
     assertSigned(await tx
       .update(signatureRequests)
-      .set({ status: "signed", otpHash: null, otpExpiresAt: null, updatedAt: now })
+      .set({ status: sigStatus, otpHash: null, otpExpiresAt: null, updatedAt: now })
       .where(and(eq(signatureRequests.id, sigReq.id), eq(signatureRequests.status, sigReq.status))))
 
     await tx.insert(customerSignatures).values({
@@ -882,7 +908,7 @@ export async function signOnSiteByTaskToken(
       position: data.position?.trim() || null,
       signatureData: data.signatureData,
       signatureMethod: "electronic",
-      deliveryOutcome: data.deliveryOutcome ?? null,
+      deliveryOutcome: outcome,
       remarks: data.remarks?.trim() || null,
       snapshot: snapshotJson,
       consentAcceptedAt: now,
@@ -896,16 +922,48 @@ export async function signOnSiteByTaskToken(
     await tx.insert(signatureEvents).values({
       id: createId(),
       signatureRequestId: sigReq.id,
-      eventType: "signed",
+      eventType: refused ? "rejected" : "signed",
     })
 
     await emitDomainEvent(tx, {
       aggregateType: "signature_request",
       aggregateId: sigReq.id,
-      eventType: "SignatureCompleted",
+      eventType: refused ? "SignatureRejected" : "SignatureCompleted",
       payload: { requestId: sigReq.requestId ?? null, signatoryRole: sigReq.signatoryRole },
-      dedupeKey: `signature_request:${sigReq.id}:SignatureCompleted`,
+      dedupeKey: `signature_request:${sigReq.id}:${refused ? "SignatureRejected" : "SignatureCompleted"}`,
     })
+
+    // Task + request transition. Never closes the task — admin sign-off is the
+    // sole closer/payment gate — but records delivery/proof times and moves the
+    // task into the correct holding state.
+    if (refused) {
+      await tx
+        .update(partnerTasks)
+        .set({
+          status: "failed",
+          failureReason: task.failureReason ?? "other",
+          failureNotes: data.remarks?.trim() || task.failureNotes || null,
+          deliveredAt: task.deliveredAt ?? now,
+          taskTokenExpiresAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(partnerTasks.id, task.id), eq(partnerTasks.status, task.status)))
+      await tx.update(requests).set({ status: "failed", updatedAt: now }).where(eq(requests.id, task.requestId!))
+    } else {
+      await tx
+        .update(partnerTasks)
+        .set({
+          status: task.status === "in_progress" ? "pending_signoff" : task.status,
+          completedAt: task.completedAt ?? now,
+          deliveredAt: task.deliveredAt ?? now,
+          signatureReceivedAt: now,
+          updatedAt: now,
+        })
+        .where(and(eq(partnerTasks.id, task.id), eq(partnerTasks.status, task.status)))
+      if (outcome === "partial") {
+        await tx.update(requests).set({ status: "on_hold", updatedAt: now }).where(eq(requests.id, task.requestId!))
+      }
+    }
     })
   } catch (e) {
     if (e instanceof StaleSignatureError) return { error: "This document is already signed or cancelled" }

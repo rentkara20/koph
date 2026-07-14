@@ -17,6 +17,7 @@ import {
   requests,
   requestTypes,
   signatureRequests,
+  customerSignatures,
 } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
@@ -34,6 +35,7 @@ import {
   canTransition,
 } from "@/lib/domain/task-status"
 import { deriveRequestStatus } from "@/lib/domain/request-status"
+import { canSignOff } from "@/lib/domain/delivery-signoff"
 import { computePayment, requiresQuantity, type PricingModel } from "@/lib/domain/pricing"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
 import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
@@ -271,11 +273,18 @@ export async function signOffTask(
     return { error: "Quantity is required for this contract's pricing model" }
   }
 
-  // OI-0 proof gate: when enforcement is enabled, a task whose resolved proof
-  // requirements include a customer signature cannot be closed until a signed
-  // signature request exists for it (or its parent request). Overrides — an
-  // admin rescuing a mistakenly-failed task — bypass the gate. Enforcement is
-  // OFF by default so operators can author proof config before it blocks.
+  // Payment gate: "admin-approved proof that physical delivery occurred".
+  //
+  // requiresSignature — only when proof enforcement is enabled AND the resolved
+  // proof config for this request type includes a signature. Enforcement is OFF
+  // by default so operators can author proof config before it blocks.
+  //
+  // Accepted proof = a "signed" signature request for this task/request (on-site
+  // receiver signature, remote e-signature, or an approved manual upload — all
+  // land as status "signed"). A refused delivery lands as "rejected" and fails
+  // the task instead. Authorised stage-2 sign-off is documentation-only and is
+  // NOT consulted here, so a pending stage-2 never blocks payment.
+  let requiresSignature = false
   if (!isOverride && (await isProofEnforcementEnabled())) {
     const systemDefault = await getSystemDefaultProof()
     const [reqTypeRow] = await db
@@ -287,24 +296,39 @@ export async function signOffTask(
       {},
       systemDefault
     )
-    if (proof.signature) {
-      const [signed] = await db
-        .select({ id: signatureRequests.id })
-        .from(signatureRequests)
-        .where(
-          and(
-            eq(signatureRequests.status, "signed"),
-            or(
-              eq(signatureRequests.partnerTaskId, taskId),
-              eq(signatureRequests.requestId, taskRequestId)
-            )
-          )
+    requiresSignature = proof.signature
+  }
+
+  const [proofRow] = await db
+    .select({ outcome: customerSignatures.deliveryOutcome })
+    .from(customerSignatures)
+    .innerJoin(signatureRequests, eq(customerSignatures.signatureRequestId, signatureRequests.id))
+    .where(
+      and(
+        eq(signatureRequests.status, "signed"),
+        or(
+          eq(signatureRequests.partnerTaskId, taskId),
+          eq(signatureRequests.requestId, taskRequestId)
         )
-      if (!signed) {
-        return {
-          error: "A signed customer signature is required before this task can be closed",
-        }
-      }
+      )
+    )
+    .orderBy(desc(customerSignatures.signedAt))
+    .limit(1)
+
+  const decision = canSignOff({
+    isOverride,
+    requiresSignature,
+    hasAcceptedProof: !!proofRow,
+    latestSignedOutcome: proofRow?.outcome ?? null,
+  })
+  if (!decision.ok) {
+    return {
+      error:
+        decision.reason === "signature_required"
+          ? "A signed customer signature is required before this task can be closed"
+          : decision.reason === "partial_unresolved"
+            ? "Partial delivery — resolve the outstanding items before sign-off"
+            : "Delivery was refused — cannot sign off; use the failed / reschedule workflow",
     }
   }
 
@@ -749,7 +773,12 @@ export async function updateTaskByToken(
   }
 
   if (newStatus === "accepted") updates.acceptedAt = Date.now()
-  if (newStatus === "pending_signoff") updates.completedAt = Date.now()
+  if (newStatus === "pending_signoff") {
+    updates.completedAt = Date.now()
+    // Physical handover happened. Signature (proof) is tracked separately in
+    // signatureReceivedAt and may arrive later (remote / manual return).
+    updates.deliveredAt = Date.now()
+  }
   if (newStatus === "arrived") updates.arrivedAt = Date.now()
   if (newStatus === "failed") {
     if (!data?.failureReason) return { error: "Failure reason is required" }
