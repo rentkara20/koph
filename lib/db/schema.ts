@@ -222,9 +222,21 @@ export const requestItems = sqliteTable("request_item", {
   orderUnitId: text("order_unit_id").references(() => orderUnits.id, {
     onDelete: "set null",
   }),
+  // Admin-approved cumulative delivered quantity across all delivery tasks for
+  // this item. Only incremented at final admin signOffTask, guarded to never
+  // exceed quantity. Independent of partner payment (see partner_payment_decision).
+  deliveredQuantity: integer("delivered_quantity").notNull().default(0),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-})
+}, (t) => [
+  // A request item pulled from a specific serialized order unit must represent
+  // exactly one physical device — quantity>1 on such a row would make serial
+  // tracking on delivery_task_item ambiguous.
+  check(
+    "request_item_order_unit_qty_chk",
+    sql`${t.orderUnitId} IS NULL OR ${t.quantity} = 1`
+  ),
+])
 
 // ─── Partners ───────────────────────────────────────────────────────────────
 
@@ -725,6 +737,90 @@ export const partnerPayments = sqliteTable("partner_payment", {
   index("partner_payment_partner_status_idx").on(t.partnerId, t.status),
   index("partner_payment_batch_idx").on(t.batchId),
 ])
+
+// ─── Partner payment decisions ────────────────────────────────────────────────
+// Separate, always-created audit record for the admin's payment decision at
+// sign-off — independent of whether a partner_payment row exists (decision
+// "none"/"hold" never create one). One decision per task (UNIQUE), upserted
+// while the task is still open, immutable in practice once the task closes.
+
+export const partnerPaymentDecisions = sqliteTable("partner_payment_decision", {
+  id: text("id").primaryKey(),
+  partnerTaskId: text("partner_task_id")
+    .notNull()
+    .unique()
+    .references(() => partnerTasks.id),
+  decision: text("decision", { enum: ["full", "partial", "none", "hold"] }).notNull(),
+  approvedAmount: real("approved_amount"),
+  reason: text("reason"),
+  decidedBy: text("decided_by")
+    .notNull()
+    .references(() => users.id),
+  decidedAt: integer("decided_at").notNull(),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+})
+
+// ─── Delivery task items ───────────────────────────────────────────────────────
+// Per-task allocation against a request_item (mirrors pickup_task_line). Also
+// carries the serial report-and-approve trail for serialized items: partner-
+// reported evidence is never authoritative until admin approves/corrects it.
+
+export const deliveryTaskItems = sqliteTable("delivery_task_item", {
+  id: text("id").primaryKey(),
+  partnerTaskId: text("partner_task_id")
+    .notNull()
+    .references(() => partnerTasks.id),
+  requestItemId: text("request_item_id")
+    .notNull()
+    .references(() => requestItems.id),
+  qtyPlanned: integer("qty_planned").notNull(),
+  qtyDelivered: integer("qty_delivered").notNull().default(0),
+  reportedSerial: text("reported_serial"),
+  reportedBy: text("reported_by").references(() => users.id),
+  reportedAt: integer("reported_at"),
+  correctedSerial: text("corrected_serial"),
+  correctedBy: text("corrected_by").references(() => users.id),
+  correctedAt: integer("corrected_at"),
+  verificationStatus: text("verification_status", {
+    enum: ["unreported", "reported", "mismatch", "approved", "rejected"],
+  })
+    .notNull()
+    .default("unreported"),
+  approvedBy: text("approved_by").references(() => users.id),
+  approvedAt: integer("approved_at"),
+  // Required when an approved serial materially replaces the pre-allocated
+  // request_item.orderUnitId (a different physical unit than expected).
+  relinkReason: text("relink_reason"),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [
+  uniqueIndex("delivery_task_item_task_item_idx").on(t.partnerTaskId, t.requestItemId),
+  index("delivery_task_item_request_item_idx").on(t.requestItemId),
+])
+
+// ─── Delivery snapshot amendments ──────────────────────────────────────────────
+// The customer-signed snapshot (customer_signature.snapshot) is permanently
+// immutable. When an approved admin correction changes customer-facing
+// delivery content (e.g. a relinked serial), it is recorded here as a linked,
+// versioned amendment — never merged back into the original signed JSON.
+
+export const deliverySnapshotAmendments = sqliteTable("delivery_snapshot_amendment", {
+  id: text("id").primaryKey(),
+  signatureRequestId: text("signature_request_id")
+    .notNull()
+    .references(() => signatureRequests.id),
+  deliveryTaskItemId: text("delivery_task_item_id")
+    .notNull()
+    .references(() => deliveryTaskItems.id),
+  fieldChanged: text("field_changed").notNull(),
+  originalValue: text("original_value").notNull(),
+  correctedValue: text("corrected_value").notNull(),
+  reason: text("reason").notNull(),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+})
 
 // ─── Type exports ─────────────────────────────────────────────────────────────
 
