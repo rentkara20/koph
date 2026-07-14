@@ -6,6 +6,9 @@
 
 export const OTP_LENGTH = 6
 export const OTP_MAX_ATTEMPTS = 5
+// Delivery OTP expiry bounds (Phase-0 default 24h, admin-configurable to 72h).
+export const OTP_EXPIRY_MIN_HOURS = 1
+export const OTP_EXPIRY_MAX_HOURS = 72
 
 /** Cryptographically-random, uniformly-distributed 6-digit code (zero-padded). */
 export function generateOtpCode(): string {

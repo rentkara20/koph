@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { appSettings } from "@/lib/db/schema"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { SYSTEM_DEFAULT_PROOF, type ProofRequirements } from "@/lib/domain/proof"
+import { OTP_EXPIRY_MIN_HOURS, OTP_EXPIRY_MAX_HOURS } from "@/lib/utils/otp-hash"
 
 export type SettingsActionResult = { error?: string }
 
@@ -43,10 +44,6 @@ const DEFAULTS = {
   businessMonthOffsetHours: 3, // Riyadh (UTC+3) — see lib/actions/payments.ts
   deliveryOtpExpiryHours: 24, // Phase-0 default; admin-configurable up to 72
 } as const
-
-// Phase-0 delivery OTP expiry, admin-configurable. Default 24h, max 72h.
-export const OTP_EXPIRY_MIN_HOURS = 1
-export const OTP_EXPIRY_MAX_HOURS = 72
 
 export type RequestTaskSettings = {
   requiredDeliveryPhotoCount: number
