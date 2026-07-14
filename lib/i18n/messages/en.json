@@ -1405,5 +1405,11 @@
         "payment_batch": "Payment batch"
       }
     }
+  },
+  "activity": {
+    "deliveryOtpGenerated": "Delivery code generated",
+    "manualSignatureUploaded": "Signed file uploaded: {fileName}",
+    "manualSignatureApproved": "Manually signed receipt approved",
+    "manualSignatureRejected": "Signed file rejected: {reason}"
   }
 }

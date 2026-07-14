@@ -1040,6 +1040,225 @@ export async function rejectSignature(
   return { id: sig.id }
 }
 
+// ─── Manual returned signed receipt (upload → review → approve/reject) ───────
+// Preserves the original unsigned printable receipt. The uploaded file is
+// pending until an admin approves it; approval is what makes it an accepted
+// proof of delivery. Task closure still happens ONLY via admin signOffTask.
+
+export async function uploadManualSignature(
+  signatureRequestId: string,
+  data: { fileUrl: string; fileName: string; fullName: string; nationalId?: string }
+): Promise<SignatureActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const fileUrl = data.fileUrl?.trim()
+  const fullName = data.fullName?.trim()
+  if (!fileUrl) return { error: "A file is required" }
+  if (!fullName) return { error: "Signer name is required" }
+
+  const [sig] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, signatureRequestId))
+  if (!sig) return { error: "Signature request not found" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) {
+    return { error: "This signature request is no longer active" }
+  }
+
+  const now = Date.now()
+  const id = createId()
+  // One signature row per request — upsert so a rejected upload can be replaced.
+  await db
+    .insert(customerSignatures)
+    .values({
+      id,
+      signatureRequestId: sig.id,
+      fullName,
+      mobile: "",
+      nationalId: data.nationalId?.trim() || null,
+      signatureData: "", // artefact lives in uploadedFileUrl for manual uploads
+      signatureMethod: "manual_upload",
+      uploadedFileUrl: fileUrl,
+      uploadedBy: session.user.id,
+      uploadedAt: now,
+      approvedBy: null,
+      approvedAt: null,
+      reviewNotes: null,
+      signedAt: now,
+      signedAtTz: "Asia/Riyadh",
+    })
+    .onConflictDoUpdate({
+      target: customerSignatures.signatureRequestId,
+      set: {
+        fullName,
+        nationalId: data.nationalId?.trim() || null,
+        signatureMethod: "manual_upload",
+        uploadedFileUrl: fileUrl,
+        uploadedBy: session.user.id,
+        uploadedAt: now,
+        approvedBy: null,
+        approvedAt: null,
+        reviewNotes: null,
+      },
+    })
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: sig.id,
+    action: "manual_signature_uploaded",
+    i18nKey: "activity.manualSignatureUploaded",
+    i18nData: { fileName: data.fileName },
+    performedBy: session.user.id,
+  })
+
+  if (sig.requestId) revalidatePath(`/admin/requests/${sig.requestId}`)
+  return { id: sig.id }
+}
+
+export async function approveManualSignature(
+  signatureRequestId: string,
+  data?: { reviewNotes?: string }
+): Promise<SignatureActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const [sig] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, signatureRequestId))
+  if (!sig) return { error: "Signature request not found" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sig.status)) {
+    return { error: "This signature request is no longer active" }
+  }
+
+  const [existing] = await db
+    .select()
+    .from(customerSignatures)
+    .where(eq(customerSignatures.signatureRequestId, sig.id))
+  if (!existing || existing.signatureMethod !== "manual_upload" || !existing.uploadedFileUrl) {
+    return { error: "No uploaded file to approve" }
+  }
+  if (existing.approvedAt) return { error: "Already approved" }
+
+  const now = Date.now()
+  // Freeze the receipt as approved (manual uploads carry no outcome → full).
+  const snapshotJson = await buildSnapshotJson({
+    requestId: sig.requestId,
+    requestNumber: "",
+    quoteNumber: "",
+    customerId: sig.customerId,
+    itemConditions: undefined,
+    deliveryOutcome: null,
+    remarks: null,
+    signer: { fullName: existing.fullName, position: existing.position ?? null, nationalId: existing.nationalId },
+    signedAt: now,
+  })
+
+  try {
+    await db.transaction(async (tx) => {
+      assertSigned(
+        await tx
+          .update(signatureRequests)
+          .set({ status: "signed", otpHash: null, otpExpiresAt: null, updatedAt: now })
+          .where(and(eq(signatureRequests.id, sig.id), eq(signatureRequests.status, sig.status)))
+      )
+
+      await tx
+        .update(customerSignatures)
+        .set({
+          approvedBy: session.user.id,
+          approvedAt: now,
+          reviewNotes: data?.reviewNotes?.trim() || null,
+          snapshot: snapshotJson,
+          signedAt: now,
+        })
+        .where(eq(customerSignatures.id, existing.id))
+
+      await tx.insert(signatureEvents).values({
+        id: createId(),
+        signatureRequestId: sig.id,
+        eventType: "signed",
+      })
+
+      await emitDomainEvent(tx, {
+        aggregateType: "signature_request",
+        aggregateId: sig.id,
+        eventType: "SignatureCompleted",
+        payload: { requestId: sig.requestId ?? null, signatoryRole: sig.signatoryRole },
+        dedupeKey: `signature_request:${sig.id}:SignatureCompleted`,
+      })
+
+      // Approved manual upload = accepted proof; record signature-received time
+      // on the delivery task. Admin sign-off still closes it.
+      if (sig.requestId) {
+        await tx
+          .update(partnerTasks)
+          .set({ signatureReceivedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(partnerTasks.requestId, sig.requestId),
+              eq(partnerTasks.status, "pending_signoff"),
+              isNull(partnerTasks.signatureReceivedAt)
+            )
+          )
+      }
+    })
+  } catch (e) {
+    if (e instanceof StaleSignatureError) return { error: "This request is no longer active" }
+    throw e
+  }
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: sig.id,
+    action: "manual_signature_approved",
+    i18nKey: "activity.manualSignatureApproved",
+    performedBy: session.user.id,
+  })
+
+  if (sig.requestId) revalidatePath(`/admin/requests/${sig.requestId}`)
+  return { id: sig.id }
+}
+
+export async function rejectManualSignature(
+  signatureRequestId: string,
+  data: { reviewNotes: string }
+): Promise<SignatureActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const reviewNotes = data.reviewNotes?.trim()
+  if (!reviewNotes) return { error: "A rejection reason is required" }
+
+  const [existing] = await db
+    .select()
+    .from(customerSignatures)
+    .where(eq(customerSignatures.signatureRequestId, signatureRequestId))
+  if (!existing || existing.signatureMethod !== "manual_upload") {
+    return { error: "No uploaded file to reject" }
+  }
+  if (existing.approvedAt) return { error: "Cannot reject an approved signature" }
+
+  // Keep the review trail; clear the artefact so a corrected file can be
+  // re-uploaded. The unsigned printable receipt is never affected.
+  await db
+    .update(customerSignatures)
+    .set({ uploadedFileUrl: null, reviewNotes })
+    .where(eq(customerSignatures.id, existing.id))
+
+  const [sig] = await db
+    .select({ requestId: signatureRequests.requestId })
+    .from(signatureRequests)
+    .where(eq(signatureRequests.id, signatureRequestId))
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: signatureRequestId,
+    action: "manual_signature_rejected",
+    i18nKey: "activity.manualSignatureRejected",
+    i18nData: { reason: reviewNotes },
+    performedBy: session.user.id,
+  })
+
+  if (sig?.requestId) revalidatePath(`/admin/requests/${sig.requestId}`)
+  return { id: signatureRequestId }
+}
+
 export async function deleteSignatureRequest(id: string): Promise<SignatureActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }

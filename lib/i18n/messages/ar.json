@@ -1405,5 +1405,11 @@
         "payment_batch": "دفعة مستحقات"
       }
     }
+  },
+  "activity": {
+    "deliveryOtpGenerated": "تم إنشاء رمز التسليم",
+    "manualSignatureUploaded": "تم رفع الملف الموقّع: {fileName}",
+    "manualSignatureApproved": "تمت الموافقة على السند الموقّع يدوياً",
+    "manualSignatureRejected": "تم رفض الملف الموقّع: {reason}"
   }
 }
