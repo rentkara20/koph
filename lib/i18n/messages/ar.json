@@ -1,7 +1,7 @@
 {
   "nav": {
-    "dashboard": "لوحة التحكم",
-    "requests": "الطلبات",
+    "dashboard": "الرئيسية",
+    "requests": "المهام",
     "customers": "العملاء",
     "partners": "الشركاء",
     "signatures": "التوقيعات",
@@ -10,10 +10,10 @@
     "settings": "الإعدادات",
     "tasks": "مهامي",
     "logout": "تسجيل الخروج",
-    "orders": "طلبات العملاء",
+    "orders": "الطلبات",
     "suppliers": "التجار",
     "assets": "الأصول",
-    "procurement": "المشتريات",
+    "procurement": "الشراء",
     "warranty": "الضمان",
     "accessories": "الملحقات",
     "maintenance": "الصيانة",
@@ -21,7 +21,16 @@
     "openMenu": "فتح القائمة",
     "more": "المزيد",
     "users": "المستخدمون والصلاحيات",
-    "sourcing": "التوريد"
+    "sourcing": "التوريد",
+    "receiving": "الاستلام",
+    "group": {
+      "work": "العمل",
+      "devices": "الأجهزة",
+      "supply": "التوريد",
+      "people": "الأطراف",
+      "money": "المالية",
+      "system": "النظام"
+    }
   },
   "common": {
     "save": "حفظ",
@@ -71,8 +80,8 @@
     "invalidCredentials": "البريد الإلكتروني أو كلمة المرور غير صحيحة"
   },
   "requests": {
-    "title": "الطلبات",
-    "new": "طلب جديد",
+    "title": "المهام",
+    "new": "مهمة جديدة",
     "quoteNumber": "رقم عرض السعر",
     "requestNumber": "رقم الطلب",
     "trackingCode": "رمز التتبع",
@@ -672,7 +681,7 @@
     "pickupNotes": "ملاحظات الاستلام"
   },
   "orders": {
-    "title": "طلبات العملاء",
+    "title": "الطلبات",
     "new": "طلبية جديدة",
     "searchPlaceholder": "ابحث برقم الطلبية أو العميل…",
     "orderNumber": "رقم الطلبية",

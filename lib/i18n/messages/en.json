@@ -1,7 +1,7 @@
 {
   "nav": {
-    "dashboard": "Dashboard",
-    "requests": "Requests",
+    "dashboard": "Home",
+    "requests": "Jobs",
     "customers": "Customers",
     "partners": "Partners",
     "signatures": "Signatures",
@@ -10,10 +10,10 @@
     "settings": "Settings",
     "tasks": "My Tasks",
     "logout": "Log out",
-    "orders": "Customer Orders",
+    "orders": "Requests",
     "suppliers": "Suppliers",
     "assets": "Assets",
-    "procurement": "Procurement",
+    "procurement": "Purchasing",
     "warranty": "Warranty",
     "accessories": "Accessories",
     "maintenance": "Maintenance",
@@ -21,7 +21,16 @@
     "openMenu": "Open menu",
     "more": "More",
     "users": "Users & Roles",
-    "sourcing": "Sourcing"
+    "sourcing": "Sourcing",
+    "receiving": "Receiving",
+    "group": {
+      "work": "Work",
+      "devices": "Devices",
+      "supply": "Supply",
+      "people": "People",
+      "money": "Money",
+      "system": "System"
+    }
   },
   "common": {
     "save": "Save",
@@ -71,8 +80,8 @@
     "invalidCredentials": "Invalid email or password"
   },
   "requests": {
-    "title": "Requests",
-    "new": "New request",
+    "title": "Jobs",
+    "new": "New job",
     "quoteNumber": "Quote number",
     "requestNumber": "Request number",
     "trackingCode": "Tracking code",
@@ -672,7 +681,7 @@
     "pickupNotes": "Pickup notes"
   },
   "orders": {
-    "title": "Customer Orders",
+    "title": "Requests",
     "new": "New order",
     "searchPlaceholder": "Search by order number or customer…",
     "orderNumber": "Order number",
