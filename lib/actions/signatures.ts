@@ -18,6 +18,7 @@ import {
   requestItems,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
+import { publicUrl } from "@/lib/utils/public-url"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { logActivity } from "@/lib/utils/activity"
 import { sendEmail } from "@/lib/email/resend"
@@ -524,7 +525,7 @@ async function handlePostSignature(ctx: PostSignatureCtx) {
       .from(customers)
       .where(eq(customers.id, sig.customerId))
     if (customerRow?.email) {
-      const printUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${sig.secureToken}/print`
+      const printUrl = publicUrl(`/sign/${sig.secureToken}/print`)
       const { subject, html } = deliveryNoteSignedEmail({
         customerName: customerRow.name,
         requestNumber,
@@ -635,7 +636,7 @@ export async function getSignatureForTaskToken(taskToken: string) {
   return {
     sigReq,
     sig: sig ?? null,
-    signLink: `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/sign/${sigReq.secureToken}`,
+    signLink: publicUrl(`/sign/${sigReq.secureToken}`),
   }
 }
 
