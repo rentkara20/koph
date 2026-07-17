@@ -1294,9 +1294,10 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
     return { error: "Cannot delete a pickup that already collected goods" }
   }
 
-  // FK pragma is off in this project (see orders.ts), so a hard-delete here
-  // would silently orphan attachment rows/photos and notification rows that
-  // reference this task — clean them up in the same transaction.
+  // foreign_keys is ON on this DB (verified against prod — the "FK pragma is
+  // off" assumption below was wrong), so every child row referencing this task
+  // must be deleted first or the hard-delete throws FOREIGN KEY constraint
+  // failed. Clean them all up in the same transaction.
   await db.transaction(async (tx) => {
     await tx
       .delete(attachments)
@@ -1307,6 +1308,16 @@ export async function deleteTask(taskId: string): Promise<ActionResult> {
     await tx
       .delete(pickupTaskLines)
       .where(eq(pickupTaskLines.pickupTaskId, taskId))
+    await tx
+      .delete(deliveryTaskItems)
+      .where(eq(deliveryTaskItems.partnerTaskId, taskId))
+    // signature_request.partner_task_id is nullable — detach rather than
+    // delete, since a signature is a legal record that must survive the task
+    // that requested it.
+    await tx
+      .update(signatureRequests)
+      .set({ partnerTaskId: null })
+      .where(eq(signatureRequests.partnerTaskId, taskId))
     await tx.delete(partnerTasks).where(eq(partnerTasks.id, taskId))
   })
 
