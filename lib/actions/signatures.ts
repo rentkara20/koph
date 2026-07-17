@@ -768,6 +768,7 @@ export async function signOnSiteByTaskToken(
     fullName: string
     nationalId: string
     signatureData: string
+    mobile?: string
     position?: string
     deliveryOutcome?: DeliveryOutcome
     remarks?: string
@@ -913,7 +914,7 @@ export async function signOnSiteByTaskToken(
       id,
       signatureRequestId: sigReq.id,
       fullName,
-      mobile: "",
+      mobile: data.mobile?.trim() ?? "",
       nationalId,
       position: data.position?.trim() || null,
       signatureData: data.signatureData,

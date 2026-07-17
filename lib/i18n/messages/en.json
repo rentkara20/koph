@@ -523,7 +523,7 @@
       "draw": "Draw your signature",
       "fillRequiredFields": "Please fill in the required fields below",
       "nameRequired": "Enter your full name (at least 2 characters)",
-      "nationalIdRequired": "Enter a valid national ID / Iqama",
+      "nationalIdRequired": "National ID / Iqama must be at least 10 digits",
       "consentRequired": "Please accept the terms to continue",
       "clear": "Clear",
       "clearSignature": "Clear signature",
@@ -587,7 +587,9 @@
       "positionPlaceholder": "e.g. Warehouse manager",
       "positionRequired": "Enter the position / title",
       "next": "Next",
-      "continueBtn": "Continue"
+      "continueBtn": "Continue",
+      "mobilePlaceholder": "05XXXXXXXX",
+      "optional": "(optional)"
     }
   },
   "payments": {
@@ -773,8 +775,14 @@
     "invalid": "This invite link is invalid or has expired. Ask an admin to resend it."
   },
   "inlineCreate": {
-    "add": { "customer": "Add new customer", "supplier": "Add new supplier" },
-    "title": { "customer": "Quick add customer", "supplier": "Quick add supplier" },
+    "add": {
+      "customer": "Add new customer",
+      "supplier": "Add new supplier"
+    },
+    "title": {
+      "customer": "Quick add customer",
+      "supplier": "Quick add supplier"
+    },
     "hint": "Add the essential details now; the full profile can be completed later.",
     "name": "Name",
     "contactPerson": "Contact person (optional)",
@@ -813,7 +821,11 @@
     "locationName": "Location name",
     "locationNamePlaceholder": "e.g. Riyadh main warehouse",
     "type": "Location type",
-    "types": { "warehouse": "Warehouse", "office": "Office", "service_center": "Service centre" },
+    "types": {
+      "warehouse": "Warehouse",
+      "office": "Office",
+      "service_center": "Service centre"
+    },
     "city": "City",
     "address": "Full address",
     "mapsLink": "Google Maps link",

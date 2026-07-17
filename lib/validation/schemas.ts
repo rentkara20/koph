@@ -34,7 +34,9 @@ export const submitSignatureSchema = z.object({
 
 export const signOnSiteSchema = z.object({
   fullName: nonEmpty(200),
-  nationalId: nonEmpty(30),
+  // Saudi national ID / Iqama numbers are 10 digits; allow longer foreign IDs.
+  nationalId: z.string().trim().regex(/^\d{10,30}$/),
+  mobile: z.string().trim().max(30).optional(),
   signatureData: signatureDataSchema,
 })
 

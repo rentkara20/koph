@@ -523,7 +523,7 @@
       "draw": "ارسم توقيعك",
       "fillRequiredFields": "يرجى تعبئة الحقول المطلوبة أدناه",
       "nameRequired": "أدخل الاسم الكامل (حرفان على الأقل)",
-      "nationalIdRequired": "أدخل رقم هوية / إقامة صحيح",
+      "nationalIdRequired": "رقم الهوية / الإقامة لا يقل عن 10 أرقام",
       "consentRequired": "يرجى الموافقة على الشروط للمتابعة",
       "clear": "مسح",
       "clearSignature": "مسح التوقيع",
@@ -587,7 +587,9 @@
       "positionPlaceholder": "مثال: مدير المستودع",
       "positionRequired": "أدخل الصفة / المنصب",
       "next": "التالي",
-      "continueBtn": "متابعة"
+      "continueBtn": "متابعة",
+      "mobilePlaceholder": "05XXXXXXXX",
+      "optional": "(اختياري)"
     }
   },
   "payments": {
@@ -773,8 +775,14 @@
     "invalid": "رابط الدعوة غير صالح أو منتهي. اطلب من المدير إعادة إرساله."
   },
   "inlineCreate": {
-    "add": { "customer": "إضافة عميل جديد", "supplier": "إضافة مورد جديد" },
-    "title": { "customer": "إضافة عميل سريعاً", "supplier": "إضافة مورد سريعاً" },
+    "add": {
+      "customer": "إضافة عميل جديد",
+      "supplier": "إضافة مورد جديد"
+    },
+    "title": {
+      "customer": "إضافة عميل سريعاً",
+      "supplier": "إضافة مورد سريعاً"
+    },
     "hint": "أضف البيانات الأساسية الآن، ويمكنك استكمال باقي التفاصيل لاحقاً من الملف الشخصي.",
     "name": "الاسم",
     "contactPerson": "مسؤول التواصل (اختياري)",
@@ -813,7 +821,11 @@
     "locationName": "اسم الموقع",
     "locationNamePlaceholder": "مثال: المخزن الرئيسي — الرياض",
     "type": "نوع الموقع",
-    "types": { "warehouse": "مخزن", "office": "مكتب", "service_center": "مركز صيانة" },
+    "types": {
+      "warehouse": "مخزن",
+      "office": "مكتب",
+      "service_center": "مركز صيانة"
+    },
     "city": "المدينة",
     "address": "العنوان الكامل",
     "mapsLink": "رابط خرائط Google",

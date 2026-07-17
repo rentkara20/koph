@@ -33,7 +33,7 @@ type Props = {
   stageUnlocked: boolean
 }
 
-export function OnSiteSigningFlow({ taskToken, customerName, stageUnlocked }: Props) {
+export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, stageUnlocked }: Props) {
   const t = useTranslations("signatures.signing")
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -43,12 +43,14 @@ export function OnSiteSigningFlow({ taskToken, customerName, stageUnlocked }: Pr
   const [remarks, setRemarks] = useState("")
   const [position, setPosition] = useState("")
   const [fullName, setFullName] = useState("")
+  const [mobile, setMobile] = useState("")
   const [nationalId, setNationalId] = useState("")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
 
   function handleStart() {
     setFullName(customerName ?? "")
+    setMobile(customerMobile ?? "")
     setNationalId("")
     setOtp("")
     setOutcome(null)
@@ -80,8 +82,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, stageUnlocked }: Pr
 
   function handleFormNext() {
     if (!fullName.trim()) { setError(t("nameRequired")); return }
-    if (!position.trim()) { setError(t("positionRequired")); return }
-    if (!nationalId.trim()) { setError(t("nationalIdRequired")); return }
+    if (!/^\d{10,30}$/.test(nationalId.trim())) { setError(t("nationalIdRequired")); return }
     setError("")
     setStep("pad")
   }
@@ -92,7 +93,8 @@ export function OnSiteSigningFlow({ taskToken, customerName, stageUnlocked }: Pr
     const result = await signOnSiteByTaskToken(taskToken, {
       fullName: fullName.trim(),
       nationalId: nationalId.trim(),
-      position: position.trim(),
+      mobile: mobile.trim() || undefined,
+      position: position.trim() || undefined,
       deliveryOutcome: outcome ?? undefined,
       remarks: remarks.trim() || undefined,
       signatureData: data,
@@ -229,7 +231,18 @@ export function OnSiteSigningFlow({ taskToken, customerName, stageUnlocked }: Pr
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">{t("position")} <span className="text-destructive">*</span></Label>
+              <Label className="text-xs">{t("mobile")} <span className="text-muted-foreground">{t("optional")}</span></Label>
+              <Input
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+                placeholder={t("mobilePlaceholder")}
+                inputMode="tel"
+                dir="ltr"
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">{t("position")} <span className="text-muted-foreground">{t("optional")}</span></Label>
               <Input
                 value={position}
                 onChange={(e) => setPosition(e.target.value)}
@@ -240,10 +253,11 @@ export function OnSiteSigningFlow({ taskToken, customerName, stageUnlocked }: Pr
               <Label className="text-xs">{t("nationalId")} <span className="text-destructive">*</span></Label>
               <Input
                 value={nationalId}
-                onChange={(e) => setNationalId(e.target.value)}
+                onChange={(e) => setNationalId(e.target.value.replace(/\D/g, "").slice(0, 30))}
                 placeholder={t("idPlaceholder")}
                 inputMode="numeric"
                 className="font-mono"
+                dir="ltr"
               />
             </div>
           </div>
