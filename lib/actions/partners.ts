@@ -212,8 +212,10 @@ export async function createPartnerLogin(
       body: { email: parsed.data.email, password: parsed.data.password, name: partner.name },
     })
   } catch (error) {
+    // signUpEmail can throw AFTER inserting the user row (e.g. session
+    // creation). If the row exists we must still finish the role+link step,
+    // otherwise we leave an orphan "viewer" account behind.
     console.error("createPartnerLogin signup failed", error)
-    return { error: "Could not create the login account" }
   }
 
   const [created] = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email))
@@ -307,8 +309,9 @@ export async function activatePartnerAccount(
       body: { email: parsed.data.email, password: parsed.data.password, name: partner.name },
     })
   } catch (error) {
+    // Same recovery as createPartnerLogin: the user row may already exist even
+    // when signUpEmail throws — finish the role+link step instead of aborting.
     console.error("activatePartnerAccount signup failed", error)
-    return { error: "Could not create the login account" }
   }
 
   const [created] = await db.select({ id: users.id }).from(users).where(eq(users.email, parsed.data.email))

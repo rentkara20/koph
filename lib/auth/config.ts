@@ -15,7 +15,11 @@ export const auth = betterAuth({
   }),
   emailAndPassword: {
     enabled: true,
-    autoSignIn: true,
+    // signUpEmail is only ever called server-side (partner logins, seed); auto
+    // sign-in there creates a session for the NEW user inside the caller's
+    // request and can throw after the user row is inserted, leaving orphan
+    // "viewer" accounts. Real sign-in goes through signInEmail at /login.
+    autoSignIn: false,
     minPasswordLength: 10,
   },
   user: {
