@@ -7,6 +7,14 @@ import { appSettings } from "@/lib/db/schema"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { SYSTEM_DEFAULT_PROOF, type ProofRequirements } from "@/lib/domain/proof"
 import { OTP_EXPIRY_MIN_HOURS, OTP_EXPIRY_MAX_HOURS } from "@/lib/utils/otp-hash"
+import {
+  DEFAULT_RFQ_TEMPLATES,
+  DEFAULT_OPERATIONAL_TEMPLATES,
+  validateRfqTemplates,
+  validateOperationalTemplates,
+  type OperationalMessageTemplates,
+  type RfqMessageTemplates,
+} from "@/lib/domain/message-templates"
 
 export type SettingsActionResult = { error?: string }
 
@@ -33,6 +41,84 @@ async function setSetting(key: string, value: unknown, userId: string): Promise<
       target: appSettings.key,
       set: { value: JSON.stringify(value), updatedBy: userId, updatedAt: Date.now() },
     })
+}
+
+// ─── Outbound message templates ────────────────────────────────────────────
+
+export async function getRfqMessageTemplates(): Promise<RfqMessageTemplates> {
+  const stored = await getSetting<Partial<RfqMessageTemplates>>("messageTemplate.rfq", {})
+  return {
+    whatsappBody: stored.whatsappBody || DEFAULT_RFQ_TEMPLATES.whatsappBody,
+    emailSubject: stored.emailSubject || DEFAULT_RFQ_TEMPLATES.emailSubject,
+    emailBody: stored.emailBody || DEFAULT_RFQ_TEMPLATES.emailBody,
+  }
+}
+
+export async function readRfqMessageTemplatesForAdmin(): Promise<RfqMessageTemplates | null> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return null
+  return getRfqMessageTemplates()
+}
+
+export async function updateRfqMessageTemplates(
+  input: RfqMessageTemplates
+): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const validation = validateRfqTemplates(input)
+  if (validation.error) return validation
+
+  await setSetting("messageTemplate.rfq", input, session.user.id)
+  revalidatePath("/admin/settings/message-templates")
+  revalidatePath("/admin/sourcing", "layout")
+  return {}
+}
+
+export async function resetRfqMessageTemplates(): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  await setSetting("messageTemplate.rfq", DEFAULT_RFQ_TEMPLATES, session.user.id)
+  revalidatePath("/admin/settings/message-templates")
+  revalidatePath("/admin/sourcing", "layout")
+  return {}
+}
+
+export async function getOperationalMessageTemplates(): Promise<OperationalMessageTemplates> {
+  const stored = await getSetting<Partial<OperationalMessageTemplates>>("messageTemplate.operational", {})
+  return { ...DEFAULT_OPERATIONAL_TEMPLATES, ...stored }
+}
+
+export async function readOperationalMessageTemplatesForAdmin(): Promise<OperationalMessageTemplates | null> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return null
+  return getOperationalMessageTemplates()
+}
+
+export async function updateOperationalMessageTemplates(
+  input: OperationalMessageTemplates
+): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+  const validation = validateOperationalTemplates(input)
+  if (validation.error) return validation
+
+  await setSetting("messageTemplate.operational", input, session.user.id)
+  revalidatePath("/admin/settings/message-templates")
+  revalidatePath("/admin", "layout")
+  revalidatePath("/task", "layout")
+  return {}
+}
+
+export async function resetOperationalMessageTemplates(): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+  await setSetting("messageTemplate.operational", DEFAULT_OPERATIONAL_TEMPLATES, session.user.id)
+  revalidatePath("/admin/settings/message-templates")
+  revalidatePath("/admin", "layout")
+  revalidatePath("/task", "layout")
+  return {}
 }
 
 // ─── Request & task settings ────────────────────────────────────────────────

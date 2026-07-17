@@ -1,9 +1,21 @@
 import Link from "next/link"
-import { Settings2, BookOpen, ClipboardList, Coins, KeyRound, Bell, Palette, Package, Shield, Plug } from "lucide-react"
+import { Settings2, BookOpen, ClipboardList, Coins, KeyRound, Bell, Palette, Package, Shield, Plug, MessagesSquare, Warehouse } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
 const SECTIONS = [
+  {
+    href: "/admin/settings/company-locations",
+    icon: Warehouse,
+    title: "Company locations",
+    description: "Warehouses, offices, contacts, and map links used automatically in courier routes.",
+  },
+  {
+    href: "/admin/settings/message-templates",
+    icon: MessagesSquare,
+    title: "Message Templates",
+    description: "Customize WhatsApp and email wording with a separate professional layout for each channel.",
+  },
   {
     href: "/admin/settings/request-tasks",
     icon: ClipboardList,

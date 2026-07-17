@@ -169,6 +169,48 @@
       "when": 1784060258531,
       "tag": "0023_optimal_la_nuit",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1784239290283,
+      "tag": "0024_freezing_vindicator",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1784243676541,
+      "tag": "0025_smart_wolverine",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1784259032756,
+      "tag": "0026_even_outlaw_kid",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1784260014361,
+      "tag": "0027_easy_wong",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "6",
+      "when": 1784276376121,
+      "tag": "0028_magical_carmella_unuscione",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1784283537198,
+      "tag": "0029_supplier_returns",
+      "breakpoints": true
     }
   ]
 }

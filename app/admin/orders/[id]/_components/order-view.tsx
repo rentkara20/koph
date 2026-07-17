@@ -21,6 +21,10 @@ export function OrderView({
       <DetailGrid>
         <DetailField label={t("orderNumber")} value={order.orderNumber} />
         <DetailField label={t("quoteDate")} value={order.quoteDate ? formatDate(order.quoteDate) : null} />
+        <DetailField
+          label={t("customerConfirmationDate")}
+          value={order.customerConfirmedAt ? formatDate(order.customerConfirmedAt) : null}
+        />
         <DetailField label={t("customer")} value={customerName} span />
         <DetailField label={tCommon("notes")} value={order.notes} span />
       </DetailGrid>

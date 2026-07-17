@@ -10,6 +10,8 @@ export type AssetStatus =
   | "returned"
   | "maintenance"
   | "damaged"
+  | "supplier_return_pending"
+  | "supplier_returned"
   | "retired"
   | "sold"
   | "lost"
@@ -31,6 +33,8 @@ export type AssetAction =
   | "sell"
   | "mark_lost"
   | "found"
+  | "start_supplier_return"
+  | "confirm_supplier_return"
 
 // action -> [fromStatuses, toStatus]
 const TRANSITIONS: Record<AssetAction, { from: AssetStatus[]; to: AssetStatus }> = {
@@ -52,7 +56,11 @@ const TRANSITIONS: Record<AssetAction, { from: AssetStatus[]; to: AssetStatus }>
   sell: { from: ["in_stock", "returned", "retired"], to: "sold" },
   mark_lost: { from: ["delivered", "assigned", "in_stock", "returned"], to: "lost" },
   found: { from: ["lost"], to: "returned" },
+  start_supplier_return: { from: ["damaged"], to: "supplier_return_pending" },
+  confirm_supplier_return: { from: ["supplier_return_pending"], to: "supplier_returned" },
 }
+
+const GUIDED_ACTIONS = new Set<AssetAction>(["start_supplier_return", "confirm_supplier_return"])
 
 // Terminal states: nothing moves out of them except found (lost) — kept
 // explicit here so retire/sell stay auditable one-way doors.
@@ -70,7 +78,7 @@ export function assetStatusAfter(action: AssetAction): AssetStatus {
 
 export function assetActionsFor(status: AssetStatus): AssetAction[] {
   return (Object.keys(TRANSITIONS) as AssetAction[]).filter((a) =>
-    TRANSITIONS[a].from.includes(status)
+    TRANSITIONS[a].from.includes(status) && !GUIDED_ACTIONS.has(a)
   )
 }
 

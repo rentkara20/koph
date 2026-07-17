@@ -24,7 +24,7 @@ export default async function WarehouseReceivingPage() {
         {inTransit.map((tk) => (
           <Link
             key={tk.id}
-            href={`/admin/procurement/${tk.purchaseOrderId}`}
+            href={`/admin/procurement/${tk.purchaseOrderId}/receive?pickupTaskId=${tk.id}`}
             className="flex items-center justify-between rounded-xl border bg-card p-4 hover:bg-muted/40"
           >
             <div>

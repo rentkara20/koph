@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { customerContacts } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
+import { replaceContactLocationLinksCore } from "@/lib/actions/customer-locations"
 
 export type ContactInput = {
   name: string
@@ -17,6 +18,8 @@ export type ContactInput = {
   mapsLink?: string
   notes?: string
   isAuthorizedSignatory?: boolean
+  locationIds?: string[]
+  primaryLocationId?: string | null
 }
 
 export async function getCustomerContacts(customerId: string) {
@@ -46,18 +49,27 @@ export async function createCustomerContact(
   if (!data.name?.trim()) return { error: "Name is required" }
 
   const id = createId()
-  await db.insert(customerContacts).values({
-    id,
-    customerId,
-    name: data.name.trim(),
-    role: data.role?.trim() || null,
-    mobile: data.mobile?.trim() || null,
-    email: data.email?.trim() || null,
-    city: data.city?.trim() || null,
-    address: data.address?.trim() || null,
-    mapsLink: data.mapsLink?.trim() || null,
-    notes: data.notes?.trim() || null,
-    isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
+  await db.transaction(async (tx) => {
+    await tx.insert(customerContacts).values({
+      id,
+      customerId,
+      name: data.name.trim(),
+      role: data.role?.trim() || null,
+      mobile: data.mobile?.trim() || null,
+      email: data.email?.trim() || null,
+      city: data.city?.trim() || null,
+      address: data.address?.trim() || null,
+      mapsLink: data.mapsLink?.trim() || null,
+      notes: data.notes?.trim() || null,
+      isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
+    })
+    await replaceContactLocationLinksCore(
+      tx,
+      id,
+      customerId,
+      data.locationIds ?? [],
+      data.primaryLocationId
+    )
   })
 
   revalidatePath(`/admin/customers/${customerId}`)
@@ -73,21 +85,30 @@ export async function updateCustomerContact(
   if (!session) return { error: "Unauthorized" }
   if (!data.name?.trim()) return { error: "Name is required" }
 
-  await db
-    .update(customerContacts)
-    .set({
-      name: data.name.trim(),
-      role: data.role?.trim() || null,
-      mobile: data.mobile?.trim() || null,
-      email: data.email?.trim() || null,
-      city: data.city?.trim() || null,
-      address: data.address?.trim() || null,
-      mapsLink: data.mapsLink?.trim() || null,
-      notes: data.notes?.trim() || null,
-      isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
-      updatedAt: Date.now(),
-    })
-    .where(eq(customerContacts.id, id))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(customerContacts)
+      .set({
+        name: data.name.trim(),
+        role: data.role?.trim() || null,
+        mobile: data.mobile?.trim() || null,
+        email: data.email?.trim() || null,
+        city: data.city?.trim() || null,
+        address: data.address?.trim() || null,
+        mapsLink: data.mapsLink?.trim() || null,
+        notes: data.notes?.trim() || null,
+        isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
+        updatedAt: Date.now(),
+      })
+      .where(eq(customerContacts.id, id))
+    await replaceContactLocationLinksCore(
+      tx,
+      id,
+      customerId,
+      data.locationIds ?? [],
+      data.primaryLocationId
+    )
+  })
 
   revalidatePath(`/admin/customers/${customerId}`)
   return {}

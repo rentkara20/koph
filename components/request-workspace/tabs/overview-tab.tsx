@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server"
 import type { RequestWorkspace } from "@/lib/actions/request-workspace"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
+import { CustomerConfirmationCard } from "@/components/request-workspace/customer-confirmation-card"
 
 // Overview: customer + contacts, requested lines with a fulfillment bar per
 // line (requested / in stock / delivered — derived), rental terms, notes.
@@ -16,6 +17,9 @@ export async function OverviewTab({ workspace }: { workspace: RequestWorkspace }
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <div className="space-y-4 lg:col-span-2">
+        {!order.customerConfirmedAt && order.status === "draft" && (
+          <CustomerConfirmationCard orderId={order.id} />
+        )}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{tOrders("lines")}</CardTitle>
@@ -138,6 +142,10 @@ export async function OverviewTab({ workspace }: { workspace: RequestWorkspace }
             <div className="flex justify-between">
               <span className="text-muted-foreground">{tOrders("quoteDate")}</span>
               <span>{order.quoteDate ? formatDate(order.quoteDate) : "—"}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">{tOrders("customerConfirmationDate")}</span>
+              <span>{order.customerConfirmedAt ? formatDate(order.customerConfirmedAt) : "—"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">{t("rentalMonths")}</span>

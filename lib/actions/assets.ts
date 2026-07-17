@@ -102,7 +102,7 @@ export async function getAssets(filters: AssetFilters = {}) {
       .leftJoin(orders, eq(orderUnits.orderId, orders.id))
       .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
       .leftJoin(purchaseOrders, eq(orderUnits.purchaseOrderId, purchaseOrders.id))
-      .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+      .leftJoin(suppliers, or(eq(orderUnits.supplierId, suppliers.id), eq(purchaseOrders.supplierId, suppliers.id)))
       .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
       .where(where)
       .orderBy(desc(orderUnits.updatedAt))
@@ -152,6 +152,7 @@ export async function getAsset(id: string) {
       brand: sql<string | null>`coalesce(${orderLines.brand}, ${purchaseOrderLines.brand})`,
       model: sql<string | null>`coalesce(${orderLines.model}, ${purchaseOrderLines.model})`,
       orderId: orders.id,
+      purchaseOrderId: purchaseOrders.id,
       orderNumber: sql<string | null>`coalesce(${orders.orderNumber}, ${purchaseOrders.poNumber})`,
       supplierName: suppliers.name,
       currentCustomerName: customers.name,
@@ -163,7 +164,7 @@ export async function getAsset(id: string) {
     .leftJoin(orders, eq(orderUnits.orderId, orders.id))
     .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
     .leftJoin(purchaseOrders, eq(orderUnits.purchaseOrderId, purchaseOrders.id))
-    .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+    .leftJoin(suppliers, or(eq(orderUnits.supplierId, suppliers.id), eq(purchaseOrders.supplierId, suppliers.id)))
     .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
     .where(eq(orderUnits.id, id))
 
@@ -359,8 +360,11 @@ const createAssetSchema = z
   .object({
     orderLineId: z.string().trim().min(1).max(60).optional(),
     purchaseOrderLineId: z.string().trim().min(1).max(60).optional(),
-    serialNumber: z.string().trim().min(1).max(120),
+    serialNumber: z.string().trim().min(1).max(120).optional(),
     assetTag: z.string().trim().max(40).optional(),
+    supplierId: z.string().trim().max(60).optional(),
+    purchaseCost: z.number().min(0).max(100_000_000).optional(),
+    notes: z.string().trim().max(1000).optional(),
   })
   .refine((d) => Boolean(d.orderLineId) !== Boolean(d.purchaseOrderLineId), {
     message: "Exactly one source (order line or purchase order line) is required",
@@ -382,6 +386,7 @@ export async function createAssetCore(
   initialStatus: "in_stock" | "receiving_qc" = "in_stock"
 ): Promise<{ assetId: string }> {
   const d = createAssetSchema.parse(input)
+  const serialNumber = d.serialNumber ? d.serialNumber.toUpperCase() : null
 
   let orderLineId: string | null = null
   let orderId: string | null = null
@@ -412,11 +417,13 @@ export async function createAssetCore(
     purchaseOrderId = line.purchaseOrderId
   }
 
-  const [serialClash] = await tx
-    .select({ id: orderUnits.id })
-    .from(orderUnits)
-    .where(eq(orderUnits.serialNumber, d.serialNumber))
-  if (serialClash) throw new Error("Serial number already in use")
+  if (serialNumber) {
+    const [serialClash] = await tx
+      .select({ id: orderUnits.id })
+      .from(orderUnits)
+      .where(sql`lower(trim(${orderUnits.serialNumber})) = lower(${serialNumber})`)
+    if (serialClash) throw new Error("Serial number already in use")
+  }
 
   if (d.assetTag) {
     const [clash] = await tx
@@ -434,7 +441,10 @@ export async function createAssetCore(
     orderId,
     purchaseOrderLineId,
     purchaseOrderId,
-    serialNumber: d.serialNumber,
+    serialNumber,
+    supplierId: d.supplierId || null,
+    purchaseCost: d.purchaseCost ?? null,
+    notes: d.notes || null,
     assetTag,
     status: initialStatus,
   })
@@ -452,7 +462,7 @@ export async function createAssetCore(
     aggregateType: "asset",
     aggregateId: assetId,
     eventType: "AssetCreated",
-    payload: { orderLineId, orderId, purchaseOrderLineId, purchaseOrderId, serialNumber: d.serialNumber, assetTag },
+    payload: { orderLineId, orderId, purchaseOrderLineId, purchaseOrderId, serialNumber, assetTag },
     dedupeKey: `asset:${assetId}:AssetCreated`,
     actorUserId,
   })

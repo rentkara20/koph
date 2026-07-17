@@ -1,0 +1,1 @@
+ALTER TABLE `order` ADD `customer_confirmed_at` integer;

@@ -2,6 +2,7 @@ import Link from "next/link"
 import { getTranslations } from "next-intl/server"
 import { getDashboardStats } from "@/lib/actions/dashboard"
 import { getInbox, type InboxCard, type InboxOwner } from "@/lib/actions/inbox"
+import { rankOwnerInbox, type InboxUrgency } from "@/lib/domain/owner-inbox"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   AlertTriangle,
@@ -56,7 +57,7 @@ export default async function DashboardPage() {
       value: stats.pendingSignoff,
       description: t("pendingSignoffDesc"),
       icon: Clock,
-      href: "#inbox-operations",
+      href: "#owner-inbox",
       color: stats.pendingSignoff > 0 ? "text-amber-600" : "text-muted-foreground",
     },
     {
@@ -64,7 +65,7 @@ export default async function DashboardPage() {
       value: stats.overdueDeliveries,
       description: t("overdueDesc"),
       icon: AlertTriangle,
-      href: "#inbox-operations",
+      href: "#owner-inbox",
       color: stats.overdueDeliveries > 0 ? "text-destructive" : "text-muted-foreground",
     },
     {
@@ -78,7 +79,7 @@ export default async function DashboardPage() {
   ]
 
   const sections = inbox ?? []
-  const totalCards = sections.reduce((sum, s) => sum + s.cards.length, 0)
+  const rankedCards = rankOwnerInbox(sections.flatMap((section) => section.cards))
 
   return (
     <div className="space-y-6">
@@ -109,43 +110,29 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      {totalCards === 0 ? (
+      {rankedCards.length === 0 ? (
         <div className="rounded-lg border border-dashed p-10 text-center">
           <Inbox className="mx-auto size-8 text-muted-foreground/50" />
           <p className="mt-3 text-sm text-muted-foreground">{t("queueEmpty")}</p>
         </div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {sections.map((section) => {
-            const OwnerIcon = OWNER_ICON[section.owner]
-            return (
-              <Card
-                key={section.owner}
-                id={`inbox-${section.owner}`}
-                className="scroll-mt-20"
-              >
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <OwnerIcon className="size-4 text-kara-blue" />
-                    {ti(`owner${section.owner.charAt(0).toUpperCase()}${section.owner.slice(1)}`)}
-                    <span className="ms-auto rounded-full bg-kara-blue-soft px-2 py-0.5 text-xs font-medium text-kara-purple">
-                      {section.cards.length}
-                    </span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-1.5">
-                  {section.cards.length === 0 ? (
-                    <p className="text-xs text-muted-foreground py-2">{ti("allClear")}</p>
-                  ) : (
-                    section.cards.map((card) => (
-                      <InboxRow key={card.key} card={card} ti={ti} />
-                    ))
-                  )}
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+        <Card id="owner-inbox" className="scroll-mt-20 overflow-hidden">
+          <CardHeader className="border-b bg-muted/20 pb-4">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Inbox className="size-5 text-kara-blue" />
+              {ti("needsYourAction")}
+              <span className="ms-auto rounded-full bg-primary px-2.5 py-0.5 text-xs font-semibold text-primary-foreground">
+                {rankedCards.length}
+              </span>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">{ti("priorityHint")}</p>
+          </CardHeader>
+          <CardContent className="divide-y p-0">
+            {rankedCards.map(({ card, urgency }) => (
+              <InboxRow key={card.key} card={card} urgency={urgency} ti={ti} />
+            ))}
+          </CardContent>
+        </Card>
       )}
     </div>
   )
@@ -153,20 +140,38 @@ export default async function DashboardPage() {
 
 function InboxRow({
   card,
+  urgency,
   ti,
 }: {
   card: InboxCard
+  urgency: InboxUrgency
   ti: (key: string, values?: Record<string, string | number>) => string
 }) {
   const waiting = waitingLabel(card.since, ti)
+  const OwnerIcon = OWNER_ICON[card.owner]
+  const ownerKey = `owner${card.owner.charAt(0).toUpperCase()}${card.owner.slice(1)}`
+  const urgencyStyle: Record<InboxUrgency, string> = {
+    urgent: "bg-red-50 text-red-700 border-red-200",
+    high: "bg-amber-50 text-amber-700 border-amber-200",
+    normal: "bg-muted text-muted-foreground border-border",
+  }
   return (
     <Link
       href={card.href}
-      className="group flex items-center gap-3 rounded-md px-2 py-2 -mx-2 hover:bg-accent transition-colors"
+      className="group flex items-center gap-3 px-4 py-4 hover:bg-accent transition-colors sm:px-5"
     >
+      <span className={`flex size-10 shrink-0 items-center justify-center rounded-full border ${urgencyStyle[urgency]}`}>
+        <OwnerIcon className="size-4" />
+      </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
-          <span className="text-muted-foreground">{card.requestRef}</span>
+        <div className="mb-1 flex items-center gap-2">
+          <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${urgencyStyle[urgency]}`}>
+            {ti(`urgency.${urgency}`)}
+          </span>
+          <span className="text-[10px] text-muted-foreground">{ti(ownerKey)}</span>
+        </div>
+        <p className="truncate text-sm font-semibold">
+          <span>{card.requestRef}</span>
           {card.customerName ? ` · ${card.customerName}` : ""}
         </p>
         <p className="truncate text-xs text-muted-foreground">
@@ -177,7 +182,7 @@ function InboxRow({
           <p className="truncate text-xs font-medium text-amber-600">{ti(card.blockerKey)}</p>
         ) : null}
       </div>
-      <span className="hidden shrink-0 text-xs font-medium text-primary group-hover:inline">
+      <span className="hidden shrink-0 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground sm:inline">
         {ti(card.actionKey)}
       </span>
       <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" />

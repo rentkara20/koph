@@ -9,7 +9,10 @@ import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { isDeliveryStageUnlocked } from "@/lib/actions/otp"
 import { formatDate } from "@/lib/utils/format"
-import { buildWhatsappUrl, customerGreetingMessage } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
+import { getOperationalMessageTemplates } from "@/lib/actions/settings"
+import { renderMessageTemplate } from "@/lib/domain/message-templates"
+import { buildRequestRoutePlan, type RequestRoutePoint } from "@/lib/domain/request-route"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { TaskActions } from "./_components/task-actions"
 import { PhotoUpload } from "./_components/photo-upload"
@@ -17,7 +20,53 @@ import { TaskChecklist } from "./_components/task-checklist"
 import { SignatureStatus } from "./_components/signature-status"
 import { OnSiteSigningFlow } from "./_components/on-site-signing"
 import { PickupTaskView } from "./_components/pickup-task-view"
-import { Phone, MapPin, Mail, MessageCircle } from "lucide-react"
+import { ArrowDown, Phone, MapPin, Mail, MessageCircle, Warehouse } from "lucide-react"
+import { getDefaultCompanyLocation } from "@/lib/actions/company-locations"
+
+function PortalRoutePoint({
+  label,
+  point,
+  warehouse,
+  openMapLabel,
+}: {
+  label: string
+  point: RequestRoutePoint
+  warehouse: boolean
+  openMapLabel: string
+}) {
+  const Icon = warehouse ? Warehouse : MapPin
+  return (
+    <div className="rounded-xl border bg-background p-3.5">
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="mt-2 flex items-start gap-2.5">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold">{point.label}</p>
+          {point.contactName && <p className="mt-0.5 text-xs font-medium text-muted-foreground">{point.contactName}</p>}
+          {point.address && <p className="mt-0.5 text-xs text-muted-foreground">{point.address}</p>}
+          {point.workingHours && <p className="mt-0.5 text-xs text-muted-foreground">{point.workingHours}</p>}
+          {point.accessNotes && <p className="mt-1.5 text-xs text-muted-foreground">{point.accessNotes}</p>}
+          <div className="mt-1.5 flex flex-wrap gap-3">
+            {point.mobile && (
+              <a href={`tel:${point.mobile}`} className="inline-flex min-h-10 items-center gap-1.5 text-xs font-medium text-primary">
+                <Phone className="size-3.5" />
+                {point.mobile}
+              </a>
+            )}
+            {point.mapsLink && (
+              <a href={point.mapsLink} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center gap-1.5 text-xs font-medium text-primary">
+                <MapPin className="size-3.5" />
+                {openMapLabel}
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default async function TaskPage({
   params,
@@ -25,7 +74,7 @@ export default async function TaskPage({
   params: Promise<{ token: string }>
 }) {
   const { token } = await params
-  const [data, t, tStatus, tReq, tCust, tPortal, locale] = await Promise.all([
+  const [data, t, tStatus, tReq, tCust, tPortal, locale, messageTemplates, companyLocation] = await Promise.all([
     getTaskByToken(token),
     getTranslations("tasks"),
     getTranslations("tasks.status"),
@@ -33,6 +82,8 @@ export default async function TaskPage({
     getTranslations("customers"),
     getTranslations("portal"),
     getLocale(),
+    getOperationalMessageTemplates(),
+    getDefaultCompanyLocation(),
   ])
 
   if (!data) notFound()
@@ -44,7 +95,7 @@ export default async function TaskPage({
     return <PickupTaskView token={token} />
   }
 
-  const { task, request, requestType, items, isExpired, linkedContact } = data
+  const { task, request, requestType, items, isExpired, linkedContact, partner } = data
   if (!request) notFound()
   // request-kind branch always carries a customer row; narrow off the union.
   const customer = data.customer as Customer | null
@@ -59,6 +110,41 @@ export default async function TaskPage({
 
   // If a specific contact was selected, show only that one; otherwise show all
   const customerContacts = linkedContact ? [linkedContact] : allContacts
+  const routeContact = linkedContact ?? customer
+  const selectedCustomerSite: RequestRoutePoint | null = (
+    request.locationNameSnapshot || request.locationAddressSnapshot || request.locationMapsLinkSnapshot
+  ) ? {
+    label: request.locationNameSnapshot ?? tReq("routeContactMissingLabel"),
+    address: request.locationAddressSnapshot,
+    mapsLink: request.locationMapsLinkSnapshot,
+    mobile: linkedContact?.mobile ?? customer?.mobile,
+    contactName: linkedContact?.name ?? null,
+  } : null
+  const warehousePoint: RequestRoutePoint = companyLocation ? {
+    label: `${companyLocation.companyName} — ${companyLocation.name}`,
+    address: [companyLocation.city, companyLocation.address].filter(Boolean).join(" · ") || null,
+    mapsLink: companyLocation.mapsLink,
+    mobile: companyLocation.contactMobile,
+    contactName: companyLocation.contactName,
+    workingHours: companyLocation.workingHours,
+    accessNotes: companyLocation.accessNotes,
+  } : { label: tReq("karaWarehouse") }
+  const routePlan = buildRequestRoutePlan({
+    typeSlug: requestType?.slug,
+    warehouse: warehousePoint,
+    contact: selectedCustomerSite ?? {
+      label: routeContact
+        ? [routeContact.name, "role" in routeContact ? routeContact.role : null, routeContact.city]
+            .filter(Boolean)
+            .join(" · ")
+        : tReq("routeContactMissingLabel"),
+      address: routeContact?.address,
+      mapsLink: routeContact?.mapsLink,
+      mobile: routeContact?.mobile,
+    },
+    originOverride: request.origin,
+    destinationOverride: request.destination,
+  })
 
   const isTerminal = ["closed", "rejected", "failed", "cancelled"].includes(task.status)
   const canAct = !isTerminal && !isExpired
@@ -138,19 +224,19 @@ export default async function TaskPage({
                 </a>
               )}
             </div>
-            {(linkedContact?.city ?? customer?.city) && (
+            {(request.locationAddressSnapshot ?? linkedContact?.city ?? customer?.city) && (
               <div>
-                <p className="text-xs text-muted-foreground">{tCust("city")}</p>
-                <p className="font-medium">{linkedContact?.city ?? customer?.city}</p>
+                <p className="text-xs text-muted-foreground">{selectedCustomerSite ? tReq("customerLocation") : tCust("city")}</p>
+                <p className="font-medium">{request.locationAddressSnapshot ?? linkedContact?.city ?? customer?.city}</p>
               </div>
             )}
-            {customer?.address && (
+            {(request.locationAddressSnapshot || customer?.address) && (
               <div className="col-span-2">
                 <p className="text-xs text-muted-foreground">{tCust("address")}</p>
-                <p className="font-medium">{customer.address}</p>
-                {customer.mapsLink && (
+                <p className="font-medium">{request.locationAddressSnapshot ?? customer?.address}</p>
+                {(request.locationMapsLinkSnapshot ?? customer?.mapsLink) && (
                   <a
-                    href={customer.mapsLink}
+                    href={request.locationMapsLinkSnapshot ?? customer?.mapsLink ?? "#"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-xs text-primary underline-offset-4 hover:underline"
@@ -182,6 +268,23 @@ export default async function TaskPage({
           )}
         </div>
 
+        <div className="rounded-xl bg-background border p-4">
+          <div className="mb-3">
+            <p className="text-sm font-semibold text-kara-purple">{tReq("routeSummary")}</p>
+            <p className="text-xs text-muted-foreground">{tReq("courierRouteHint")}</p>
+          </div>
+          <div className="space-y-2">
+            <PortalRoutePoint label={tReq("routeFrom")} point={routePlan.from} warehouse={routePlan.from.label === warehousePoint.label} openMapLabel={tReq("openMap")} />
+            <ArrowDown className="mx-auto size-5 text-muted-foreground" />
+            <PortalRoutePoint label={tReq("routeTo")} point={routePlan.to} warehouse={routePlan.to.label === warehousePoint.label} openMapLabel={tReq("openMap")} />
+          </div>
+          {routePlan.returnTo && (
+            <p className="mt-3 rounded-lg bg-primary/10 px-3 py-2 text-xs font-medium text-primary">
+              {tReq("swapReturnHint", { destination: routePlan.returnTo.label })}
+            </p>
+          )}
+        </div>
+
         {/* Customer contacts / branch info for partner */}
         {customerContacts.length > 0 && (
           <div className="rounded-xl bg-background border overflow-hidden">
@@ -198,7 +301,7 @@ export default async function TaskPage({
                       <p className="font-medium text-sm">{c.name}</p>
                       {isReceiver && (
                         <span className="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                          {tPortal("primaryReceiver")}
+                          {requestType?.slug === "collection" ? tPortal("pickupContact") : tPortal("primaryReceiver")}
                         </span>
                       )}
                     </div>
@@ -247,12 +350,12 @@ export default async function TaskPage({
                       {c.mobile && (() => {
                         const waUrl = buildWhatsappUrl(
                           c.mobile,
-                          customerGreetingMessage({
-                            courierName: "مندوب كارا",
-                            customerName: c.name,
-                            requestNumber: request.requestNumber,
-                            itemsSummary,
-                            signLink: sigData?.signLink ?? null,
+                          renderMessageTemplate(messageTemplates.customerEnRoute, {
+                            courier_name: partner?.contactPerson ?? partner?.name ?? "مندوب كارا",
+                            customer_name: c.name,
+                            request_number: request.requestNumber,
+                            items: itemsSummary,
+                            sign_link: sigData?.signLink ?? "",
                           })
                         )
                         if (!waUrl) return null
@@ -378,6 +481,7 @@ export default async function TaskPage({
             customerName={customer?.name ?? null}
             requestNumber={request.requestNumber}
             deliveryDate={request.deliveryDate ?? null}
+            messageTemplate={messageTemplates.signatureRequest}
           />
         )}
 

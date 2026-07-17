@@ -88,7 +88,9 @@ export function CreateSourcingRequestForm({
   const [customerLabel, setCustomerLabel] = useState(initialCustomer?.name ?? "")
   const [orderId, setOrderId] = useState(initialOrder?.id ?? "")
   const [orderLabel, setOrderLabel] = useState(initialOrder?.orderNumber ?? "")
-  const [externalRef, setExternalRef] = useState("")
+  // When sourcing starts from a customer order, that order number is the
+  // natural request reference. Keep it editable for exceptional external refs.
+  const [externalRef, setExternalRef] = useState(initialOrder?.orderNumber ?? "")
   // Optional free-text search label. Left blank, the server derives a display
   // label from the request's own data — the user is never forced to type one.
   const [title, setTitle] = useState("")
@@ -125,6 +127,7 @@ export function CreateSourcingRequestForm({
   function handleOrderChange(nextId: string, option: SearchableSelectOption) {
     setOrderId(nextId)
     setOrderLabel(option.label)
+    setExternalRef(option.label)
     // Pull the order's lines into the item rows so the user does not retype
     // what the customer order already captured. Rows stay fully editable.
     setLoadingItems(true)

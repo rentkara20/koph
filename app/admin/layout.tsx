@@ -3,6 +3,8 @@ import { getSession } from "@/lib/auth/session"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { BottomNav } from "@/components/layout/bottom-nav"
+import { MessageTemplatesProvider } from "@/components/message-templates-provider"
+import { getOperationalMessageTemplates } from "@/lib/actions/settings"
 
 export default async function AdminLayout({
   children,
@@ -15,8 +17,10 @@ export default async function AdminLayout({
 
   const { role } = session.user as { role: string }
   if (role === "partner") redirect("/partner/tasks")
+  const messageTemplates = await getOperationalMessageTemplates()
 
   return (
+    <MessageTemplatesProvider templates={messageTemplates}>
     <div className="flex h-svh overflow-hidden">
       <Sidebar role={role} />
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -30,5 +34,6 @@ export default async function AdminLayout({
       </div>
       <BottomNav role={role} />
     </div>
+    </MessageTemplatesProvider>
   )
 }

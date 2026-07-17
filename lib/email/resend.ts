@@ -18,10 +18,10 @@ export async function sendEmail(opts: {
   to: string
   subject: string
   html: string
-}): Promise<void> {
+}): Promise<boolean> {
   if (!isEmailEnabled()) {
     console.warn("sendEmail skipped: RESEND_API_KEY not configured", { to: opts.to, subject: opts.subject })
-    return
+    return false
   }
 
   // While the rentkara.com sending domain isn't verified in Resend yet,
@@ -33,9 +33,11 @@ export async function sendEmail(opts: {
 
   try {
     await getClient().emails.send({ from: FROM, to, subject, html: opts.html })
+    return true
   } catch (error) {
     // Email is a best-effort side channel — never let a delivery failure
     // break the signature/request flow that triggered it.
     console.error("sendEmail failed", error)
+    return false
   }
 }

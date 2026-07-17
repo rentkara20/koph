@@ -10,7 +10,7 @@
 
 import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
 
-export type CommChannel = "whatsapp" | "outlook" | "mailto" | "copy"
+export type CommChannel = "whatsapp" | "email" | "outlook" | "mailto" | "copy"
 
 // Slugs shared with communication_log.messageType.
 export type CommMessageType = "otp_delivery" | "remote_signature" | "signed_receipt"

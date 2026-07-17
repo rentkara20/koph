@@ -104,7 +104,7 @@ export const orderUnitInputSchema = z.object({
   serialNumber: z.string().trim().max(120).optional(),
   supplierId: z.string().trim().max(60).optional(),
   purchaseCost: z.number().min(0).max(100_000_000).optional(),
-  status: z.enum(["receiving_qc", "in_stock", "reserved", "assigned", "delivered", "returned", "maintenance", "damaged", "retired", "sold", "lost"]).optional(),
+  status: z.enum(["receiving_qc", "in_stock", "reserved", "assigned", "delivered", "returned", "maintenance", "damaged", "supplier_return_pending", "supplier_returned", "retired", "sold", "lost"]).optional(),
   notes: z.string().trim().max(1000).optional(),
 })
 
@@ -123,6 +123,7 @@ export const createOrderSchema = z.object({
   contactMobile: z.string().trim().max(30).optional(),
   contactEmail: z.string().trim().max(200).optional(),
   quoteDate: z.string().optional(),
+  customerConfirmationDate: z.string().optional(),
   rentalPeriodMonths: z.number().int().min(0).max(600).optional(),
   additionalPeriodMonths: z.number().int().min(0).max(600).optional(),
   notes: z.string().trim().max(2000).optional(),
@@ -138,6 +139,8 @@ export const updateOrderSchema = createOrderSchema.extend({
 export const createRequestSchema = z.object({
   typeId: nonEmpty(60),
   customerId: nonEmpty(60),
+  customerLocationId: z.string().trim().max(60).optional(),
+  receiverContactId: z.string().trim().max(60).optional(),
   quoteNumber: z.string().trim().max(120).optional(),
   salesRef: z.string().trim().max(120).optional(),
   poNumber: z.string().trim().max(120).optional(),

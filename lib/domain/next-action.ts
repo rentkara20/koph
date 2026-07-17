@@ -4,6 +4,8 @@
 // that can be active in parallel (one per track). Kept free of DB/i18n so it
 // is unit-testable — labels come from i18n keys derived from `key`.
 
+import { procurementCaseHref } from "./procurement-case-navigation"
+
 export type NextActionOwnerRole = "procurement" | "warehouse" | "ops" | "finance" | "admin"
 export type NextActionUrgency = "now" | "soon" | "scheduled"
 
@@ -202,7 +204,7 @@ export function deriveNextActions(facts: WorkspaceFacts): NextAction[] {
         key: "addErpPoReference",
         ownerRole: "procurement",
         blockedBy: "waitingErpPo",
-        href: `/admin/orders/${orderId}?tab=buying`,
+        href: procurementCaseHref(c.id),
         urgency: "now",
         entityRef: { type: "procurement_case", id: c.id },
       })
@@ -213,7 +215,7 @@ export function deriveNextActions(facts: WorkspaceFacts): NextAction[] {
       actions.push({
         key: "createPurchaseOrder",
         ownerRole: "procurement",
-        href: `/admin/procurement/new?case=${encodeURIComponent(c.id)}`,
+        href: procurementCaseHref(c.id),
         urgency: "now",
         entityRef: { type: "procurement_case", id: c.id },
       })

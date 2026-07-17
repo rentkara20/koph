@@ -7,13 +7,15 @@ import { getLatestCommercialEvaluation, getSourcingAwards } from "@/lib/actions/
 import { getProcurementCasesForSourcingRequest } from "@/lib/actions/procurement-case"
 import { getSuppliers } from "@/lib/actions/suppliers"
 import { Badge } from "@/components/ui/badge"
-import { buildRfqEmailSubject, buildRfqMessage } from "@/lib/domain/rfq-message"
-import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
+import { buildRfqMessages } from "@/lib/domain/rfq-message"
+import { getRfqMessageTemplates } from "@/lib/actions/settings"
+import { canSendEmailFromKoph } from "@/lib/actions/communications"
 import { SendRfqForm } from "./_components/send-rfq-form"
 import { RfqMessageActions } from "./_components/rfq-message-actions"
 import { QuotationForm } from "./_components/quotation-form"
 import { AwardPanel } from "./_components/award-panel"
 import { EvaluationApprovalPanel } from "./_components/evaluation-approval-panel"
+import { procurementCaseHref } from "@/lib/domain/procurement-case-navigation"
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
   draft: "secondary",
@@ -46,13 +48,15 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
   if (!data) notFound()
   const { request, items, rfqs, rfqItemIds } = data
 
-  const [quotations, evaluation, awards, matrix, procurementCases, suppliers] = await Promise.all([
+  const [quotations, evaluation, awards, matrix, procurementCases, suppliers, messageTemplates, emailSendingEnabled] = await Promise.all([
     getQuotationsForSourcingRequest(id),
     getLatestCommercialEvaluation(id),
     getSourcingAwards(id),
     getSourcingComparisonMatrix(id),
     getProcurementCasesForSourcingRequest(id),
     getSuppliers(),
+    getRfqMessageTemplates(),
+    canSendEmailFromKoph(),
   ])
 
   const quotationOptions = quotations.map((q) => ({ id: q.quotation.id, supplierName: q.supplierName }))
@@ -123,12 +127,15 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
             const rfqItems = (rfqItemIds[rfq.id] ?? [])
               .map((itemId) => itemById.get(itemId))
               .filter((item) => item != null)
-            const message = buildRfqMessage({
-              supplierContactName: rfq.supplierContactPerson,
-              externalRef: request.externalRef,
-              title: request.title,
-              items: rfqItems,
-            })
+            const messages = buildRfqMessages(
+              {
+                supplierContactName: rfq.supplierContactPerson,
+                externalRef: request.externalRef,
+                title: request.title,
+                items: rfqItems,
+              },
+              messageTemplates
+            )
             return (
               <div key={rfq.id} className="space-y-2 rounded-lg border p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -154,10 +161,13 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
                 )}
                 {rfq.status === "sent" && rfqItems.length > 0 && (
                   <RfqMessageActions
-                    message={message}
-                    emailSubject={buildRfqEmailSubject(request.externalRef, request.title)}
-                    whatsappUrl={buildWhatsappUrl(rfq.supplierMobile, message)}
+                    sourcingRequestId={id}
+                    whatsappBody={messages.whatsappBody}
+                    emailSubject={messages.emailSubject}
+                    emailBody={messages.emailBody}
+                    mobile={rfq.supplierMobile}
                     email={rfq.supplierEmail}
+                    emailSendingEnabled={emailSendingEnabled}
                   />
                 )}
                 {rfq.status === "sent" && rfqItems.length > 0 && (
@@ -232,7 +242,7 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
             {procurementCases.map((pc) => (
               <Link
                 key={pc.id}
-                href={`/admin/procurement/${pc.id}`}
+                href={procurementCaseHref(pc.id)}
                 className="flex items-center justify-between gap-2 rounded-lg border p-3 hover:bg-muted/40"
               >
                 <div>

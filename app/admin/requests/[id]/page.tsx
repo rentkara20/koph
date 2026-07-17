@@ -2,7 +2,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
-import { getRequest, getRequestContacts, deleteRequest } from "@/lib/actions/requests"
+import { getCustomerDeliveryOptions, getRequest, deleteRequest } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
 import { getSignatureRequestsForRequest } from "@/lib/actions/signatures"
 import { appBaseUrl } from "@/lib/utils/public-url"
@@ -15,7 +15,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { formatDate, formatDateTime } from "@/lib/utils/format"
 import { RequestStatusActions } from "./_components/request-status-actions"
-import { ReopenRequestButton } from "./_components/reopen-request-button"
 import { DeleteButton } from "@/components/delete-button"
 import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
@@ -26,6 +25,7 @@ import { ReceiverSection } from "./_components/receiver-section"
 import { LogisticsSection } from "./_components/logistics-section"
 import { NextStepBanner } from "./_components/next-step-banner"
 import { cn } from "@/lib/utils"
+import { getDefaultCompanyLocation } from "@/lib/actions/company-locations"
 
 export default async function RequestDetailPage({
   params,
@@ -33,18 +33,22 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [data, tasks, partnersWithContracts, signatures, taskServicesMap, allServices, t, tCommon] = await Promise.all([
+  const [data, tasks, partnersWithContracts, signatures, taskServicesMap, allServices, companyLocation, t, tCommon] = await Promise.all([
     getRequest(id),
     getTasksForRequest(id),
     getPartnersWithContracts(),
     getSignatureRequestsForRequest(id),
     getTaskServicesForRequest(id),
     getActiveServices(),
+    getDefaultCompanyLocation(),
     getTranslations("requests"),
     getTranslations("common"),
   ])
 
-  const contacts = data ? await getRequestContacts(data.request.customerId) : []
+  const deliveryOptions = data
+    ? await getCustomerDeliveryOptions(data.request.customerId)
+    : { locations: [], contacts: [], links: [] }
+  const { contacts, locations, links: contactLocationLinks } = deliveryOptions
 
   if (!data) notFound()
 
@@ -76,7 +80,6 @@ export default async function RequestDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <ReopenRequestButton requestId={request.id} currentStatus={request.status} />
           <RequestStatusActions requestId={request.id} currentStatus={request.status} />
           <DeleteButton
             onDelete={deleteRequest.bind(null, request.id)}
@@ -183,7 +186,9 @@ export default async function RequestDetailPage({
           {/* Receiver */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm font-medium text-muted-foreground">{t("receiver")}</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                {requestType?.slug === "collection" ? t("pickupPerson") : t("receiver")}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ReceiverSection
@@ -191,6 +196,9 @@ export default async function RequestDetailPage({
                 customerId={request.customerId}
                 contacts={contacts}
                 receiverContactId={request.receiverContactId ?? null}
+                locations={locations}
+                contactLocationLinks={contactLocationLinks}
+                customerLocationId={request.customerLocationId ?? null}
               />
             </CardContent>
           </Card>
@@ -203,9 +211,26 @@ export default async function RequestDetailPage({
             <CardContent>
               <LogisticsSection
                 requestId={request.id}
+                requestTypeSlug={requestType?.slug ?? null}
                 origin={request.origin ?? null}
                 destination={request.destination ?? null}
-                scheduledAt={request.scheduledAt ?? null}
+                plannedDate={requestType?.slug === "collection" ? request.collectionDate ?? null : request.deliveryDate ?? null}
+                timeWindow={request.timeWindow ?? null}
+                warehouse={companyLocation}
+                customer={customer ? {
+                  name: customer.name,
+                  mobile: customer.mobile,
+                  city: customer.city,
+                  address: customer.address,
+                  mapsLink: customer.mapsLink,
+                } : null}
+                contact={contacts.find((c) => c.id === request.receiverContactId) ?? null}
+                customerLocation={(request.locationNameSnapshot || request.locationAddressSnapshot || request.locationMapsLinkSnapshot) ? {
+                  id: request.customerLocationId ?? undefined,
+                  name: request.locationNameSnapshot ?? locations.find((location) => location.id === request.customerLocationId)?.name ?? t("routeContactMissingLabel"),
+                  address: request.locationAddressSnapshot,
+                  mapsLink: request.locationMapsLinkSnapshot,
+                } : null}
               />
             </CardContent>
           </Card>
@@ -236,6 +261,8 @@ export default async function RequestDetailPage({
                 tasks={tasks}
                 partners={partnersWithContracts}
                 contacts={contacts}
+                receiverContactId={request.receiverContactId ?? null}
+                requestTypeSlug={requestType?.slug ?? null}
                 taskServicesMap={taskServicesMap}
                 allServices={allServices}
               />
@@ -270,9 +297,12 @@ export default async function RequestDetailPage({
                   documentNumber: String(request.quoteNumber ?? request.requestNumber),
                   customerName: customer?.name ?? null,
                   city:
+                    locations.find((location) => location.id === request.customerLocationId)?.city ??
+                    request.locationAddressSnapshot?.split(" · ")[0] ??
                     contacts.find((c) => c.id === request.receiverContactId)?.city ??
                     customer?.city ??
                     null,
+                  deliveryPartNumber: request.deliveryPartNumber,
                 })}
                 baseUrl={appBaseUrl()}
                 customerName={customer?.name ?? null}

@@ -5,6 +5,8 @@
 // in KSA read both. V1 sends through the operator's own WhatsApp/mail client
 // (wa.me / mailto) — no Business API, no SMTP.
 
+import { renderMessageTemplate, type RfqMessageTemplates } from "./message-templates"
+
 export type RfqMessageItem = {
   quantity: number
   supplierDescription: string
@@ -16,6 +18,31 @@ export type RfqMessageInput = {
   externalRef: string | null
   title: string | null
   items: RfqMessageItem[]
+}
+
+function formatItems(items: RfqMessageItem[]): string {
+  return items
+    .map((item) => {
+      const pn = item.partNumber ? ` (PN: ${item.partNumber})` : ""
+      return `• ${item.quantity}× ${item.supplierDescription}${pn}`
+    })
+    .join("\n")
+}
+
+export function buildRfqMessages(input: RfqMessageInput, templates: RfqMessageTemplates) {
+  const values = {
+    supplier_name: input.supplierContactName?.trim() || "فريق المبيعات",
+    request_ref: input.externalRef?.trim() || "غير محدد",
+    request_title: input.title?.trim() || "طلب عرض سعر",
+    items: formatItems(input.items),
+    company_name: "KARA Solutions / Rent Kara",
+  }
+
+  return {
+    whatsappBody: renderMessageTemplate(templates.whatsappBody, values).trim(),
+    emailSubject: renderMessageTemplate(templates.emailSubject, values).replace(/\s+/g, " ").trim(),
+    emailBody: renderMessageTemplate(templates.emailBody, values).trim(),
+  }
 }
 
 export function buildRfqMessage(input: RfqMessageInput): string {

@@ -37,7 +37,6 @@ export function ProcurementCasePanel({
   const router = useRouter()
   const [erpSystem, setErpSystem] = useState<"zoho" | "odoo">("zoho")
   const [externalPoRef, setExternalPoRef] = useState("")
-  const [poNumber, setPoNumber] = useState("")
   const [reason, setReason] = useState("")
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
@@ -51,7 +50,6 @@ export function ProcurementCasePanel({
     startTransition(async () => {
       const result = await createPurchaseOrderFromCase({
         procurementCaseId: procurementCase.id,
-        poNumber: poNumber.trim(),
       })
       if (result.error) {
         const msg = translateActionError(result.error)
@@ -78,8 +76,18 @@ export function ProcurementCasePanel({
         toast.error(msg)
         return
       }
-      toast.success(t("linked"))
-      router.refresh()
+      const poResult = await createPurchaseOrderFromCase({
+        procurementCaseId: procurementCase.id,
+      })
+      if (poResult.error) {
+        const msg = translateActionError(poResult.error)
+        setError(msg)
+        toast.error(msg)
+        router.refresh()
+        return
+      }
+      toast.success(t("poCreated"))
+      router.push(`/admin/procurement/${poResult.id}`)
     })
   }
 
@@ -136,19 +144,20 @@ export function ProcurementCasePanel({
           </div>
           <Button size="sm" onClick={handleLink} disabled={pending || !externalPoRef.trim()}>
             {pending && <Loader2 className="me-2 size-4 animate-spin" />}
-            {t("linkExternalPo")}
+            {t("saveAndContinue")}
           </Button>
         </div>
       ) : null}
 
       {isLinked && procurementCase.source === "commercial_flow" && !hasLinkedPo && !isSuperseded && (
-        <div className="space-y-2 rounded-lg border p-3">
-          <p className="text-xs font-medium">{t("createPo")}</p>
-          <Label className="text-xs">{t("poNumber")}</Label>
-          <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} dir="ltr" />
-          <Button size="sm" onClick={handleCreatePo} disabled={pending || !poNumber.trim()}>
+        <div className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+          <div>
+            <p className="text-sm font-medium">{t("nextStep")}</p>
+            <p className="text-xs text-muted-foreground">{t("createPoAutomaticallyHint")}</p>
+          </div>
+          <Button size="sm" onClick={handleCreatePo} disabled={pending}>
             {pending && <Loader2 className="me-2 size-4 animate-spin" />}
-            {t("createPo")}
+            {t("continueToPurchaseOrder")}
           </Button>
         </div>
       )}

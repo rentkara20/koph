@@ -1,5 +1,14 @@
 const BRAND_PURPLE = "#512A83"
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;")
+}
+
 function wrap(bodyHtml: string): string {
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
@@ -11,6 +20,15 @@ function wrap(bodyHtml: string): string {
       </div>
     </div>
   `
+}
+
+export function rfqEmail(opts: { body: string }): string {
+  return wrap(`
+    <div dir="auto" style="white-space:pre-wrap;font-size:14px;line-height:1.8;color:#242424;">${escapeHtml(opts.body)}</div>
+    <div style="border-top:1px solid #eee;margin-top:20px;padding-top:12px;font-size:12px;color:#777;">
+      Kara Solutions · Riyadh, Saudi Arabia
+    </div>
+  `)
 }
 
 export function deliveryNoteSignedEmail(opts: {

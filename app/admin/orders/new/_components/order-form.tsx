@@ -16,6 +16,8 @@ import { Separator } from "@/components/ui/separator"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { InlineCreateParty } from "@/components/inline-create-party"
+import { addAndSelectOption } from "@/lib/domain/inline-option"
 
 type LineRow = {
   id: number
@@ -40,6 +42,10 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
   const [lines, setLines] = useState<LineRow[]>([emptyLine()])
+  const [customerOptions, setCustomerOptions] = useState(
+    customers.map(({ id, name }) => ({ id, name }))
+  )
+  const [customerId, setCustomerId] = useState("")
 
   function addLine() {
     setLines((prev) => [...prev, emptyLine()])
@@ -66,6 +72,7 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
         orderNumber: (fd.get("orderNumber") as string)?.trim(),
         customerId: fd.get("customerId") as string,
         quoteDate: (fd.get("quoteDate") as string) || undefined,
+        customerConfirmationDate: (fd.get("customerConfirmationDate") as string) || undefined,
         notes: (fd.get("notes") as string) || undefined,
         lines: validLines.map((l) => ({
           description: l.description,
@@ -107,14 +114,31 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
           <Label htmlFor="customerId">
             {t("customer")} <span className="text-destructive">*</span>
           </Label>
-          <Select id="customerId" name="customerId" required>
-            <option value="">— {t("customer")} —</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
+          <div className="flex gap-2">
+            <Select
+              id="customerId"
+              name="customerId"
+              required
+              value={customerId}
+              onChange={(event) => setCustomerId(event.target.value)}
+              className="flex-1"
+            >
+              <option value="">— {t("customer")} —</option>
+              {customerOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <InlineCreateParty
+              kind="customer"
+              onCreated={(created) => {
+                const next = addAndSelectOption(customerOptions, created)
+                setCustomerOptions(next.options)
+                setCustomerId(next.selectedId)
+              }}
+            />
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -123,6 +147,12 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
             <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
           </Label>
           <Input id="quoteDate" name="quoteDate" type="date" />
+        </div>
+
+        <div className="space-y-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
+          <Label htmlFor="customerConfirmationDate">{t("customerConfirmationDate")}</Label>
+          <Input id="customerConfirmationDate" name="customerConfirmationDate" type="date" />
+          <p className="text-xs text-muted-foreground">{t("customerConfirmationHint")}</p>
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">

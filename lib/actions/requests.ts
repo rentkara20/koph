@@ -1,18 +1,34 @@
 "use server"
 
 import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
-import { and, count, desc, eq, inArray, isNull, like, notInArray, or } from "drizzle-orm"
+import { and, count, desc, eq, inArray, isNull, like, max, notInArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { activityLogs, customerContacts, customers, orderUnits, partnerTasks, requestItems, requests, requestTypes, signatureRequests } from "@/lib/db/schema"
+import { activityLogs, customerContactLocations, customerContacts, customerLocations, customers, partnerTasks, requestItems, requests, requestTypes, signatureRequests } from "@/lib/db/schema"
 import { createId, generateTrackingCode } from "@/lib/utils/ids"
 import { generateRequestNumber } from "@/lib/utils/request-number"
 import { logActivity } from "@/lib/utils/activity"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { createRequestSchema, itemInputSchema, firstError } from "@/lib/validation/schemas"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
+import { resolveNextDeliveryPartNumber } from "@/lib/domain/delivery-part"
+import { validateRequestExceptionInput, type RequestExceptionInput } from "@/lib/domain/request-exception-actions"
 
 export type ActionResult = { error?: string; id?: string }
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+type Database = typeof db | Tx
+
+export type CreateReceiverInput = {
+  name: string
+  role?: string
+  mobile?: string
+  email?: string
+  city?: string
+  address?: string
+  mapsLink?: string
+  notes?: string
+  isAuthorizedSignatory?: boolean
+}
 
 type ItemInput = {
   description: string
@@ -28,6 +44,8 @@ type ItemInput = {
 export type CreateRequestInput = {
   typeId: string
   customerId: string
+  customerLocationId?: string
+  receiverContactId?: string
   quoteNumber?: string
   salesRef?: string
   poNumber?: string
@@ -37,6 +55,31 @@ export type CreateRequestInput = {
   requireNationalId: boolean
   notes?: string
   items: ItemInput[]
+}
+
+export async function resolveCustomerLocationSnapshotCore(
+  database: Database,
+  customerId: string,
+  locationId: string
+) {
+  const [location] = await database
+    .select()
+    .from(customerLocations)
+    .where(and(
+      eq(customerLocations.id, locationId),
+      eq(customerLocations.customerId, customerId),
+      eq(customerLocations.isActive, true)
+    ))
+  if (!location) throw new Error("Customer location does not belong to this customer")
+
+  return {
+    customerLocationId: location.id,
+    locationNameSnapshot: location.name,
+    locationAddressSnapshot: [location.city, location.address].filter(Boolean).join(" · ") || null,
+    locationMapsLinkSnapshot: location.mapsLink,
+    locationLatitudeSnapshot: location.latitude,
+    locationLongitudeSnapshot: location.longitude,
+  }
 }
 
 export async function createRequest(data: CreateRequestInput): Promise<ActionResult> {
@@ -57,13 +100,45 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
 
   try {
   await db.transaction(async (tx) => {
+    const orderReference = data.quoteNumber?.trim() || null
+    const [requestType] = await tx
+      .select({ slug: requestTypes.slug })
+      .from(requestTypes)
+      .where(eq(requestTypes.id, data.typeId))
+    const [existingPart] = orderReference && requestType?.slug === "delivery"
+      ? await tx
+          .select({ highest: max(requests.deliveryPartNumber) })
+          .from(requests)
+          .where(eq(requests.quoteNumber, orderReference))
+      : [{ highest: null }]
+    const deliveryPartNumber = resolveNextDeliveryPartNumber({
+      requestTypeSlug: requestType?.slug,
+      orderReference,
+      highestExistingPart: existingPart?.highest,
+    })
+    const locationSnapshot = data.customerLocationId
+      ? await resolveCustomerLocationSnapshotCore(tx, data.customerId, data.customerLocationId)
+      : {}
+    if (data.receiverContactId) {
+      const [receiver] = await tx
+        .select({ id: customerContacts.id })
+        .from(customerContacts)
+        .where(and(
+          eq(customerContacts.id, data.receiverContactId),
+          eq(customerContacts.customerId, data.customerId)
+        ))
+      if (!receiver) throw new Error("Receiver does not belong to this customer")
+    }
     await tx.insert(requests).values({
       id,
       requestNumber,
       trackingCode,
       typeId: data.typeId,
       customerId: data.customerId,
-      quoteNumber: data.quoteNumber?.trim() || null,
+      receiverContactId: data.receiverContactId || null,
+      ...locationSnapshot,
+      quoteNumber: orderReference,
+      deliveryPartNumber,
       salesRef: data.salesRef || null,
       poNumber: data.poNumber || null,
       deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).getTime() : null,
@@ -123,6 +198,10 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
             : error.message,
       }
     }
+    if (error instanceof Error && [
+      "Customer location does not belong to this customer",
+      "Receiver does not belong to this customer",
+    ].includes(error.message)) return { error: error.message }
     throw error
   }
 
@@ -299,12 +378,16 @@ async function releaseUnitsForRequest(
 
 export async function updateRequestStatus(
   id: string,
-  status: ManualStatus
+  status: ManualStatus,
+  input: RequestExceptionInput = {}
 ): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  const [before] = await db.select({ status: requests.status }).from(requests).where(eq(requests.id, id))
+  const validationError = validateRequestExceptionInput(status, input)
+  if (validationError) return { error: validationError }
+
+  const [before] = await db.select({ status: requests.status, typeId: requests.typeId }).from(requests).where(eq(requests.id, id))
   if (!before) return { error: "Not found" }
   if (before.status === status) return { id } // no-op, avoids churn + duplicate events
   // A completed request has closed tasks and (typically) generated partner
@@ -313,15 +396,37 @@ export async function updateRequestStatus(
   if (before.status === "completed") {
     return { error: "A completed request cannot be changed" }
   }
+  const [requestType] = await db
+    .select({ slug: requestTypes.slug })
+    .from(requestTypes)
+    .where(eq(requestTypes.id, before.typeId))
 
   await db.transaction(async (tx) => {
-    await tx.update(requests).set({ status, updatedAt: Date.now() }).where(eq(requests.id, id))
+    await tx.update(requests).set({
+      status,
+      ...(status === "rescheduled" ? {
+        ...(requestType?.slug === "collection"
+          ? { collectionDate: input.plannedDate }
+          : { deliveryDate: input.plannedDate }),
+        timeWindow: input.timeWindow?.trim(),
+        // Exact-minute appointments are intentionally not required. Clear any
+        // legacy value so the day + window remain the source of truth.
+        scheduledAt: null,
+      } : {}),
+      updatedAt: Date.now(),
+    }).where(eq(requests.id, id))
 
     await emitDomainEvent(tx, {
       aggregateType: "request",
       aggregateId: id,
       eventType: "RequestStatusChanged",
-      payload: { fromStatus: before?.status ?? null, toStatus: status },
+      payload: {
+        fromStatus: before?.status ?? null,
+        toStatus: status,
+        reason: input.reason?.trim() || null,
+        plannedDate: status === "rescheduled" ? input.plannedDate ?? null : null,
+        timeWindow: status === "rescheduled" ? input.timeWindow?.trim() || null : null,
+      },
       dedupeKey: `request:${id}:RequestStatusChanged:${createId()}`,
       actorUserId: session.user.id,
     })
@@ -350,7 +455,12 @@ export async function updateRequestStatus(
     entityId: id,
     action: "status_changed",
     i18nKey: "activity.statusChanged",
-    i18nData: { status },
+    i18nData: {
+      status,
+      ...(input.reason?.trim() ? { reason: input.reason.trim() } : {}),
+      ...(status === "rescheduled" && input.plannedDate ? { plannedDate: input.plannedDate } : {}),
+      ...(status === "rescheduled" && input.timeWindow?.trim() ? { timeWindow: input.timeWindow.trim() } : {}),
+    },
     performedBy: session.user.id,
   })
 
@@ -523,6 +633,14 @@ export async function setRequestReceiver(
   if (!session) return { error: "Unauthorized" }
 
   try {
+    if (contactId) {
+      const [valid] = await db
+        .select({ id: customerContacts.id })
+        .from(customerContacts)
+        .innerJoin(requests, eq(requests.customerId, customerContacts.customerId))
+        .where(and(eq(requests.id, requestId), eq(customerContacts.id, contactId)))
+      if (!valid) return { error: "Receiver does not belong to this customer" }
+    }
     await db
       .update(requests)
       .set({ receiverContactId: contactId, updatedAt: Date.now() })
@@ -544,10 +662,121 @@ export async function setRequestReceiver(
   return {}
 }
 
+export async function createAndAssignRequestReceiverCore(
+  tx: Tx,
+  requestId: string,
+  data: CreateReceiverInput,
+  performedBy?: string
+) {
+  const [request] = await tx
+    .select({ customerId: requests.customerId, customerLocationId: requests.customerLocationId })
+    .from(requests)
+    .where(eq(requests.id, requestId))
+
+  if (!request) throw new Error("Request not found")
+
+  const contact = {
+    id: createId(),
+    customerId: request.customerId,
+    name: data.name.trim(),
+    role: data.role?.trim() || null,
+    mobile: data.mobile?.trim() || null,
+    email: data.email?.trim() || null,
+    city: data.city?.trim() || null,
+    address: data.address?.trim() || null,
+    mapsLink: data.mapsLink?.trim() || null,
+    notes: data.notes?.trim() || null,
+    isAuthorizedSignatory: data.isAuthorizedSignatory ?? false,
+  }
+
+  await tx.insert(customerContacts).values(contact)
+  if (request.customerLocationId) {
+    await tx.insert(customerContactLocations).values({
+      contactId: contact.id,
+      locationId: request.customerLocationId,
+      isPrimary: true,
+    })
+  }
+  await tx
+    .update(requests)
+    .set({ receiverContactId: contact.id, updatedAt: Date.now() })
+    .where(eq(requests.id, requestId))
+  await logActivity(
+    {
+      entityType: "request",
+      entityId: requestId,
+      action: "receiver_set",
+      i18nKey: "activity.receiverSet",
+      performedBy,
+    },
+    tx
+  )
+
+  return contact
+}
+
+export async function createAndAssignRequestReceiver(
+  requestId: string,
+  data: CreateReceiverInput
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+  if (!data.name?.trim()) return { error: "Name is required" }
+
+  try {
+    const contact = await db.transaction((tx) =>
+      createAndAssignRequestReceiverCore(tx, requestId, data, session.user.id)
+    )
+    revalidatePath(`/admin/requests/${requestId}`)
+    revalidatePath(`/admin/customers/${contact.customerId}`)
+    return { id: contact.id }
+  } catch (error) {
+    console.error("Failed to create and assign receiver", error)
+    return { error: "Failed to create receiver" }
+  }
+}
+
 export type LogisticsInput = {
   origin?: string | null
   destination?: string | null
   scheduledAt?: number | null
+}
+
+export async function setRequestCustomerLocation(
+  requestId: string,
+  locationId: string | null
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [request] = await tx
+        .select({ customerId: requests.customerId })
+        .from(requests)
+        .where(eq(requests.id, requestId))
+      if (!request) throw new Error("Request not found")
+      const snapshot = locationId
+        ? await resolveCustomerLocationSnapshotCore(tx, request.customerId, locationId)
+        : {
+            customerLocationId: null,
+            locationNameSnapshot: null,
+            locationAddressSnapshot: null,
+            locationMapsLinkSnapshot: null,
+            locationLatitudeSnapshot: null,
+            locationLongitudeSnapshot: null,
+          }
+      await tx
+        .update(requests)
+        .set({ ...snapshot, updatedAt: Date.now() })
+        .where(eq(requests.id, requestId))
+    })
+    revalidatePath(`/admin/requests/${requestId}`)
+    return {}
+  } catch (error) {
+    console.error("Failed to update request customer location", error)
+    return { error: error instanceof Error ? error.message : "Failed to update customer location" }
+  }
 }
 
 export async function setRequestLogistics(
@@ -595,6 +824,34 @@ export async function getRequestContacts(customerId: string) {
     console.error("requests: swallowed fallback error", error)
     return []
   }
+}
+
+export async function getCustomerDeliveryOptions(customerId: string) {
+  const session = await getStaffSession()
+  if (!session) return { locations: [], contacts: [], links: [] }
+
+  const [locations, contacts, links] = await Promise.all([
+    db
+      .select()
+      .from(customerLocations)
+      .where(and(eq(customerLocations.customerId, customerId), eq(customerLocations.isActive, true)))
+      .orderBy(desc(customerLocations.isDefault), customerLocations.name),
+    db
+      .select()
+      .from(customerContacts)
+      .where(eq(customerContacts.customerId, customerId))
+      .orderBy(customerContacts.name),
+    db
+      .select({
+        contactId: customerContactLocations.contactId,
+        locationId: customerContactLocations.locationId,
+        isPrimary: customerContactLocations.isPrimary,
+      })
+      .from(customerContactLocations)
+      .innerJoin(customerContacts, eq(customerContacts.id, customerContactLocations.contactId))
+      .where(eq(customerContacts.customerId, customerId)),
+  ])
+  return { locations, contacts, links }
 }
 
 export async function addRequestItem(

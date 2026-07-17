@@ -4,7 +4,7 @@
 // project yet). Covers what the admin mobile drawer needs: backdrop, Escape
 // to close, focus-visible close button, body scroll lock.
 
-import { useEffect } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -15,9 +15,16 @@ interface SheetProps {
   side?: "start" | "end"
   children: React.ReactNode
   title?: string
+  panelClassName?: string
 }
 
-export function Sheet({ open, onClose, side = "start", children, title }: SheetProps) {
+export function Sheet({ open, onClose, side = "start", children, title, panelClassName }: SheetProps) {
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
+
   useEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
@@ -32,13 +39,13 @@ export function Sheet({ open, onClose, side = "start", children, title }: SheetP
     }
   }, [open, onClose])
 
-  if (typeof document === "undefined") return null
+  if (!mounted || !open || typeof document === "undefined") return null
 
   return createPortal(
     <div
       className={cn(
         "fixed inset-0 z-50 transition-opacity",
-        open ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+        "pointer-events-auto opacity-100"
       )}
       aria-hidden={!open}
     >
@@ -53,12 +60,9 @@ export function Sheet({ open, onClose, side = "start", children, title }: SheetP
         aria-label={title}
         className={cn(
           "absolute top-0 h-full w-72 max-w-[85vw] bg-sidebar shadow-xl transition-transform duration-200 ease-out",
+          panelClassName,
           side === "start" ? "start-0" : "end-0",
-          open
-            ? "translate-x-0"
-            : side === "start"
-              ? "-translate-x-full rtl:translate-x-full"
-              : "translate-x-full rtl:-translate-x-full"
+          "translate-x-0"
         )}
       >
         <button

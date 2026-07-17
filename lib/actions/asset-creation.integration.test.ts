@@ -103,6 +103,35 @@ describe("createAssetCore", () => {
     expect(after.length).toBe(beforeCount)
   })
 
+  test("treats serial numbers as case-insensitive and whitespace-normalized", async () => {
+    const { createAssetCore } = await import("./assets")
+    const first = await seedOrderLine()
+    const second = await seedOrderLine()
+
+    await db.transaction(async (tx) => {
+      await createAssetCore(
+        tx,
+        { orderLineId: first.lineId, serialNumber: "  sn-mixed-01  ", assetTag: "KARA-SERIAL-A" },
+        "u1"
+      )
+    })
+
+    await expect(
+      db.transaction(async (tx) => {
+        await createAssetCore(
+          tx,
+          { orderLineId: second.lineId, serialNumber: "SN-MIXED-01", assetTag: "KARA-SERIAL-B" },
+          "u1"
+        )
+      })
+    ).rejects.toThrow("Serial number already in use")
+
+    const rows = await db.select().from(schema.orderUnits)
+    const matching = rows.filter((row) => row.serialNumber?.toUpperCase() === "SN-MIXED-01")
+    expect(matching).toHaveLength(1)
+    expect(matching[0].serialNumber).toBe("SN-MIXED-01")
+  })
+
   test("rejects an unknown order line, no row inserted, no event emitted", async () => {
     const { createAssetCore } = await import("./assets")
     const before = await db.select().from(schema.orderUnits)

@@ -127,6 +127,39 @@ export const customers = sqliteTable("customer", {
   deletedAt: integer("deleted_at"),
 })
 
+// ─── Customer operational locations ────────────────────────────────────────
+// A customer can have several reusable delivery/pickup sites. People are kept
+// separate and linked through customer_contact_location because one employee
+// may work at several sites.
+
+export const customerLocations = sqliteTable("customer_location", {
+  id: text("id").primaryKey(),
+  customerId: text("customer_id")
+    .notNull()
+    .references(() => customers.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["office", "warehouse", "branch", "project_site", "other"] })
+    .notNull()
+    .default("office"),
+  city: text("city"),
+  address: text("address"),
+  mapsLink: text("maps_link"),
+  googlePlaceId: text("google_place_id"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
+  workingHours: text("working_hours"),
+  accessNotes: text("access_notes"),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [
+  index("customer_location_customer_idx").on(t.customerId),
+  uniqueIndex("customer_location_single_default_idx")
+    .on(t.customerId, t.isDefault)
+    .where(sql`${t.isDefault} = 1`),
+])
+
 // ─── Customer contacts (branches / receiving employees) ─────────────────────
 
 export const customerContacts = sqliteTable("customer_contact", {
@@ -151,6 +184,20 @@ export const customerContacts = sqliteTable("customer_contact", {
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 }, (t) => [index("customer_contact_customer_idx").on(t.customerId)])
 
+export const customerContactLocations = sqliteTable("customer_contact_location", {
+  contactId: text("contact_id")
+    .notNull()
+    .references(() => customerContacts.id, { onDelete: "cascade" }),
+  locationId: text("location_id")
+    .notNull()
+    .references(() => customerLocations.id, { onDelete: "cascade" }),
+  isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+}, (t) => [
+  uniqueIndex("customer_contact_location_unique_idx").on(t.contactId, t.locationId),
+  index("customer_contact_location_location_idx").on(t.locationId),
+])
+
 // ─── Requests ───────────────────────────────────────────────────────────────
 
 export const requests = sqliteTable("request", {
@@ -164,6 +211,8 @@ export const requests = sqliteTable("request", {
     .notNull()
     .references(() => customers.id),
   quoteNumber: text("quote_number"),
+  // Delivery sequence within the same customer order: P1, P2, ...
+  deliveryPartNumber: integer("delivery_part_number"),
   salesRef: text("sales_ref"),
   poNumber: text("po_number"),
   deliveryDate: integer("delivery_date"),
@@ -188,6 +237,14 @@ export const requests = sqliteTable("request", {
     .notNull()
     .default(false),
   receiverContactId: text("receiver_contact_id").references(() => customerContacts.id, { onDelete: "set null" }),
+  customerLocationId: text("customer_location_id").references(() => customerLocations.id, { onDelete: "set null" }),
+  // Immutable site snapshot for historical tasks. Renaming a customer site
+  // later must not rewrite where an existing courier was instructed to go.
+  locationNameSnapshot: text("location_name_snapshot"),
+  locationAddressSnapshot: text("location_address_snapshot"),
+  locationMapsLinkSnapshot: text("location_maps_link_snapshot"),
+  locationLatitudeSnapshot: real("location_latitude_snapshot"),
+  locationLongitudeSnapshot: real("location_longitude_snapshot"),
   // Logistics — where the courier picks up and where it is delivered
   origin: text("origin"),
   destination: text("destination"),
@@ -201,6 +258,9 @@ export const requests = sqliteTable("request", {
 }, (t) => [
   index("request_customer_idx").on(t.customerId),
   index("request_status_idx").on(t.status),
+  uniqueIndex("request_order_delivery_part_unique_idx")
+    .on(t.quoteNumber, t.deliveryPartNumber)
+    .where(sql`${t.quoteNumber} IS NOT NULL AND ${t.deliveryPartNumber} IS NOT NULL`),
 ])
 
 // ─── Request items ──────────────────────────────────────────────────────────
@@ -416,6 +476,36 @@ export const appSettings = sqliteTable("app_setting", {
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 })
 
+// ─── Company operational locations ─────────────────────────────────────────
+// Warehouses, offices, and service centres used as real route endpoints. The
+// partial unique index guarantees that at most one active default is exposed to
+// courier links at a time.
+
+export const companyLocations = sqliteTable("company_location", {
+  id: text("id").primaryKey(),
+  companyName: text("company_name").notNull(),
+  name: text("name").notNull(),
+  type: text("type", { enum: ["warehouse", "office", "service_center"] })
+    .notNull()
+    .default("warehouse"),
+  contactName: text("contact_name"),
+  contactMobile: text("contact_mobile"),
+  city: text("city"),
+  address: text("address"),
+  mapsLink: text("maps_link"),
+  workingHours: text("working_hours"),
+  accessNotes: text("access_notes"),
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at").notNull().$defaultFn(now),
+  updatedAt: integer("updated_at").notNull().$defaultFn(now),
+}, (t) => [
+  index("company_location_active_idx").on(t.isActive),
+  uniqueIndex("company_location_single_default_idx")
+    .on(t.isDefault)
+    .where(sql`${t.isDefault} = 1`),
+])
+
 // ─── Task services (checklist) ──────────────────────────────────────────────
 
 export const taskServices = sqliteTable("task_service", {
@@ -595,7 +685,7 @@ export const communicationLog = sqliteTable("communication_log", {
   id: text("id").primaryKey(),
   entityType: text("entity_type").notNull(), // e.g. "signature_request", "partner_task", "request"
   entityId: text("entity_id").notNull(),
-  channel: text("channel", { enum: ["whatsapp", "outlook", "mailto", "copy"] }).notNull(),
+  channel: text("channel", { enum: ["whatsapp", "email", "outlook", "mailto", "copy"] }).notNull(),
   messageType: text("message_type").notNull(), // e.g. "otp_delivery", "remote_signature", "signed_receipt"
   recipient: text("recipient"), // mobile or email (never the OTP)
   status: text("status", { enum: ["prepared", "manually_confirmed_sent", "cancelled"] })
@@ -829,6 +919,8 @@ export type NewUser = typeof users.$inferInsert
 export type RequestType = typeof requestTypes.$inferSelect
 export type Customer = typeof customers.$inferSelect
 export type NewCustomer = typeof customers.$inferInsert
+export type CustomerLocation = typeof customerLocations.$inferSelect
+export type CustomerContactLocation = typeof customerContactLocations.$inferSelect
 export type Request = typeof requests.$inferSelect
 export type NewRequest = typeof requests.$inferInsert
 export type RequestItem = typeof requestItems.$inferSelect
@@ -896,6 +988,9 @@ export const orders = sqliteTable(
     contactMobile: text("contact_mobile"),
     contactEmail: text("contact_email"),
     quoteDate: integer("quote_date"),
+    // Commercial go-ahead: once the customer accepts the quotation, the
+    // order becomes confirmed and the buying journey can begin.
+    customerConfirmedAt: integer("customer_confirmed_at"),
     // Commercial terms captured from the quote (stored, not billed in v1).
     rentalPeriodMonths: integer("rental_period_months"),
     additionalPeriodMonths: integer("additional_period_months"),
@@ -975,6 +1070,8 @@ export const orderUnits = sqliteTable(
         "returned",
         "maintenance",
         "damaged",
+        "supplier_return_pending",
+        "supplier_returned",
         "retired",
         "sold",
         "lost",
@@ -997,7 +1094,9 @@ export const orderUnits = sqliteTable(
     index("order_unit_line_idx").on(t.orderLineId),
     index("order_unit_po_line_idx").on(t.purchaseOrderLineId),
     index("order_unit_status_idx").on(t.status),
-    index("order_unit_serial_idx").on(t.serialNumber),
+    uniqueIndex("order_unit_serial_idx")
+      .on(sql`lower(trim(${t.serialNumber}))`)
+      .where(sql`${t.serialNumber} IS NOT NULL AND trim(${t.serialNumber}) <> ''`),
     index("order_unit_current_customer_idx").on(t.currentCustomerId),
     uniqueIndex("order_unit_asset_tag_idx").on(t.assetTag),
     check(
@@ -1029,6 +1128,46 @@ export const assetEvents = sqliteTable(
     createdAt: integer("created_at").notNull().$defaultFn(now),
   },
   (t) => [index("asset_event_asset_idx").on(t.assetId, t.createdAt)]
+)
+
+// ─── Supplier returns / replacements ────────────────────────────────────────
+// A rejected received asset stays traceable to its original PO and supplier.
+// Replacement assets are created through the normal Asset creation chokepoint
+// and linked back here, without increasing the PO's commercial received qty.
+
+export const supplierReturns = sqliteTable(
+  "supplier_return",
+  {
+    id: text("id").primaryKey(),
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => orderUnits.id, { onDelete: "restrict" }),
+    purchaseOrderId: text("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "restrict" }),
+    supplierId: text("supplier_id")
+      .notNull()
+      .references(() => suppliers.id, { onDelete: "restrict" }),
+    resolution: text("resolution", { enum: ["replacement", "refund"] }).notNull(),
+    status: text("status", {
+      enum: ["requested", "awaiting_replacement", "replacement_received", "resolved", "cancelled"],
+    })
+      .notNull()
+      .default("requested"),
+    reason: text("reason").notNull(),
+    rmaReference: text("rma_reference"),
+    replacementAssetId: text("replacement_asset_id").references(() => orderUnits.id, { onDelete: "set null" }),
+    returnedAt: integer("returned_at"),
+    resolvedAt: integer("resolved_at"),
+    createdBy: text("created_by").references(() => users.id, { onDelete: "set null" }),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    updatedAt: integer("updated_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("supplier_return_asset_idx").on(t.assetId, t.createdAt),
+    index("supplier_return_po_idx").on(t.purchaseOrderId, t.createdAt),
+    index("supplier_return_status_idx").on(t.status),
+  ]
 )
 
 // ─── Purchase orders (procurement layer — feeds Asset creation) ─────────────
@@ -1722,6 +1861,8 @@ export type OrderLine = typeof orderLines.$inferSelect
 export type NewOrderLine = typeof orderLines.$inferInsert
 export type OrderUnit = typeof orderUnits.$inferSelect
 export type NewOrderUnit = typeof orderUnits.$inferInsert
+export type SupplierReturn = typeof supplierReturns.$inferSelect
+export type NewSupplierReturn = typeof supplierReturns.$inferInsert
 export type MaintenanceOrder = typeof maintenanceOrders.$inferSelect
 export type NewMaintenanceOrder = typeof maintenanceOrders.$inferInsert
 

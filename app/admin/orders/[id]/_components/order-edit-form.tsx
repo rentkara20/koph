@@ -86,6 +86,7 @@ export function OrderEditForm({
         orderNumber: (fd.get("orderNumber") as string)?.trim(),
         customerId: (fd.get("customerId") as string) || order.customerId,
         quoteDate: (fd.get("quoteDate") as string) || undefined,
+        customerConfirmationDate: (fd.get("customerConfirmationDate") as string) || undefined,
         notes: (fd.get("notes") as string) || undefined,
         lines: validLines.map((l) => ({
           id: l.dbId,
@@ -133,6 +134,17 @@ export function OrderEditForm({
             <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
           </Label>
           <Input id="quoteDate" name="quoteDate" type="date" defaultValue={dateInputValue(order.quoteDate)} />
+        </div>
+
+        <div className="space-y-1.5 rounded-xl border border-primary/30 bg-primary/5 p-3">
+          <Label htmlFor="customerConfirmationDate">{t("customerConfirmationDate")}</Label>
+          <Input
+            id="customerConfirmationDate"
+            name="customerConfirmationDate"
+            type="date"
+            defaultValue={dateInputValue(order.customerConfirmedAt)}
+          />
+          <p className="text-xs text-muted-foreground">{t("customerConfirmationHint")}</p>
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">

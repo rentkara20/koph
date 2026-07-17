@@ -99,20 +99,22 @@ export function cityToIata(city?: string | null): string {
 
 /**
  * Builds the default delivery-note document name:
- *   "Delivery Note #<num> <customer>, <LOC>, P1"
- * Location slot is omitted when no city is known; batch defaults to P1 and is
- * editable in the form.
+ *   "Delivery Note #<num> <customer>, <LOC>, P<delivery part>"
+ * Location is omitted when unknown. Legacy requests safely default to P1.
  */
 export function buildDeliveryNoteName({
   documentNumber,
   customerName,
   city,
+  deliveryPartNumber = 1,
 }: {
   documentNumber: string
   customerName?: string | null
   city?: string | null
+  deliveryPartNumber?: number | null
 }): string {
   const base = `Delivery Note #${documentNumber}${customerName ? ` ${customerName}` : ""}`
   const loc = cityToIata(city)
-  return loc ? `${base}, ${loc}, P1` : `${base}, P1`
+  const part = Math.max(1, deliveryPartNumber ?? 1)
+  return loc ? `${base}, ${loc}, P${part}` : `${base}, P${part}`
 }

@@ -347,6 +347,31 @@ describe("QC gate", () => {
     expect(u1.status).toBe("in_stock")
     expect(u2.status).toBe("damaged")
   })
+
+  test("bulk QC passes every waiting device atomically", async () => {
+    const { lineIds } = await seedPo({ lines: [2], qcRequired: true })
+    const a1 = await receive(lineIds[0])
+    const a2 = await receive(lineIds[0])
+    const { qcAssetsCore } = await import("./procurement")
+
+    await db.transaction(async (tx) => {
+      await qcAssetsCore(tx, [a1, a2], true, null, "warehouse-user")
+    })
+
+    const [u1] = await db.select().from(schema.orderUnits).where(eq(schema.orderUnits.id, a1))
+    const [u2] = await db.select().from(schema.orderUnits).where(eq(schema.orderUnits.id, a2))
+    expect([u1.status, u2.status]).toEqual(["in_stock", "in_stock"])
+  })
+
+  test("rejecting a device requires a recorded reason", async () => {
+    const { lineIds } = await seedPo({ qtyOrdered: 1, qcRequired: true })
+    const assetId = await receive(lineIds[0])
+    const { qcAssetsCore } = await import("./procurement")
+
+    await expect(
+      db.transaction((tx) => qcAssetsCore(tx, [assetId], false, "", "warehouse-user"))
+    ).rejects.toThrow(/reason is required/i)
+  })
 })
 
 describe("partner can never complete a pickup", () => {

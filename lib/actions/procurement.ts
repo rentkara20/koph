@@ -12,8 +12,10 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import {
   commercialApprovals,
+  commercialEvaluationLines,
   commercialEvaluations,
   orderUnits,
+  orders,
   partnerContracts,
   partnerPayments,
   partnerTasks,
@@ -21,6 +23,7 @@ import {
   procurementCases,
   purchaseOrderLines,
   purchaseOrders,
+  sourcingRequests,
   supplierQuotationLines,
   supplierQuotations,
   supplierRfqs,
@@ -33,8 +36,10 @@ import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { createProcurementCaseCore } from "@/lib/actions/procurement-case"
 import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
 import { computePayment, type PricingModel } from "@/lib/domain/pricing"
+import { buildAwardedPurchaseOrderDraft } from "@/lib/domain/purchase-order-draft"
 
 type ActionResult = { error?: string; id?: string }
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
@@ -57,6 +62,16 @@ export async function getPurchaseOrders() {
     .limit(200)
 }
 
+export async function getLinkedOrderForProcurementCaseCore(tx: Tx, procurementCaseId: string) {
+  const [linkedOrder] = await tx
+    .select({ id: orders.id, orderNumber: orders.orderNumber })
+    .from(procurementCases)
+    .innerJoin(sourcingRequests, eq(procurementCases.sourcingRequestId, sourcingRequests.id))
+    .innerJoin(orders, eq(sourcingRequests.orderId, orders.id))
+    .where(eq(procurementCases.id, procurementCaseId))
+  return linkedOrder ?? null
+}
+
 export async function getPurchaseOrder(id: string) {
   const session = await getStaffSession()
   if (!session) return null
@@ -69,6 +84,7 @@ export async function getPurchaseOrder(id: string) {
       invoiceRef: purchaseOrders.invoiceRef,
       orderedAt: purchaseOrders.orderedAt,
       notes: purchaseOrders.notes,
+      qcRequired: purchaseOrders.qcRequired,
       supplierId: purchaseOrders.supplierId,
       supplierName: suppliers.name,
       procurementCaseId: purchaseOrders.procurementCaseId,
@@ -78,13 +94,16 @@ export async function getPurchaseOrder(id: string) {
     .where(eq(purchaseOrders.id, id))
   if (!po) return null
 
-  const lines = await db
-    .select()
-    .from(purchaseOrderLines)
-    .where(eq(purchaseOrderLines.purchaseOrderId, id))
-    .orderBy(purchaseOrderLines.createdAt)
+  const [lines, linkedOrder] = await Promise.all([
+    db
+      .select()
+      .from(purchaseOrderLines)
+      .where(eq(purchaseOrderLines.purchaseOrderId, id))
+      .orderBy(purchaseOrderLines.createdAt),
+    db.transaction((tx) => getLinkedOrderForProcurementCaseCore(tx, po.procurementCaseId)),
+  ])
 
-  return { po, lines }
+  return { po, lines, linkedOrder }
 }
 
 // Assets received against a specific PO line — for the receiving UI list.
@@ -197,7 +216,6 @@ export async function createPurchaseOrder(
 
 const createPoFromCaseSchema = z.object({
   procurementCaseId: z.string().trim().min(1),
-  poNumber: z.string().trim().min(1).max(60),
   invoiceRef: z.string().trim().max(120).optional(),
   notes: z.string().trim().max(2000).optional(),
 })
@@ -233,27 +251,69 @@ export async function createPurchaseOrderFromCase(
     .select()
     .from(commercialEvaluations)
     .where(eq(commercialEvaluations.id, approval.evaluationId))
-  if (!evaluation?.chosenQuotationId) return { error: "Evaluation has no chosen quotation on record" }
+  if (!evaluation) return { error: "Commercial evaluation not found" }
 
-  const [quotation] = await db
-    .select()
-    .from(supplierQuotations)
-    .where(eq(supplierQuotations.id, evaluation.chosenQuotationId))
-  if (!quotation) return { error: "Chosen quotation not found" }
+  let supplierId = ""
+  let lines: { itemDescription: string; qty: number; unitPrice: number | null }[] = []
 
-  const [rfq] = await db.select().from(supplierRfqs).where(eq(supplierRfqs.id, quotation.rfqId))
-  if (!rfq) return { error: "RFQ for chosen quotation not found" }
+  // Sourcing V2: an evaluation may award different items to different
+  // suppliers. Each procurement case owns one supplier, so mint only that
+  // supplier's awarded lines into this PO.
+  const awardedLines = await db
+    .select({
+      supplierId: supplierRfqs.supplierId,
+      itemDescription: supplierQuotationLines.itemDescription,
+      qty: supplierQuotationLines.qty,
+      unitPrice: supplierQuotationLines.unitPrice,
+    })
+    .from(commercialEvaluationLines)
+    .innerJoin(supplierQuotationLines, eq(commercialEvaluationLines.chosenQuotationLineId, supplierQuotationLines.id))
+    .innerJoin(supplierQuotations, eq(supplierQuotationLines.quotationId, supplierQuotations.id))
+    .innerJoin(supplierRfqs, eq(supplierQuotations.rfqId, supplierRfqs.id))
+    .where(eq(commercialEvaluationLines.evaluationId, evaluation.id))
 
-  const lines = await db
-    .select()
-    .from(supplierQuotationLines)
-    .where(eq(supplierQuotationLines.quotationId, quotation.id))
-  if (lines.length === 0) return { error: "Chosen quotation has no lines" }
+  if (awardedLines.length > 0) {
+    if (!procurementCase.supplierId) return { error: "Case has no awarded supplier" }
+    try {
+      const draft = buildAwardedPurchaseOrderDraft({
+        caseSupplierId: procurementCase.supplierId,
+        externalPoRef: procurementCase.externalPoRef,
+        awardedLines,
+      })
+      supplierId = draft.supplierId
+      lines = draft.lines
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : "Failed to build purchase order" }
+    }
+  } else {
+    // Legacy evaluations selected one whole quotation instead of per-item
+    // awards. Keep that historical path working.
+    if (!evaluation.chosenQuotationId) return { error: "Evaluation has no awarded quotation lines" }
+    const [quotation] = await db
+      .select()
+      .from(supplierQuotations)
+      .where(eq(supplierQuotations.id, evaluation.chosenQuotationId))
+    if (!quotation) return { error: "Chosen quotation not found" }
+    const [rfq] = await db.select().from(supplierRfqs).where(eq(supplierRfqs.id, quotation.rfqId))
+    if (!rfq) return { error: "RFQ for chosen quotation not found" }
+    supplierId = rfq.supplierId
+    lines = await db
+      .select({
+        itemDescription: supplierQuotationLines.itemDescription,
+        qty: supplierQuotationLines.qty,
+        unitPrice: supplierQuotationLines.unitPrice,
+      })
+      .from(supplierQuotationLines)
+      .where(eq(supplierQuotationLines.quotationId, quotation.id))
+    if (lines.length === 0) return { error: "Chosen quotation has no lines" }
+  }
+
+  const poNumber = procurementCase.externalPoRef
 
   const [clash] = await db
     .select({ id: purchaseOrders.id })
     .from(purchaseOrders)
-    .where(eq(purchaseOrders.poNumber, d.poNumber))
+    .where(eq(purchaseOrders.poNumber, poNumber))
   if (clash) return { error: "PO number already exists" }
 
   let poId = ""
@@ -272,8 +332,8 @@ export async function createPurchaseOrderFromCase(
       poId = createId()
       await tx.insert(purchaseOrders).values({
         id: poId,
-        supplierId: rfq.supplierId,
-        poNumber: d.poNumber,
+        supplierId,
+        poNumber,
         status: "ordered",
         invoiceRef: d.invoiceRef,
         orderedAt: Date.now(),
@@ -294,7 +354,7 @@ export async function createPurchaseOrderFromCase(
         aggregateType: "purchase_order",
         aggregateId: poId,
         eventType: "PurchaseOrderCreated",
-        payload: { poNumber: d.poNumber, supplierId: rfq.supplierId, procurementCaseId: d.procurementCaseId },
+        payload: { poNumber, supplierId, procurementCaseId: d.procurementCaseId },
         dedupeKey: `purchase_order:${poId}:PurchaseOrderCreated`,
         actorUserId: session.user.id,
       })
@@ -726,6 +786,26 @@ export async function setPurchaseOrderQcRequired(
 // Thin wrappers over the applyAssetTransition chokepoint: qc_pass moves a
 // receiving_qc unit into available inventory, qc_fail marks it damaged.
 
+export async function qcAssetsCore(
+  tx: Tx,
+  assetIds: string[],
+  pass: boolean,
+  notes: string | null,
+  actorUserId: string | null
+): Promise<void> {
+  if (assetIds.length === 0) throw new Error("No devices selected")
+  const cleanNotes = notes?.trim() ?? ""
+  if (!pass && !cleanNotes) throw new Error("QC rejection reason is required")
+  if (cleanNotes.length > 500) throw new Error("Notes are too long")
+
+  for (const assetId of assetIds) {
+    await applyAssetTransition(tx, assetId, pass ? "qc_pass" : "qc_fail", {
+      notes: cleanNotes || null,
+      byUserId: actorUserId,
+    })
+  }
+}
+
 export async function qcAsset(assetId: string, pass: boolean, notes?: string): Promise<ActionResult> {
   const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
@@ -733,10 +813,7 @@ export async function qcAsset(assetId: string, pass: boolean, notes?: string): P
 
   try {
     await db.transaction(async (tx) => {
-      await applyAssetTransition(tx, assetId, pass ? "qc_pass" : "qc_fail", {
-        notes: notes ?? null,
-        byUserId: session.user.id,
-      })
+      await qcAssetsCore(tx, [assetId], pass, notes ?? null, session.user.id)
     })
   } catch (error) {
     if (error instanceof AssetTransitionError) return { error: error.message }
@@ -746,6 +823,24 @@ export async function qcAsset(assetId: string, pass: boolean, notes?: string): P
   revalidatePath("/admin/assets")
   revalidatePath("/admin/procurement")
   return { id: assetId }
+}
+
+export async function qcAssets(assetIds: string[], pass: boolean, notes?: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+  const uniqueIds = [...new Set(assetIds)]
+  if (uniqueIds.length > 200) return { error: "Too many devices selected" }
+
+  try {
+    await db.transaction((tx) => qcAssetsCore(tx, uniqueIds, pass, notes ?? null, session.user.id))
+  } catch (error) {
+    if (error instanceof AssetTransitionError) return { error: error.message }
+    return { error: error instanceof Error ? error.message : "QC update failed" }
+  }
+
+  revalidatePath("/admin/assets")
+  revalidatePath("/admin/procurement")
+  return { id: uniqueIds[0] }
 }
 
 // Units awaiting QC, joined to their PO for the receiving/QC queue UI.

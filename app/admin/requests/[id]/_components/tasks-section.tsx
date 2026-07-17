@@ -2,11 +2,13 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Plus, Copy, Check, RefreshCw, X, Trash2, MessageCircle } from "lucide-react"
 import { createTask, signOffTask, cancelTask, regenerateTaskLink, deleteTask, rejectTaskProof } from "@/lib/actions/tasks"
-import { buildWhatsappUrl, partnerAssignmentMessage, taskLink } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrl, taskLink } from "@/lib/utils/whatsapp"
+import { renderMessageTemplate } from "@/lib/domain/message-templates"
+import { useOperationalMessageTemplates } from "@/components/message-templates-provider"
 import { addServiceToTask, removeServiceFromTask } from "@/lib/actions/task-services"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -91,6 +93,7 @@ type ActiveService = {
 }
 
 function CopyTaskLink({ token }: { token: string }) {
+  const t = useTranslations("tasks")
   const [copied, setCopied] = useState(false)
   const url = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/task/${token}`
 
@@ -103,19 +106,13 @@ function CopyTaskLink({ token }: { token: string }) {
   return (
     <button
       onClick={handleCopy}
-      title={copied ? "Copied!" : "Copy task link"}
+      title={copied ? t("linkCopied") : t("copyTaskLink")}
       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
     >
       {copied ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
-      {copied ? "Copied!" : "Copy link"}
+      {copied ? t("linkCopied") : t("copyTaskLink")}
     </button>
   )
-}
-
-const QTY_LABEL: Record<string, string> = {
-  per_item: "items",
-  per_day: "days",
-  per_hour: "hrs",
 }
 
 function SignOffButton({
@@ -130,6 +127,7 @@ function SignOffButton({
   isOverride?: boolean
 }) {
   const router = useRouter()
+  const t = useTranslations("tasks")
   const tToast = useTranslations("toast")
   const [open, setOpen] = useState(false)
   const [qty, setQty] = useState("")
@@ -179,7 +177,7 @@ function SignOffButton({
   if (!open) {
     return (
       <Button size="sm" variant={isOverride ? "outline" : "default"} onClick={() => setOpen(true)}>
-        {isOverride ? "Force complete" : "Sign off"}
+        {isOverride ? t("forceComplete") : t("signoff")}
       </Button>
     )
   }
@@ -188,7 +186,7 @@ function SignOffButton({
     <div className="flex flex-col gap-2">
       {isOverride && (
         <span className="text-xs text-destructive">
-          Task failed — closing here can still generate payment per your decision below.
+          {t("overrideWarning")}
         </span>
       )}
       <div className="flex items-center gap-2 flex-wrap">
@@ -197,16 +195,16 @@ function SignOffButton({
           onChange={(e) => setDecision(e.target.value as typeof decision)}
           className="h-7 w-28 text-xs"
         >
-          <option value="full">Full payment</option>
-          <option value="partial">Partial payment</option>
-          <option value="none">No payment</option>
-          <option value="hold">Hold</option>
+          <option value="full">{t("fullPayment")}</option>
+          <option value="partial">{t("partialPayment")}</option>
+          <option value="none">{t("noPayment")}</option>
+          <option value="hold">{t("holdPayment")}</option>
         </Select>
         {needsQty && decision !== "hold" && (
           <Input
             type="number"
             min={1}
-            placeholder={QTY_LABEL[pricingModel!] ?? "qty"}
+            placeholder={pricingModel === "per_item" ? t("qtyItems") : pricingModel === "per_day" ? t("qtyDays") : pricingModel === "per_hour" ? t("qtyHours") : t("quantity")}
             value={qty}
             onChange={(e) => setQty(e.target.value)}
             className="h-7 w-20 text-xs"
@@ -217,7 +215,7 @@ function SignOffButton({
             type="number"
             min={0}
             step="0.01"
-            placeholder="Approved amount"
+            placeholder={t("approvedAmount")}
             value={approvedAmount}
             onChange={(e) => setApprovedAmount(e.target.value)}
             className="h-7 w-28 text-xs"
@@ -231,7 +229,7 @@ function SignOffButton({
       </div>
       {(decision === "partial" || decision === "none" || decision === "hold") && (
         <Textarea
-          placeholder="Reason (required)"
+          placeholder={t("reasonRequired")}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           className="h-14 text-xs"
@@ -239,9 +237,9 @@ function SignOffButton({
       )}
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={loading || !canConfirm} onClick={handleSignOff}>
-          {loading ? "…" : "Confirm"}
+          {loading ? "…" : t("confirm")}
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>{t("cancel")}</Button>
       </div>
     </div>
   )
@@ -292,7 +290,7 @@ function RejectProofButton({ taskId }: { taskId: string }) {
       <Button size="sm" variant="destructive" disabled={loading} onClick={handleReject}>
         {loading ? "…" : t("returnConfirm")}
       </Button>
-      <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+      <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>{t("cancel")}</Button>
     </div>
   )
 }
@@ -309,6 +307,8 @@ function TaskServiceManager({
   allServices: ActiveService[]
 }) {
   const router = useRouter()
+  const locale = useLocale()
+  const t = useTranslations("tasks")
   const [removing, setRemoving] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
 
@@ -333,7 +333,7 @@ function TaskServiceManager({
 
   return (
     <div className="pt-2 border-t space-y-2">
-      <p className="text-xs text-muted-foreground font-medium">Services</p>
+      <p className="text-xs text-muted-foreground font-medium">{t("services")}</p>
       {services.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {services.map((svc) => (
@@ -346,7 +346,7 @@ function TaskServiceManager({
                   : "bg-muted text-muted-foreground border-border",
               ].join(" ")}
             >
-              {svc.nameEn ?? ""}
+              {locale === "ar" ? (svc.nameAr ?? svc.nameEn ?? "") : (svc.nameEn ?? svc.nameAr ?? "")}
               {!isTerminal && (
                 <button
                   onClick={() => handleRemove(svc.id)}
@@ -371,12 +371,12 @@ function TaskServiceManager({
               if (val) { e.target.value = ""; handleAdd(val) }
             }}
           >
-            <option value="">+ Add service</option>
+            <option value="">+ {t("addService")}</option>
             {available.map((s) => (
-              <option key={s.id} value={s.id}>{s.nameEn}</option>
+              <option key={s.id} value={s.id}>{locale === "ar" ? s.nameAr : s.nameEn}</option>
             ))}
           </Select>
-          {adding && <span className="text-xs text-muted-foreground">Adding…</span>}
+          {adding && <span className="text-xs text-muted-foreground">{t("adding")}</span>}
         </div>
       )}
     </div>
@@ -389,6 +389,8 @@ export function TasksSection({
   tasks,
   partners,
   contacts,
+  receiverContactId,
+  requestTypeSlug,
   taskServicesMap,
   allServices,
 }: {
@@ -397,9 +399,12 @@ export function TasksSection({
   tasks: TaskRow[]
   partners: PartnerData[]
   contacts: ContactOption[]
+  receiverContactId: string | null
+  requestTypeSlug: string | null
   taskServicesMap: Record<string, ServiceItem[]>
   allServices: ActiveService[]
 }) {
+  const messageTemplates = useOperationalMessageTemplates()
   const t = useTranslations("tasks")
   const tCommon = useTranslations("common")
   const tToast = useTranslations("toast")
@@ -432,7 +437,7 @@ export function TasksSection({
       setSelectedPartnerId("")
       router.refresh()
     } catch {
-      setError("Unexpected error"); toast.error(tToast("genericError")); setLoading(false)
+      setError(t("unexpectedError")); toast.error(tToast("genericError")); setLoading(false)
     }
   }
 
@@ -473,7 +478,7 @@ export function TasksSection({
     <div className="space-y-4">
       {/* Task list */}
       {tasks.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No tasks assigned yet.</p>
+        <p className="text-sm text-muted-foreground">{t("noAssigned")}</p>
       ) : (
         <div className="space-y-3">
           {tasks.map((task) => {
@@ -523,10 +528,10 @@ export function TasksSection({
                   {isActive && !isExpired && task.executionMode === "manual" && (() => {
                     const url = buildWhatsappUrl(
                       task.partnerMobile,
-                      partnerAssignmentMessage({
-                        partnerName: task.partnerName ?? "",
-                        requestNumber,
-                        taskLink: taskLink(task.taskToken),
+                      renderMessageTemplate(messageTemplates.partnerAssignment, {
+                        partner_name: task.partnerName ?? "",
+                        request_number: requestNumber,
+                        task_link: taskLink(task.taskToken),
                       })
                     )
                     if (!url) return null
@@ -554,7 +559,7 @@ export function TasksSection({
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <RefreshCw className="size-3" />
-                      Regenerate link
+                      {t("regenerateLink")}
                     </button>
                   )}
 
@@ -580,22 +585,22 @@ export function TasksSection({
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
                     >
                       <X className="size-3" />
-                      Cancel
+                      {t("cancel")}
                     </button>
                   )}
 
                   {/* Delete */}
                   {confirmDeleteId === task.id ? (
                     <span className="inline-flex items-center gap-1.5 text-xs ml-auto">
-                      <span className="text-muted-foreground">Delete?</span>
+                      <span className="text-muted-foreground">{t("deletePrompt")}</span>
                       <button
                         onClick={() => handleDelete(task.id)}
                         className="text-destructive hover:underline font-medium"
-                      >Yes</button>
+                      >{t("yes")}</button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
                         className="text-muted-foreground hover:text-foreground"
-                      >No</button>
+                      >{t("no")}</button>
                     </span>
                   ) : (
                     <button
@@ -603,7 +608,7 @@ export function TasksSection({
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors ml-auto"
                     >
                       <Trash2 className="size-3" />
-                      Delete
+                      {t("delete")}
                     </button>
                   )}
 
@@ -626,18 +631,18 @@ export function TasksSection({
           </Button>
         ) : (
           <form onSubmit={handleAssign} className="rounded-lg border p-4 space-y-3">
-            <p className="text-sm font-medium">Assign to partner</p>
+            <p className="text-sm font-medium">{t("assignTo")}</p>
             <Separator />
 
             <div className="space-y-1.5">
-              <Label className="text-xs">Partner <span className="text-destructive">*</span></Label>
+              <Label className="text-xs">{t("partner")} <span className="text-destructive">*</span></Label>
               <Select
                 name="partnerId"
                 required
                 value={selectedPartnerId}
                 onChange={(e) => setSelectedPartnerId(e.target.value)}
               >
-                <option value="">— Select partner —</option>
+                <option value="">— {t("selectPartner")} —</option>
                 {partners.map((p) => (
                   <option key={p.id} value={p.id}>{p.name}</option>
                 ))}
@@ -646,9 +651,9 @@ export function TasksSection({
 
             {selectedPartner && selectedPartner.contracts.length > 0 && (
               <div className="space-y-1.5">
-                <Label className="text-xs">Contract <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>
+                <Label className="text-xs">{t("contract")} <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>
                 <Select name="contractId" defaultValue="">
-                  <option value="">— No contract —</option>
+                  <option value="">— {t("noContract")} —</option>
                   {selectedPartner.contracts.map((c) => (
                     <option key={c.contractId} value={c.contractId!}>
                       {c.contractName} ({c.pricingModel?.replace(/_/g, " ")})
@@ -660,9 +665,11 @@ export function TasksSection({
 
             {contacts.length > 0 && (
               <div className="space-y-1.5">
-                <Label className="text-xs">Deliver to <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>
-                <Select name="contactId" defaultValue="">
-                  <option value="">— No specific contact —</option>
+                <Label className="text-xs">
+                  {requestTypeSlug === "collection" ? t("pickupContact") : t("deliveryContact")}
+                </Label>
+                <Select name="contactId" defaultValue={receiverContactId ?? ""}>
+                  <option value="">— {t("noSpecificContact")} —</option>
                   {contacts.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}{c.city ? ` · ${c.city}` : ""}{c.role ? ` (${c.role})` : ""}
@@ -687,7 +694,7 @@ export function TasksSection({
 
             <div className="space-y-1.5">
               <Label className="text-xs">{tCommon("notes")} <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>
-              <Textarea name="notes" rows={2} placeholder="Instructions for the partner…" />
+              <Textarea name="notes" rows={2} placeholder={t("partnerInstructions")} />
             </div>
 
             {error && <p className="text-xs text-destructive">{error}</p>}

@@ -9,6 +9,7 @@ import {
   orderUnits,
   orders,
   procurementCases,
+  purchaseOrderLines,
   purchaseOrders,
   requestItems,
   requests,
@@ -20,6 +21,7 @@ import { deriveOrderJourney, type JourneyStage } from "@/lib/domain/order-journe
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { applyAssetStatusCorrection } from "@/lib/actions/asset-transition"
+import { createAssetCore } from "@/lib/actions/assets"
 import {
   createOrderSchema,
   firstError,
@@ -27,9 +29,16 @@ import {
   updateOrderSchema,
 } from "@/lib/validation/schemas"
 import { deriveOrderStatus } from "@/lib/utils/order-status"
+import { statusAfterCustomerConfirmation } from "@/lib/domain/order-confirmation"
 import { z } from "zod"
 
 export type ActionResult = { error?: string; id?: string }
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+const confirmCustomerApprovalSchema = z.object({
+  orderId: z.string().trim().min(1).max(60),
+  confirmationDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+})
 
 // Best-effort informational line total (not billed in v1).
 function computeLineTotal(quantity: number, unitPriceMonthly?: number, rentalMonths?: number) {
@@ -77,10 +86,13 @@ export async function createOrder(
       contactMobile: d.contactMobile || null,
       contactEmail: d.contactEmail || null,
       quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
+      customerConfirmedAt: d.customerConfirmationDate
+        ? new Date(d.customerConfirmationDate).getTime()
+        : null,
       rentalPeriodMonths: d.rentalPeriodMonths ?? null,
       additionalPeriodMonths: d.additionalPeriodMonths ?? null,
       total,
-      status: "draft",
+      status: statusAfterCustomerConfirmation("draft", d.customerConfirmationDate),
       notes: d.notes || null,
       createdBy: session.user.id,
     })
@@ -107,6 +119,44 @@ export async function createOrder(
   return { id }
 }
 
+// Dedicated commercial go-ahead used by the Order overview. Confirmation is
+// intentionally separate from the general edit form: it records the date and
+// advances a draft into the sourcing/buying journey in one atomic write.
+export async function confirmOrderCustomerApproval(
+  orderId: string,
+  confirmationDate: string
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = confirmCustomerApprovalSchema.safeParse({ orderId, confirmationDate })
+  if (!parsed.success) return { error: "Invalid confirmation date" }
+
+  const [order] = await db
+    .select({ status: orders.status, customerConfirmedAt: orders.customerConfirmedAt })
+    .from(orders)
+    .where(and(eq(orders.id, parsed.data.orderId), isNull(orders.deletedAt)))
+  if (!order) return { error: "Order not found" }
+  if (order.status === "cancelled") return { error: "A cancelled order cannot be confirmed" }
+  if (order.customerConfirmedAt) return { id: parsed.data.orderId }
+
+  const confirmedAt = new Date(`${parsed.data.confirmationDate}T00:00:00`).getTime()
+  if (!Number.isFinite(confirmedAt)) return { error: "Invalid confirmation date" }
+
+  await db
+    .update(orders)
+    .set({
+      customerConfirmedAt: confirmedAt,
+      status: statusAfterCustomerConfirmation(order.status, parsed.data.confirmationDate),
+      updatedAt: Date.now(),
+    })
+    .where(eq(orders.id, parsed.data.orderId))
+
+  revalidatePath(`/admin/orders/${parsed.data.orderId}`)
+  revalidatePath("/admin/dashboard")
+  return { id: parsed.data.orderId }
+}
+
 // ─── Update header + lines (replace strategy) ─────────────────────────────────
 
 export async function updateOrder(
@@ -129,7 +179,10 @@ export async function updateOrder(
   // Status is derived from unit fulfillment, not editable from this form —
   // preserve whatever is currently stored (cancel/reopen use their own action).
   const [current] = await db.select({ status: orders.status }).from(orders).where(eq(orders.id, id))
-  const status = current?.status ?? "draft"
+  const status = statusAfterCustomerConfirmation(
+    current?.status ?? "draft",
+    d.customerConfirmationDate
+  )
 
   const lineTotals = d.lines.map((l) =>
     computeLineTotal(l.quantity, l.unitPriceMonthly, l.rentalMonths)
@@ -173,6 +226,9 @@ export async function updateOrder(
         contactMobile: d.contactMobile || null,
         contactEmail: d.contactEmail || null,
         quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
+        customerConfirmedAt: d.customerConfirmationDate
+          ? new Date(d.customerConfirmationDate).getTime()
+          : null,
         rentalPeriodMonths: d.rentalPeriodMonths ?? null,
         additionalPeriodMonths: d.additionalPeriodMonths ?? null,
         total,
@@ -277,7 +333,6 @@ export async function saveOrderUnits(
       await tx.delete(orderUnits).where(inArray(orderUnits.id, toDelete))
     }
 
-    const toInsert: (typeof orderUnits.$inferInsert)[] = []
     // New units are always inserted as in_stock, then moved to any requested
     // non-default status through the OI-1 chokepoint — so a brand-new unit can
     // never be created directly in assigned/delivered/etc. with no asset_event
@@ -308,22 +363,17 @@ export async function saveOrderUnits(
           await applyAssetStatusCorrection(tx, u.id, nextStatus, { byUserId: session.user.id })
         }
       } else {
-        const newId = createId()
-        toInsert.push({
-          id: newId,
-          orderId,
+        const { assetId: newId } = await createAssetCore(tx, {
           orderLineId: u.orderLineId,
-          serialNumber: u.serialNumber || null,
-          supplierId: u.supplierId || null,
-          purchaseCost: u.purchaseCost ?? null,
-          status: "in_stock",
-          notes: u.notes || null,
-        })
+          serialNumber: u.serialNumber || undefined,
+          supplierId: u.supplierId || undefined,
+          purchaseCost: u.purchaseCost ?? undefined,
+          notes: u.notes || undefined,
+        }, session.user.id)
         const desired = u.status ?? "in_stock"
         if (desired !== "in_stock") pendingInsertCorrections.push({ id: newId, status: desired })
       }
     }
-    if (toInsert.length > 0) await tx.insert(orderUnits).values(toInsert)
     for (const pc of pendingInsertCorrections) {
       await applyAssetStatusCorrection(tx, pc.id, pc.status, { byUserId: session.user.id })
     }
@@ -377,6 +427,7 @@ export async function getOrders(search?: string) {
       orderNumber: orders.orderNumber,
       status: orders.status,
       quoteDate: orders.quoteDate,
+      customerConfirmedAt: orders.customerConfirmedAt,
       createdAt: orders.createdAt,
       customerId: orders.customerId,
       customerName: customers.name,
@@ -675,6 +726,44 @@ export type OrderLookup = {
   units: AvailableUnit[]
 }
 
+export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
+  const [directUnits, purchasedUnits] = await Promise.all([
+    tx
+      .select({
+        unitId: orderUnits.id,
+        serialNumber: orderUnits.serialNumber,
+        description: orderLines.description,
+        brand: orderLines.brand,
+        model: orderLines.model,
+        supplierName: suppliers.name,
+      })
+      .from(orderUnits)
+      .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+      .where(and(eq(orderUnits.orderId, orderId), eq(orderUnits.status, "in_stock"))),
+    tx
+      .select({
+        unitId: orderUnits.id,
+        serialNumber: orderUnits.serialNumber,
+        description: purchaseOrderLines.itemDescription,
+        brand: purchaseOrderLines.brand,
+        model: purchaseOrderLines.model,
+        supplierName: suppliers.name,
+      })
+      .from(orderUnits)
+      .innerJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+      .innerJoin(purchaseOrders, eq(purchaseOrderLines.purchaseOrderId, purchaseOrders.id))
+      .innerJoin(procurementCases, eq(purchaseOrders.procurementCaseId, procurementCases.id))
+      .innerJoin(sourcingRequests, eq(procurementCases.sourcingRequestId, sourcingRequests.id))
+      .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+      .where(and(eq(sourcingRequests.orderId, orderId), eq(orderUnits.status, "in_stock"))),
+  ])
+
+  const byId = new Map(directUnits.map((unit) => [unit.unitId, unit]))
+  for (const unit of purchasedUnits) byId.set(unit.unitId, unit)
+  return [...byId.values()].sort((a, b) => a.description.localeCompare(b.description))
+}
+
 export async function getOrderUnitsByNumber(orderNumber: string): Promise<
   { error?: string; order?: OrderLookup }
 > {
@@ -697,21 +786,9 @@ export async function getOrderUnitsByNumber(orderNumber: string): Promise<
 
   if (!order) return { error: "Order not found" }
 
-  // Only "in_stock" units are available to pull into a request.
-  const rows = await db
-    .select({
-      unitId: orderUnits.id,
-      serialNumber: orderUnits.serialNumber,
-      description: orderLines.description,
-      brand: orderLines.brand,
-      model: orderLines.model,
-      supplierName: suppliers.name,
-    })
-    .from(orderUnits)
-    .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
-    .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
-    .where(and(eq(orderUnits.orderId, order.id), eq(orderUnits.status, "in_stock")))
-    .orderBy(orderLines.description)
+  // Both directly-created units and units received through this order's
+  // sourcing/procurement chain are available to the delivery request.
+  const rows = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, order.id))
 
   return {
     order: {

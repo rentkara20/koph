@@ -67,6 +67,8 @@ describe("domainEventTypeForAssetAction", () => {
     expect(domainEventTypeForAssetAction("mark_lost")).toBe("AssetLost")
     expect(domainEventTypeForAssetAction("found")).toBe("AssetFound")
     expect(domainEventTypeForAssetAction("sell")).toBe("AssetSold")
+    expect(domainEventTypeForAssetAction("start_supplier_return")).toBe("AssetSupplierReturnStarted")
+    expect(domainEventTypeForAssetAction("confirm_supplier_return")).toBe("AssetReturnedToSupplier")
   })
 
   it("returns null for an action string outside the known AssetAction set", () => {

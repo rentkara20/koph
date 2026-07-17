@@ -97,3 +97,17 @@ describe("receiving QC gate", () => {
     expect(canAssetTransition("damaged", "qc_pass")).toBe(false)
   })
 })
+
+describe("supplier return lifecycle", () => {
+  test("a damaged device can be sent back and confirmed with the supplier", () => {
+    expect(canAssetTransition("damaged", "start_supplier_return")).toBe(true)
+    expect(assetStatusAfter("start_supplier_return")).toBe("supplier_return_pending")
+    expect(canAssetTransition("supplier_return_pending", "confirm_supplier_return")).toBe(true)
+    expect(assetStatusAfter("confirm_supplier_return")).toBe("supplier_returned")
+  })
+
+  test("supplier-return actions stay inside the guided return form", () => {
+    expect(assetActionsFor("damaged")).not.toContain("start_supplier_return")
+    expect(assetActionsFor("supplier_return_pending")).not.toContain("confirm_supplier_return")
+  })
+})

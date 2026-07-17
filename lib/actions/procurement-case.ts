@@ -384,6 +384,7 @@ export async function getProcurementFulfilment(purchaseOrderId: string) {
       status: partnerTasks.status,
       partnerId: partnerTasks.partnerId,
       partnerName: partners.name,
+      partnerMobile: partners.mobile,
       taskToken: partnerTasks.taskToken,
       destinationLocation: partnerTasks.destinationLocation,
       assignedAt: partnerTasks.assignedAt,

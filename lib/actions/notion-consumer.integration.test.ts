@@ -33,7 +33,7 @@ async function seedAsset(assetTag: string | null): Promise<string> {
   await db.insert(schema.orderUnits).values({
     id: unitId,
     orderLineId: lineId,
-    serialNumber: "SN-NOTION-1",
+    serialNumber: `SN-NOTION-${unitId}`,
     assetTag,
   })
   return unitId
@@ -110,7 +110,7 @@ describe("deliverNotionForEvent", () => {
     expect(upsert).toHaveBeenCalledTimes(1)
     const row = upsert.mock.calls[0][0]
     expect(row.assetTag).toBe("KARA-00002")
-    expect(row.serialNumber).toBe("SN-NOTION-1")
+    expect(row.serialNumber).toBe(`SN-NOTION-${assetId}`)
     expect(row.status).toBe("in_stock")
     expect(row.koph_link).toContain(`/admin/assets/${assetId}`)
   })

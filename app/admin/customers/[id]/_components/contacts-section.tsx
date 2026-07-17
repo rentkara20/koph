@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Plus, Pencil, Trash2, MapPin, Phone, Mail, Check, X } from "lucide-react"
+import { Plus, Pencil, Trash2, MapPin, Phone, Mail, Check, X, Building2 } from "lucide-react"
 import {
   createCustomerContact,
   updateCustomerContact,
@@ -16,8 +16,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { createAndAssignRequestReceiver } from "@/lib/actions/requests"
 
-type Contact = {
+export type Contact = {
   id: string
   name: string
   role: string | null
@@ -30,64 +31,126 @@ type Contact = {
   isAuthorizedSignatory: boolean
 }
 
-function ContactForm({
+export type ContactLocationOption = {
+  id: string
+  name: string
+  type: string
+  city: string | null
+  isDefault: boolean
+}
+
+export type ContactLocationLink = {
+  contactId: string
+  locationId: string
+  isPrimary: boolean
+}
+
+export function ContactForm({
   initial,
   onSave,
   onCancel,
   saving,
+  locations,
+  initialLinks,
 }: {
   initial?: Contact
   onSave: (data: ContactInput) => void
   onCancel: () => void
   saving: boolean
+  locations: ContactLocationOption[]
+  initialLinks: ContactLocationLink[]
 }) {
+  const t = useTranslations("customerSites")
   const [name, setName] = useState(initial?.name ?? "")
   const [role, setRole] = useState(initial?.role ?? "")
   const [mobile, setMobile] = useState(initial?.mobile ?? "")
   const [email, setEmail] = useState(initial?.email ?? "")
-  const [city, setCity] = useState(initial?.city ?? "")
-  const [address, setAddress] = useState(initial?.address ?? "")
-  const [mapsLink, setMapsLink] = useState(initial?.mapsLink ?? "")
+  // Legacy contact-level route fields are preserved on save but no longer
+  // shown. New route details belong to the selected customer location.
+  const city = initial?.city ?? ""
+  const address = initial?.address ?? ""
+  const mapsLink = initial?.mapsLink ?? ""
   const [notes, setNotes] = useState(initial?.notes ?? "")
   const [isAuthorizedSignatory, setIsAuthorizedSignatory] = useState(initial?.isAuthorizedSignatory ?? false)
+  const [locationIds, setLocationIds] = useState<string[]>(initialLinks.map((link) => link.locationId))
+  const [primaryLocationId, setPrimaryLocationId] = useState(
+    initialLinks.find((link) => link.isPrimary)?.locationId ?? ""
+  )
+
+  function toggleLocation(locationId: string) {
+    setLocationIds((current) => {
+      const next = current.includes(locationId)
+        ? current.filter((id) => id !== locationId)
+        : [...current, locationId]
+      if (!next.includes(primaryLocationId)) setPrimaryLocationId("")
+      return next
+    })
+  }
 
   return (
     <div className="rounded-lg border p-4 space-y-3 bg-muted/20">
-      <p className="text-sm font-medium">{initial ? "Edit contact" : "New contact"}</p>
+      <p className="text-sm font-medium">{initial ? t("editPerson") : t("newPerson")}</p>
       <Separator />
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label className="text-xs">Name <span className="text-destructive">*</span></Label>
+          <Label className="text-xs">{t("personName")} <span className="text-destructive">*</span></Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">Role / Title</Label>
-          <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder="e.g. IT Manager, Warehouse" />
+          <Label className="text-xs">{t("role")}</Label>
+          <Input value={role} onChange={(e) => setRole(e.target.value)} placeholder={t("rolePlaceholder")} />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">Mobile</Label>
+          <Label className="text-xs">{t("mobile")}</Label>
           <Input value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="+966…" inputMode="tel" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">Email</Label>
+          <Label className="text-xs">{t("email")}</Label>
           <Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" />
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">City</Label>
-          <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="e.g. RUH, JED, DMM" />
-        </div>
         <div className="sm:col-span-2 space-y-1.5">
-          <Label className="text-xs">Address / Branch location</Label>
-          <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Building, floor, room…" />
+          <Label className="text-xs">{t("personNotes")}</Label>
+          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t("personNotesPlaceholder")} />
         </div>
-        <div className="sm:col-span-2 space-y-1.5">
-          <Label className="text-xs">Google Maps link</Label>
-          <Input value={mapsLink} onChange={(e) => setMapsLink(e.target.value)} placeholder="https://maps.google.com/…" />
-        </div>
-        <div className="sm:col-span-2 space-y-1.5">
-          <Label className="text-xs">Notes</Label>
-          <Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Any special instructions…" />
-        </div>
+        {locations.length > 0 && (
+          <div className="sm:col-span-2 space-y-2 rounded-lg border bg-background p-3">
+            <div>
+              <p className="text-sm font-medium">{t("workLocations")}</p>
+              <p className="text-xs text-muted-foreground">{t("workLocationsHint")}</p>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {locations.map((location) => (
+                <label key={location.id} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={locationIds.includes(location.id)}
+                    onChange={() => toggleLocation(location.id)}
+                    className="size-4 rounded border-input"
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium">{location.name}</span>
+                    {location.city && <span className="block text-xs text-muted-foreground">{location.city}</span>}
+                  </span>
+                </label>
+              ))}
+            </div>
+            {locationIds.length > 1 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">{t("preferredLocation")}</Label>
+                <select
+                  value={primaryLocationId}
+                  onChange={(event) => setPrimaryLocationId(event.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">{t("noPreferredLocation")}</option>
+                  {locations.filter((location) => locationIds.includes(location.id)).map((location) => (
+                    <option key={location.id} value={location.id}>{location.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
         <label className="sm:col-span-2 flex items-start gap-2 text-sm cursor-pointer">
           <input
             type="checkbox"
@@ -96,9 +159,9 @@ function ContactForm({
             className="mt-0.5 size-4 accent-kara-purple"
           />
           <span>
-            Authorised to sign delivery notes
+            {t("authorizedSignatory")}
             <span className="block text-xs text-muted-foreground">
-              If the receiver is not authorised, a second signing stage is sent to an authorised signatory.
+              {t("authorizedSignatoryHint")}
             </span>
           </span>
         </label>
@@ -106,16 +169,16 @@ function ContactForm({
       <div className="flex gap-2 justify-end">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
           <X className="size-3.5" />
-          Cancel
+          {t("cancel")}
         </Button>
         <Button
           type="button"
           size="sm"
           disabled={saving || !name.trim()}
-          onClick={() => onSave({ name, role, mobile, email, city, address, mapsLink, notes, isAuthorizedSignatory })}
+          onClick={() => onSave({ name, role, mobile, email, city, address, mapsLink, notes, isAuthorizedSignatory, locationIds, primaryLocationId: primaryLocationId || null })}
         >
           <Check className="size-3.5" />
-          {saving ? "Saving…" : "Save"}
+          {saving ? t("saving") : t("savePerson")}
         </Button>
       </div>
     </div>
@@ -125,9 +188,17 @@ function ContactForm({
 export function ContactsSection({
   customerId,
   initialContacts,
+  returnTo,
+  assignToRequestId,
+  locations,
+  contactLocationLinks,
 }: {
   customerId: string
   initialContacts: Contact[]
+  returnTo?: string
+  assignToRequestId?: string
+  locations: ContactLocationOption[]
+  contactLocationLinks: ContactLocationLink[]
 }) {
   const router = useRouter()
   const tToast = useTranslations("toast")
@@ -142,11 +213,14 @@ export function ContactsSection({
     setSaving(true)
     setError("")
     try {
-      const result = await createCustomerContact(customerId, data)
+      const result = assignToRequestId
+        ? await createAndAssignRequestReceiver(assignToRequestId, data)
+        : await createCustomerContact(customerId, data)
       if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); return }
       toast.success(tToast("created"))
       setAddingNew(false)
-      router.refresh()
+      if (returnTo) router.push(returnTo)
+      else router.refresh()
     } catch {
       setError("Failed to save. Please try again.")
       toast.error(tToast("genericError"))
@@ -209,7 +283,7 @@ export function ContactsSection({
       {error && <p className="text-xs text-destructive">{error}</p>}
 
       {contacts.length === 0 && !addingNew ? (
-        <p className="text-sm text-muted-foreground">No contacts yet. Add employees or branches who receive orders.</p>
+        <p className="text-sm text-muted-foreground">No contacts yet. Add employees who receive or hand over devices.</p>
       ) : (
         <div className="space-y-3">
           {contacts.map((c) =>
@@ -220,6 +294,8 @@ export function ContactsSection({
                 onSave={(data) => handleUpdate(c.id, data)}
                 onCancel={() => setEditingId(null)}
                 saving={saving}
+                locations={locations}
+                initialLinks={contactLocationLinks.filter((link) => link.contactId === c.id)}
               />
             ) : (
               <div key={c.id} className="rounded-lg border p-3 group">
@@ -238,14 +314,14 @@ export function ContactsSection({
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => { setAddingNew(false); setEditingId(c.id) }}
-                      className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                      className="flex size-10 items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Pencil className="size-3.5" />
                     </button>
                     <button
                       onClick={() => handleDelete(c.id)}
                       disabled={deletingId === c.id}
-                      className="p-1.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                      className="flex size-10 items-center justify-center rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                     >
                       <Trash2 className="size-3.5" />
                     </button>
@@ -293,6 +369,20 @@ export function ContactsSection({
                     </a>
                   )}
                 </div>
+                {contactLocationLinks.some((link) => link.contactId === c.id) && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {contactLocationLinks.filter((link) => link.contactId === c.id).map((link) => {
+                      const location = locations.find((item) => item.id === link.locationId)
+                      if (!location) return null
+                      return (
+                        <span key={link.locationId} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-[11px] text-muted-foreground">
+                          <Building2 className="size-3" />
+                          {location.name}{link.isPrimary ? " · Primary" : ""}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
                 {c.notes && (
                   <p className="mt-1.5 text-xs text-muted-foreground italic">{c.notes}</p>
                 )}
@@ -303,10 +393,12 @@ export function ContactsSection({
       )}
 
       {addingNew && (
-        <ContactForm
+          <ContactForm
           onSave={handleCreate}
           onCancel={() => setAddingNew(false)}
-          saving={saving}
+            saving={saving}
+            locations={locations}
+            initialLinks={[]}
         />
       )}
 
@@ -314,11 +406,11 @@ export function ContactsSection({
         <Button
           type="button"
           variant="outline"
-          size="sm"
+          className="h-11"
           onClick={() => { setEditingId(null); setAddingNew(true) }}
         >
           <Plus className="size-3.5" />
-          Add contact / branch
+          Add contact
         </Button>
       )}
     </div>

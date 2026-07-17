@@ -1,0 +1,2 @@
+DROP INDEX `order_unit_serial_idx`;--> statement-breakpoint
+CREATE UNIQUE INDEX `order_unit_serial_idx` ON `order_unit` (lower(trim("serial_number"))) WHERE "order_unit"."serial_number" IS NOT NULL AND trim("order_unit"."serial_number") <> '';

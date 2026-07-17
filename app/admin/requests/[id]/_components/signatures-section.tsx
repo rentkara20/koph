@@ -12,7 +12,9 @@ import {
   deleteSignatureRequest,
   requestAuthorizedSignoff,
 } from "@/lib/actions/signatures"
-import { buildWhatsappUrl, signLinkMessage, authorizedSignoffMessage, signLink } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrl, signLink } from "@/lib/utils/whatsapp"
+import { renderMessageTemplate } from "@/lib/domain/message-templates"
+import { useOperationalMessageTemplates } from "@/components/message-templates-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -35,15 +37,19 @@ const SIG_STATUS_VARIANT: Record<string, StatusVariant> = {
   cancelled: "secondary",
 }
 
-const SIG_STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  sent: "Sent",
-  opened: "Opened",
-  otp_verified: "OTP Verified",
-  signed: "Signed",
-  rejected: "Rejected",
-  expired: "Expired",
-  cancelled: "Cancelled",
+const SIG_STATUS_KEY = {
+  draft: "status.draft",
+  sent: "status.sent",
+  opened: "status.opened",
+  otp_verified: "status.otp_verified",
+  signed: "status.signed",
+  rejected: "status.rejected",
+  expired: "status.expired",
+  cancelled: "status.cancelled",
+} as const
+
+function signatureStatusKey(status: string) {
+  return SIG_STATUS_KEY[status as keyof typeof SIG_STATUS_KEY]
 }
 
 type SigRow = {
@@ -67,6 +73,7 @@ type WhatsappContact = { name: string; mobile: string | null; email?: string | n
 
 function CopySignLink({ token, baseUrl }: { token: string; baseUrl: string }) {
   const tToast = useTranslations("toast")
+  const t = useTranslations("signatures")
   const [copied, setCopied] = useState(false)
   const url = `${baseUrl}/sign/${token}`
 
@@ -80,11 +87,11 @@ function CopySignLink({ token, baseUrl }: { token: string; baseUrl: string }) {
   return (
     <button
       onClick={handleCopy}
-      title={copied ? "Copied!" : "Copy signing link"}
+      title={copied ? t("linkCopied") : t("copyLink")}
       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
     >
       {copied ? <Check className="size-3 text-green-600" /> : <Copy className="size-3" />}
-      {copied ? "Copied!" : "Copy link"}
+      {copied ? t("linkCopied") : t("copyLink")}
     </button>
   )
 }
@@ -116,8 +123,10 @@ export function SignaturesSection({
   receiverEmail: string | null
   itemsSummary: string
 }) {
+  const messageTemplates = useOperationalMessageTemplates()
   const hasAuthorizedContact = !!authorizedContact
   const router = useRouter()
+  const t = useTranslations("signatures")
   const tToast = useTranslations("toast")
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -159,7 +168,7 @@ export function SignaturesSection({
       setShowForm(false)
       router.refresh()
     } catch {
-      setError("Unexpected error")
+      setError(t("unexpectedError"))
       toast.error(tToast("genericError"))
       setLoading(false)
     }
@@ -201,7 +210,7 @@ export function SignaturesSection({
   return (
     <div className="space-y-4">
       {signatures.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No signature requests yet.</p>
+        <p className="text-sm text-muted-foreground">{t("noRequests")}</p>
       ) : (
         <div className="space-y-3">
           {signatures.map((sig) => {
@@ -224,20 +233,20 @@ export function SignaturesSection({
               : isAuthorizedRow
                 ? buildWhatsappUrl(
                     authorizedContact?.mobile,
-                    authorizedSignoffMessage({
-                      authorizedName: authorizedContact?.name ?? null,
-                      receiverName: parentReceiver?.signerName ?? "-",
-                      requestNumber,
-                      deliveredDate: parentReceiver?.signedAt ? formatDate(parentReceiver.signedAt) : "-",
-                      signLink: signLink(sig.secureToken),
+                    renderMessageTemplate(messageTemplates.authorizedSignoff, {
+                      customer_name: authorizedContact?.name ?? "",
+                      receiver_name: parentReceiver?.signerName ?? "-",
+                      request_number: requestNumber,
+                      delivery_date: parentReceiver?.signedAt ? formatDate(parentReceiver.signedAt) : "-",
+                      sign_link: signLink(sig.secureToken),
                     })
                   )
                 : buildWhatsappUrl(
                     receiverContact?.mobile,
-                    signLinkMessage({
-                      customerName: receiverContact?.name ?? null,
-                      requestNumber,
-                      signLink: signLink(sig.secureToken),
+                    renderMessageTemplate(messageTemplates.signatureRequest, {
+                      customer_name: receiverContact?.name ?? "",
+                      request_number: requestNumber,
+                      sign_link: signLink(sig.secureToken),
                     })
                   )
             return (
@@ -249,16 +258,16 @@ export function SignaturesSection({
                       {isAuthorizedRow && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-kara-purple/10 px-1.5 py-0.5 text-[10px] font-semibold text-kara-purple">
                           <ShieldCheck className="size-3" />
-                          Authorised signatory
+                          {t("authorizedSignatory")}
                         </span>
                       )}
                     </div>
                     {sig.requireNationalId && (
-                      <p className="text-xs text-muted-foreground mt-0.5">Requires National ID</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{t("requiresNationalId")}</p>
                     )}
                   </div>
                   <Badge variant={SIG_STATUS_VARIANT[sig.status] ?? "outline"}>
-                    {SIG_STATUS_LABEL[sig.status] ?? sig.status}
+                    {signatureStatusKey(sig.status) ? t(signatureStatusKey(sig.status)!) : sig.status}
                   </Badge>
                 </div>
 
@@ -285,7 +294,7 @@ export function SignaturesSection({
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <FileText className="size-3" />
-                      Delivery note
+                      {t("deliveryNote")}
                     </a>
                   )}
 
@@ -296,7 +305,7 @@ export function SignaturesSection({
                       className="inline-flex items-center gap-1 text-xs font-medium text-kara-purple hover:opacity-80 transition-opacity disabled:opacity-50"
                     >
                       <ShieldCheck className="size-3" />
-                      {requestingId === sig.id ? "…" : "Request authorised sign-off"}
+                      {requestingId === sig.id ? "…" : t("requestAuthorizedSignoff")}
                     </button>
                   )}
 
@@ -306,7 +315,7 @@ export function SignaturesSection({
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <Send className="size-3" />
-                      Mark as sent
+                      {t("markSent")}
                     </button>
                   )}
 
@@ -316,22 +325,22 @@ export function SignaturesSection({
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors"
                     >
                       <X className="size-3" />
-                      Cancel
+                      {t("cancel")}
                     </button>
                   )}
 
                   {/* Delete */}
                   {confirmDeleteId === sig.id ? (
                     <span className="inline-flex items-center gap-1.5 text-xs ml-auto">
-                      <span className="text-muted-foreground">Delete?</span>
+                      <span className="text-muted-foreground">{t("deletePrompt")}</span>
                       <button
                         onClick={() => handleDelete(sig.id)}
                         className="text-destructive hover:underline font-medium"
-                      >Yes</button>
+                      >{t("yes")}</button>
                       <button
                         onClick={() => setConfirmDeleteId(null)}
                         className="text-muted-foreground hover:text-foreground"
-                      >No</button>
+                      >{t("no")}</button>
                     </span>
                   ) : (
                     <button
@@ -339,7 +348,7 @@ export function SignaturesSection({
                       className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive transition-colors ml-auto"
                     >
                       <Trash2 className="size-3" />
-                      Delete
+                      {t("delete")}
                     </button>
                   )}
 
@@ -383,22 +392,22 @@ export function SignaturesSection({
         {!showForm ? (
           <Button variant="outline" size="sm" onClick={() => setShowForm(true)}>
             <Plus className="size-3.5" />
-            New signature request
+            {t("new")}
           </Button>
         ) : (
           <form onSubmit={handleCreate} className="rounded-lg border p-4 space-y-3">
-            <p className="text-sm font-medium">New signature request</p>
+            <p className="text-sm font-medium">{t("new")}</p>
             <Separator />
 
             <div className="space-y-1.5">
               <Label className="text-xs">
-                Document name <span className="text-destructive">*</span>
+                {t("documentName")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 name="documentName"
                 required
                 defaultValue={defaultDocumentName}
-                placeholder="e.g. Rental agreement, Service authorization"
+                placeholder={t("documentNamePlaceholder")}
                 autoFocus
               />
             </div>
@@ -410,7 +419,7 @@ export function SignaturesSection({
                 defaultChecked={defaultRequireNationalId}
                 className="h-4 w-4"
               />
-              <span className="text-sm">Require National ID / Iqama</span>
+              <span className="text-sm">{t("requireNationalId")}</span>
             </label>
 
             {error && <p className="text-xs text-destructive">{error}</p>}
@@ -425,10 +434,10 @@ export function SignaturesSection({
                   setError("")
                 }}
               >
-                Cancel
+                {t("cancel")}
               </Button>
               <Button type="submit" size="sm" disabled={loading}>
-                {loading ? "Creating…" : "Create"}
+                {loading ? t("creating") : t("create")}
               </Button>
             </div>
           </form>

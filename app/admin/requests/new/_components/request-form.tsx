@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import Link from "next/link"
-import { Plus, Trash2, PackageSearch } from "lucide-react"
-import { createRequest } from "@/lib/actions/requests"
+import { CheckCircle2, ChevronDown, Plus, Trash2, PackageSearch } from "lucide-react"
+import { createRequest, getCustomerDeliveryOptions } from "@/lib/actions/requests"
 import { getOrderUnitsByNumber, type OrderLookup } from "@/lib/actions/orders"
 import type { RequestType, Customer } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
@@ -15,9 +15,15 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
+import { buildRequestItemsFromOrderUnits } from "@/lib/domain/request-import"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { InlineCreateParty } from "@/components/inline-create-party"
+import { addAndSelectOption } from "@/lib/domain/inline-option"
+import { resolveRequestTypeSlug } from "@/lib/domain/request-form-defaults"
+import { contactsForCustomerLocation } from "@/lib/domain/customer-location"
+import { TimeWindowPicker } from "@/components/time-window-picker"
 
 type ItemRow = {
   id: number
@@ -57,12 +63,14 @@ export function RequestForm({
   initialOrderNumber?: string
   initialTypeSlug?: string
 }) {
-  // Preselect the request type when the Next Action arrives with ?type=… (e.g.
-  // a "Schedule collection" action pre-picks the collection type).
+  const resolvedTypeSlug = resolveRequestTypeSlug({ initialOrderNumber, initialTypeSlug })
+  // An explicit type always wins. An order-linked request defaults to delivery,
+  // which keeps older links that only contain ?orderNumber=… guided as well.
   const initialTypeId =
-    requestTypes.find((rt) => rt.slug === initialTypeSlug)?.id ?? ""
+    requestTypes.find((rt) => rt.slug === resolvedTypeSlug)?.id ?? ""
   const t = useTranslations("requests")
   const tCommon = useTranslations("common")
+  const locale = useLocale()
   const router = useRouter()
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -70,7 +78,53 @@ export function RequestForm({
 
   // Controlled so importing an order can pre-fill them.
   const [customerId, setCustomerId] = useState("")
+  const [customerOptions, setCustomerOptions] = useState(
+    customers.map(({ id, name }) => ({ id, name }))
+  )
   const [quoteNumber, setQuoteNumber] = useState("")
+  const [deliveryOptions, setDeliveryOptions] = useState<Awaited<ReturnType<typeof getCustomerDeliveryOptions>>>({
+    locations: [],
+    contacts: [],
+    links: [],
+  })
+  const [deliveryOptionsLoading, setDeliveryOptionsLoading] = useState(false)
+  const [customerLocationId, setCustomerLocationId] = useState("")
+  const [receiverContactId, setReceiverContactId] = useState("")
+  const [timeWindow, setTimeWindow] = useState("")
+  const [showAllContacts, setShowAllContacts] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setCustomerLocationId("")
+    setReceiverContactId("")
+    setShowAllContacts(false)
+    if (!customerId) {
+      setDeliveryOptions({ locations: [], contacts: [], links: [] })
+      return () => { cancelled = true }
+    }
+
+    setDeliveryOptionsLoading(true)
+    getCustomerDeliveryOptions(customerId)
+      .then((options) => {
+        if (cancelled) return
+        setDeliveryOptions(options)
+        const defaultLocation = options.locations.find((location) => location.isDefault)
+        if (defaultLocation) setCustomerLocationId(defaultLocation.id)
+      })
+      .finally(() => {
+        if (!cancelled) setDeliveryOptionsLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [customerId])
+
+  const linkedContacts = contactsForCustomerLocation(
+    deliveryOptions.contacts,
+    deliveryOptions.links,
+    customerLocationId || null
+  )
+  const receiverOptions = showAllContacts || !customerLocationId || linkedContacts.length === 0
+    ? deliveryOptions.contacts
+    : linkedContacts
 
   // Import-from-order state
   const [orderNumberInput, setOrderNumberInput] = useState(initialOrderNumber ?? "")
@@ -78,6 +132,7 @@ export function RequestForm({
   const [lookupError, setLookupError] = useState("")
   const [lookup, setLookup] = useState<OrderLookup | null>(null)
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
+  const [autoImported, setAutoImported] = useState(false)
 
   async function handleLookup(overrideNumber?: string) {
     const num = (overrideNumber ?? orderNumberInput).trim()
@@ -92,8 +147,21 @@ export function RequestForm({
         setLookupLoading(false)
         return
       }
-      setLookup(res.order)
-      setSelectedUnits(new Set(res.order.units.map((u) => u.unitId)))
+      const autoImport = Boolean(initialOrderNumber?.trim() && resolvedTypeSlug === "delivery")
+      if (autoImport && res.order.units.length > 0) {
+        const imported = buildRequestItemsFromOrderUnits(res.order.units).map((item) => ({
+          id: nextItemId++,
+          ...item,
+        }))
+        setItems(imported)
+        setLookup({ ...res.order, units: [] })
+        setSelectedUnits(new Set())
+        setAutoImported(true)
+      } else {
+        setLookup(res.order)
+        setSelectedUnits(new Set(res.order.units.map((u) => u.unitId)))
+        setAutoImported(false)
+      }
       // Order number IS the quote number; pre-fill customer + quote for traceability.
       if (!customerId) setCustomerId(res.order.customerId)
       if (!quoteNumber.trim()) setQuoteNumber(res.order.orderNumber)
@@ -175,6 +243,8 @@ export function RequestForm({
       const result = await createRequest({
         typeId: fd.get("typeId") as string,
         customerId: customerId,
+        customerLocationId: customerLocationId || undefined,
+        receiverContactId: receiverContactId || undefined,
         quoteNumber: quoteNumber,
         salesRef: (fd.get("salesRef") as string) || undefined,
         poNumber: (fd.get("poNumber") as string) || undefined,
@@ -209,7 +279,18 @@ export function RequestForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Import from order — pull device units by order number */}
+      {/* A guided order flow gets a compact confirmation; manual requests keep the picker. */}
+      {autoImported && lookup ? (
+        <div className="flex items-start gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-green-900">
+          <CheckCircle2 className="mt-0.5 size-5 shrink-0" />
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-semibold">{t("orderImported", { orderNumber: lookup.orderNumber })}</p>
+            <p className="text-sm text-green-800">
+              {t("unitsAddedAutomatically", { count: items.filter((item) => item.orderUnitId).length })}
+            </p>
+          </div>
+        </div>
+      ) : (
       <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
         <div className="flex items-center gap-2">
           <PackageSearch className="size-4 text-muted-foreground" />
@@ -243,9 +324,11 @@ export function RequestForm({
                 {t("orderCustomer")}:{" "}
                 <span className="font-medium text-foreground">{lookup.customerName ?? "—"}</span>
               </p>
-              <span className="text-xs text-muted-foreground">
-                {lookup.units.length} {t("availableUnits")}
-              </span>
+              {!autoImported && (
+                <span className="text-xs text-muted-foreground">
+                  {lookup.units.length} {t("availableUnits")}
+                </span>
+              )}
             </div>
 
             {lookup.units.length === 0 ? (
@@ -291,34 +374,19 @@ export function RequestForm({
           </div>
         )}
       </div>
+      )}
 
-      {/* Quote number — from sales team, optional */}
-      <div className="space-y-1.5">
-        <Label htmlFor="quoteNumber">
-          {t("quoteNumber")}{" "}
-          <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-        </Label>
-        <Input
-          id="quoteNumber"
-          name="quoteNumber"
-          value={quoteNumber}
-          onChange={(e) => setQuoteNumber(e.target.value)}
-          placeholder="e.g. 10669"
-          className="font-mono"
-        />
-      </div>
-
-      {/* Request info */}
+      {/* Only the fields needed for the everyday flow stay open. */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="typeId">
             {t("type")} <span className="text-destructive">*</span>
           </Label>
           <Select id="typeId" name="typeId" required defaultValue={initialTypeId}>
-            <option value="">— Select type —</option>
+            <option value="">— {t("chooseType")} —</option>
             {requestTypes.map((rt) => (
               <option key={rt.id} value={rt.id}>
-                {rt.nameEn}
+                {locale === "ar" ? rt.nameAr : rt.nameEn}
               </option>
             ))}
           </Select>
@@ -328,20 +396,83 @@ export function RequestForm({
           <Label htmlFor="customerId">
             {t("customer")} <span className="text-destructive">*</span>
           </Label>
+          <div className="flex gap-2">
+            <Select
+              id="customerId"
+              name="customerId"
+              required
+              value={customerId}
+              onChange={(e) => setCustomerId(e.target.value)}
+              className="flex-1"
+            >
+              <option value="">— {t("chooseCustomer")} —</option>
+              {customerOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <InlineCreateParty
+              kind="customer"
+              onCreated={(created) => {
+                const next = addAndSelectOption(customerOptions, created)
+                setCustomerOptions(next.options)
+                setCustomerId(next.selectedId)
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="customerLocationId">{t("customerLocation")}</Label>
           <Select
-            id="customerId"
-            name="customerId"
-            required
-            value={customerId}
-            onChange={(e) => setCustomerId(e.target.value)}
+            id="customerLocationId"
+            value={customerLocationId}
+            onChange={(event) => {
+              setCustomerLocationId(event.target.value)
+              setReceiverContactId("")
+              setShowAllContacts(false)
+            }}
+            disabled={!customerId || deliveryOptionsLoading}
           >
-            <option value="">— Select customer —</option>
-            {customers.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
+            <option value="">— {deliveryOptionsLoading ? tCommon("loading") : t("chooseCustomerLocation")} —</option>
+            {deliveryOptions.locations.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}{location.city ? ` · ${location.city}` : ""}
               </option>
             ))}
           </Select>
+          {customerId && !deliveryOptionsLoading && deliveryOptions.locations.length === 0 && (
+            <Link href={`/admin/customers/${customerId}`} className="inline-flex min-h-10 items-center text-xs font-medium text-primary hover:underline">
+              {t("addCustomerLocationFirst")}
+            </Link>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="receiverContactId">{t("receiver")}</Label>
+          <Select
+            id="receiverContactId"
+            value={receiverContactId}
+            onChange={(event) => setReceiverContactId(event.target.value)}
+            disabled={!customerId || deliveryOptionsLoading}
+          >
+            <option value="">— {t("chooseReceiverOptional")} —</option>
+            {receiverOptions.map((contact) => (
+              <option key={contact.id} value={contact.id}>
+                {contact.name}{contact.role ? ` · ${contact.role}` : ""}
+              </option>
+            ))}
+          </Select>
+          {customerLocationId && linkedContacts.length < deliveryOptions.contacts.length && (
+            <button
+              type="button"
+              className="min-h-10 text-start text-xs font-medium text-primary hover:underline"
+              onClick={() => setShowAllContacts((current) => !current)}
+            >
+              {showAllContacts ? t("showLocationContacts") : t("showAllCustomerContacts")}
+            </button>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -353,56 +484,59 @@ export function RequestForm({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="collectionDate">
-            {t("collectionDate")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="collectionDate" name="collectionDate" type="date" />
-        </div>
-
-        <div className="space-y-1.5">
           <Label htmlFor="timeWindow">
             {t("timeWindow")}{" "}
             <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
           </Label>
-          <Input id="timeWindow" name="timeWindow" placeholder="e.g. 9:00 AM – 1:00 PM" />
+          <TimeWindowPicker value={timeWindow} onChange={setTimeWindow} name="timeWindow" idPrefix="new-request-window" />
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="salesRef">
-            {t("salesRef")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="salesRef" name="salesRef" />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="poNumber">
-            {t("poNumber")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="poNumber" name="poNumber" />
-        </div>
-
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="notes">
-            {tCommon("notes")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Textarea id="notes" name="notes" rows={2} />
-        </div>
-
-        <div className="sm:col-span-2">
-          <label className="flex items-center gap-2.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              name="requireNationalId"
-              className="h-4 w-4 rounded border-input"
-            />
-            <span className="text-sm">{t("requireNationalId")}</span>
-          </label>
-        </div>
       </div>
+
+      <details className="group rounded-xl border bg-muted/20">
+        <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+          <span>
+            <span className="block text-sm font-medium">{t("additionalDetails")}</span>
+            <span className="block text-xs text-muted-foreground">{t("additionalDetailsHint")}</span>
+          </span>
+          <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+        </summary>
+        <div className="grid gap-4 border-t px-4 py-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="quoteNumber">{t("quoteNumber")}</Label>
+            <Input
+              id="quoteNumber"
+              name="quoteNumber"
+              value={quoteNumber}
+              onChange={(e) => setQuoteNumber(e.target.value)}
+              placeholder="e.g. 10669"
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="collectionDate">{t("collectionDate")}</Label>
+            <Input id="collectionDate" name="collectionDate" type="date" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="salesRef">{t("salesRef")}</Label>
+            <Input id="salesRef" name="salesRef" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="poNumber">{t("poNumber")}</Label>
+            <Input id="poNumber" name="poNumber" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="notes">{tCommon("notes")}</Label>
+            <Textarea id="notes" name="notes" rows={2} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="flex min-h-11 cursor-pointer select-none items-center gap-2.5">
+              <input type="checkbox" name="requireNationalId" className="h-4 w-4 rounded border-input" />
+              <span className="text-sm">{t("requireNationalId")}</span>
+            </label>
+          </div>
+        </div>
+      </details>
 
       <Separator />
 
@@ -420,7 +554,7 @@ export function RequestForm({
           <div key={item.id} className="rounded-lg border p-4 space-y-3">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                Item {idx + 1}
+                {t("itemNumber", { number: idx + 1 })}
                 {item.orderUnitId && (
                   <Badge variant="info" className="text-[10px]">
                     {t("fromOrder")}
@@ -431,7 +565,8 @@ export function RequestForm({
                 <button
                   type="button"
                   onClick={() => removeItem(item.id)}
-                  className="text-muted-foreground hover:text-destructive transition-colors"
+                  aria-label={t("removeItem", { number: idx + 1 })}
+                  className="flex size-10 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
                 >
                   <Trash2 className="size-4" />
                 </button>
@@ -441,7 +576,7 @@ export function RequestForm({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs">
-                  Description <span className="text-destructive">*</span>
+                  {t("description")} <span className="text-destructive">*</span>
                 </Label>
                 <Input
                   value={item.description}
@@ -451,29 +586,14 @@ export function RequestForm({
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Brand</Label>
-                <Input
-                  value={item.brand}
-                  onChange={(e) => updateItem(item.id, "brand", e.target.value)}
-                  placeholder="e.g. Dell, Cisco"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Model</Label>
-                <Input
-                  value={item.model}
-                  onChange={(e) => updateItem(item.id, "model", e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Serial number</Label>
+                <Label className="text-xs">{t("serialNumber")}</Label>
                 <Input
                   value={item.serialNumber}
                   onChange={(e) => updateItem(item.id, "serialNumber", e.target.value)}
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">Quantity</Label>
+                <Label className="text-xs">{t("quantity")}</Label>
                 <Input
                   type="number"
                   min={1}
@@ -481,26 +601,59 @@ export function RequestForm({
                   onChange={(e) => updateItem(item.id, "quantity", parseInt(e.target.value) || 1)}
                 />
               </div>
-              <div className="space-y-1 sm:col-span-2">
-                <Label className="text-xs">Accessories</Label>
-                <Input
-                  value={item.accessories}
-                  onChange={(e) => updateItem(item.id, "accessories", e.target.value)}
-                  placeholder="e.g. charger, case"
-                />
-              </div>
+              <details className="group sm:col-span-2">
+                <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-xs font-medium text-muted-foreground [&::-webkit-details-marker]:hidden">
+                  <ChevronDown className="size-3.5 transition-transform duration-200 group-open:rotate-180" />
+                  {t("itemDetails")}
+                </summary>
+                <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("brand")}</Label>
+                    <Input
+                      value={item.brand}
+                      onChange={(e) => updateItem(item.id, "brand", e.target.value)}
+                      placeholder="e.g. Dell, Cisco"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">{t("model")}</Label>
+                    <Input
+                      value={item.model}
+                      onChange={(e) => updateItem(item.id, "model", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-xs">{t("accessories")}</Label>
+                    <Input
+                      value={item.accessories}
+                      onChange={(e) => updateItem(item.id, "accessories", e.target.value)}
+                      placeholder="e.g. charger, case"
+                    />
+                  </div>
+                </div>
+              </details>
             </div>
           </div>
         ))}
+
+        <Button
+          type="button"
+          variant="outline"
+          className="h-11 w-full border-dashed"
+          onClick={addItem}
+        >
+          <Plus className="size-4" />
+          {t("addAnotherItem")}
+        </Button>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
 
-      <div className="flex gap-3 justify-end">
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
         <Link href="/admin/requests" className={cn(buttonVariants({ variant: "outline" }))}>
           {tCommon("cancel")}
         </Link>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading} className="h-11 sm:min-w-32">
           {loading ? tCommon("loading") : tCommon("create")}
         </Button>
       </div>

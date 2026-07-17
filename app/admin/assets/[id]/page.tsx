@@ -7,6 +7,7 @@ import { getAsset } from "@/lib/actions/assets"
 import { getAssetDocuments } from "@/lib/actions/asset-documents"
 import { getWarrantyForAsset, getWarrantyBatches } from "@/lib/actions/warranty"
 import { getAccessoriesForEntity, getAccessoryItems } from "@/lib/actions/accessories"
+import { getSupplierReturnForAsset } from "@/lib/actions/supplier-returns"
 import { assetActionsFor, type AssetStatus } from "@/lib/domain/asset-status"
 import { qrDataUrl } from "@/lib/utils/qr"
 import { formatDate } from "@/lib/utils/format"
@@ -18,6 +19,7 @@ import { AssetNoteForm } from "./_components/asset-note-form"
 import { AssetDocuments } from "./_components/asset-documents"
 import { WarrantyCard } from "./_components/warranty-card"
 import { AssetAccessories } from "./_components/asset-accessories"
+import { SupplierReturnCard } from "./_components/supplier-return-card"
 
 export default async function AssetPage({
   params,
@@ -25,7 +27,7 @@ export default async function AssetPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [t, tCommon, data, locale, documents, warranty, warrantyBatches, attachedAccessories, accessoryItems] =
+  const [t, tCommon, data, locale, documents, warranty, warrantyBatches, attachedAccessories, accessoryItems, supplierReturn] =
     await Promise.all([
       getTranslations("assets"),
       getTranslations("common"),
@@ -36,6 +38,7 @@ export default async function AssetPage({
       getWarrantyBatches(),
       getAccessoriesForEntity("asset", id),
       getAccessoryItems(),
+      getSupplierReturnForAsset(id),
     ])
 
   if (!data) notFound()
@@ -87,6 +90,8 @@ export default async function AssetPage({
         )}
       </div>
 
+      <SupplierReturnCard assetId={asset.id} assetStatus={asset.status} record={supplierReturn} />
+
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Details card */}
         <section className="rounded-xl border bg-card p-5 lg:col-span-2">
@@ -114,7 +119,7 @@ export default async function AssetPage({
               <dt className="text-xs text-muted-foreground">{t("order")}</dt>
               <dd>
                 <Link
-                  href={`/admin/orders/${asset.orderId}`}
+                  href={asset.orderId ? `/admin/orders/${asset.orderId}` : `/admin/procurement/${asset.purchaseOrderId}`}
                   className="font-mono text-xs hover:underline"
                   dir="ltr"
                 >

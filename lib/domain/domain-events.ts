@@ -43,6 +43,8 @@ const ASSET_ACTION_EVENT_TYPE: Partial<Record<string, string>> = {
   sell: "AssetSold",
   mark_lost: "AssetLost",
   found: "AssetFound",
+  start_supplier_return: "AssetSupplierReturnStarted",
+  confirm_supplier_return: "AssetReturnedToSupplier",
 }
 
 // Every asset action now maps to a domain event (OI-2 coverage closure) —
@@ -86,6 +88,8 @@ export const DOMAIN_EVENT_TYPES = [
   "AssetStatusCorrected",
   "AssetQcPassed",
   "AssetQcFailed",
+  "AssetSupplierReturnStarted",
+  "AssetReturnedToSupplier",
   "RequestCreated",
   "RequestAssigned",
   "RequestCompleted",

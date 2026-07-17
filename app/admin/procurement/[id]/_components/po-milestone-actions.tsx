@@ -64,7 +64,7 @@ export function PoMilestoneActions({
           {t("markReadyForPickup")}
         </Button>
       )}
-      {poStatus !== "cancelled" && (
+      {canMilestone && (
         <Button
           size="sm"
           variant="outline"

@@ -3,7 +3,8 @@
 import { useTranslations } from "next-intl"
 import { CheckCircle2, Clock, ExternalLink, MessageCircle } from "lucide-react"
 import { formatDate } from "@/lib/utils/format"
-import { buildWhatsappUrl, signLinkMessage } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
+import { renderMessageTemplate } from "@/lib/domain/message-templates"
 
 type Props = {
   status: string
@@ -14,6 +15,7 @@ type Props = {
   customerName: string | null
   requestNumber: string
   deliveryDate: number | null
+  messageTemplate: string
 }
 
 export function SignatureStatus({
@@ -24,13 +26,18 @@ export function SignatureStatus({
   contactMobile,
   customerName,
   requestNumber,
+  messageTemplate,
 }: Props) {
   const t = useTranslations("portal")
   const isSigned = status === "signed"
 
   const waUrl = buildWhatsappUrl(
     contactMobile,
-    signLinkMessage({ customerName, requestNumber, signLink })
+    renderMessageTemplate(messageTemplate, {
+      customer_name: customerName ?? "",
+      request_number: requestNumber,
+      sign_link: signLink,
+    })
   )
 
   if (isSigned) {

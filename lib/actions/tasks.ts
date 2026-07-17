@@ -51,6 +51,7 @@ import {
 import { parseProofConfig, resolveProofRequirements } from "@/lib/domain/proof"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { domainEventTypeForTaskAction } from "@/lib/domain/domain-events"
+import { resolveTaskContactId } from "@/lib/domain/task-contact"
 
 export type ActionResult = { error?: string; id?: string; taskToken?: string }
 
@@ -197,12 +198,17 @@ async function createTaskCore(
 
   try {
     await db.transaction(async (tx) => {
+      const [requestContact] = await tx
+        .select({ receiverContactId: requests.receiverContactId })
+        .from(requests)
+        .where(eq(requests.id, requestId))
+
       await tx.insert(partnerTasks).values({
         id,
         requestId,
         partnerId: data.partnerId,
         contractId: data.contractId || null,
-        contactId: data.contactId || null,
+        contactId: resolveTaskContactId(data.contactId, requestContact?.receiverContactId ?? null),
         taskTypeId: data.taskTypeId || null,
         executionMode: data.executionMode ?? "manual",
         photoRequired: data.photoRequired ?? true,

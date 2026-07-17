@@ -12,6 +12,8 @@ import { Select } from "@/components/ui/select"
 import { createPurchaseOrder } from "@/lib/actions/procurement"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import type { Supplier } from "@/lib/db/schema"
+import { InlineCreateParty } from "@/components/inline-create-party"
+import { addAndSelectOption } from "@/lib/domain/inline-option"
 
 type LineRow = {
   key: number
@@ -32,6 +34,9 @@ export function CreatePoForm({ suppliers }: { suppliers: Supplier[] }) {
   const t = useTranslations("procurement")
   const router = useRouter()
   const [supplierId, setSupplierId] = useState(suppliers[0]?.id ?? "")
+  const [supplierOptions, setSupplierOptions] = useState(
+    suppliers.map(({ id, name }) => ({ id, name }))
+  )
   const [poNumber, setPoNumber] = useState("")
   const [invoiceRef, setInvoiceRef] = useState("")
   const [notes, setNotes] = useState("")
@@ -79,13 +84,24 @@ export function CreatePoForm({ suppliers }: { suppliers: Supplier[] }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <Label>{t("supplier")}</Label>
-          <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </Select>
+          <div className="flex gap-2">
+            <Select className="flex-1" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">— {t("supplier")} —</option>
+              {supplierOptions.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </Select>
+            <InlineCreateParty
+              kind="supplier"
+              onCreated={(created) => {
+                const next = addAndSelectOption(supplierOptions, created)
+                setSupplierOptions(next.options)
+                setSupplierId(next.selectedId)
+              }}
+            />
+          </div>
         </div>
         <div>
           <Label>{t("poNumber")}</Label>

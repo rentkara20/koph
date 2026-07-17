@@ -58,8 +58,18 @@ describe("deriveNextActions", () => {
     expect(erp).toBeDefined()
     expect(erp!.blockedBy).toBe("waitingErpPo")
     expect(erp!.ownerRole).toBe("procurement")
-    expect(erp!.href).toBe("/admin/orders/ord1?tab=buying")
+    expect(erp!.href).toBe("/admin/procurement/cases/case1")
     expect(erp!.entityRef).toEqual({ type: "procurement_case", id: "case1" })
+  })
+
+  it("rule 8: linked ERP reference opens the same case workspace to create its KOPH PO", () => {
+    const actions = deriveNextActions({
+      ...EMPTY,
+      erpReferences: [{ id: "case2", status: "po_linked", hasErpRef: true, hasPurchaseOrder: false }],
+    })
+    const createPo = actions.find((a) => a.key === "createPurchaseOrder")
+    expect(createPo).toBeDefined()
+    expect(createPo!.href).toBe("/admin/procurement/cases/case2")
   })
 
   it("rule 12: in-stock units and no open delivery job → createDeliveryJob", () => {

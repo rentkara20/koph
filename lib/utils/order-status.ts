@@ -26,6 +26,8 @@ export const unitStatusVariant: Record<string, Variant> = {
   delivered: "success",
   returned: "secondary",
   damaged: "destructive",
+  supplier_return_pending: "warning",
+  supplier_returned: "secondary",
 }
 
 export const unitStatuses = [
@@ -37,6 +39,8 @@ export const unitStatuses = [
   "returned",
   "maintenance",
   "damaged",
+  "supplier_return_pending",
+  "supplier_returned",
   "retired",
   "sold",
   "lost",
@@ -56,7 +60,13 @@ export function deriveOrderStatus(
 
   // receiving_qc units are not yet available stock, but they are also not
   // fulfilled toward the customer — treat like in_stock for order fulfilment.
-  const fulfilled = unitStatuses.filter((s) => s !== "in_stock" && s !== "receiving_qc").length
+  const notCustomerFulfilled = new Set<UnitStatus>([
+    "in_stock",
+    "receiving_qc",
+    "supplier_return_pending",
+    "supplier_returned",
+  ])
+  const fulfilled = unitStatuses.filter((status) => !notCustomerFulfilled.has(status)).length
   if (fulfilled === 0) return "confirmed"
   if (fulfilled === unitStatuses.length) return "fulfilled"
   return "partially_fulfilled"
