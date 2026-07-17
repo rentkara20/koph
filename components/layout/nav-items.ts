@@ -62,7 +62,7 @@ export const navItems: readonly NavItem[] = [
   { key: "assets", href: "/admin/assets", icon: Laptop, group: "devices" },
   { key: "maintenance", href: "/admin/maintenance", icon: Wrench, group: "devices" },
   { key: "warranty", href: "/admin/warranty", icon: BadgeCheck, group: "devices", prefetch: false },
-  { key: "accessories", href: "/admin/accessories", icon: Cable, group: "devices", prefetch: false },
+  { key: "products", href: "/admin/products", icon: Cable, group: "devices", prefetch: false },
 
   { key: "sourcing", href: "/admin/sourcing", icon: Handshake, group: "supply", prefetch: false },
   { key: "procurement", href: "/admin/procurement", icon: PackagePlus, group: "supply", prefetch: false },

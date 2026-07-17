@@ -136,6 +136,7 @@ const createPoSchema = z.object({
         brand: z.string().trim().max(120).optional(),
         model: z.string().trim().max(120).optional(),
         requiresSerial: z.boolean().default(true),
+        kind: z.enum(["rental", "sale"]).default("rental"),
         qtyOrdered: z.number().int().min(1),
         unitCost: z.number().min(0).optional(),
       })
@@ -188,6 +189,7 @@ export async function createPurchaseOrder(
         brand: line.brand,
         model: line.model,
         requiresSerial: line.requiresSerial,
+        kind: line.kind,
         qtyOrdered: line.qtyOrdered,
         unitCost: line.unitCost,
       })
@@ -463,7 +465,9 @@ export async function receivePurchaseOrderLineCore(
     tx,
     { purchaseOrderLineId: line.id, serialNumber: d.serialNumber, assetTag: d.assetTag },
     actorUserId,
-    po?.qcRequired ? "receiving_qc" : "in_stock"
+    po?.qcRequired ? "receiving_qc" : "in_stock",
+    // Rental vs product-for-sale is the buyer's intent captured on the PO line.
+    (line.kind ?? "rental") as "rental" | "sale"
   )
   const assetId = result.assetId
 

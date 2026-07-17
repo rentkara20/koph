@@ -111,3 +111,33 @@ describe("supplier return lifecycle", () => {
     expect(assetActionsFor("supplier_return_pending")).not.toContain("confirm_supplier_return")
   })
 })
+
+describe("sale-kind lifecycle", () => {
+  test("sold serialized product runs in_stock -> assigned -> delivered -> sold", () => {
+    expect(canAssetTransition("in_stock", "assign", "sale")).toBe(true)
+    expect(canAssetTransition("assigned", "deliver", "sale")).toBe(true)
+    // sale completes on delivery: sell is reachable straight from delivered.
+    expect(canAssetTransition("delivered", "sell", "sale")).toBe(true)
+    expect(assetStatusAfter("sell")).toBe("sold")
+  })
+
+  test("sale units never enter rental return-to-pool logic", () => {
+    expect(canAssetTransition("delivered", "return", "sale")).toBe(false)
+    expect(canAssetTransition("returned", "restock", "sale")).toBe(false)
+    expect(canAssetTransition("lost", "found", "sale")).toBe(false)
+  })
+
+  test("rental units keep return semantics and cannot sell a delivered unit", () => {
+    expect(canAssetTransition("delivered", "return", "rental")).toBe(true)
+    // A rental unit out with the customer is not sellable in place.
+    expect(canAssetTransition("delivered", "sell", "rental")).toBe(false)
+    // Rental default (no kind arg) matches explicit rental.
+    expect(canAssetTransition("delivered", "return")).toBe(true)
+  })
+
+  test("assetActionsFor(sale) offers sell on delivered but never return", () => {
+    const onDelivered = assetActionsFor("delivered", "sale")
+    expect(onDelivered).toContain("sell")
+    expect(onDelivered).not.toContain("return")
+  })
+})

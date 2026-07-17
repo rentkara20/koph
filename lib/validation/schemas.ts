@@ -91,6 +91,10 @@ export const createSupplierSchema = z.object({
 
 export const orderLineInputSchema = z.object({
   id: z.string().trim().max(60).optional(),
+  // Per-line fulfilment type. rental_asset draws from the rental pool and must
+  // return; sold_product draws from products-for-sale and ends as sold. A
+  // single order freely mixes both. Defaults to rental_asset for back-compat.
+  type: z.enum(["rental_asset", "sold_product"]).default("rental_asset"),
   description: nonEmpty(300),
   brand: z.string().trim().max(120).optional(),
   model: z.string().trim().max(120).optional(),

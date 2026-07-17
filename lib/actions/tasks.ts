@@ -9,6 +9,7 @@ import {
   customers,
   deliveryTaskItems,
   notifications,
+  orderUnits,
   partners,
   partnerContracts,
   partnerPaymentDecisions,
@@ -792,6 +793,18 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
         unitIds = pulled.map((r) => r.orderUnitId).filter((v): v is string => Boolean(v))
       }
 
+      // Sale units complete the sale on delivery: after the deliver transition
+      // they move straight to "sold" (they never become rentable/returnable).
+      // Rental units stay "delivered" (out with the customer until collected).
+      const saleUnitIds = new Set<string>()
+      if (assetAction === "deliver" && unitIds.length > 0) {
+        const kinds = await tx
+          .select({ id: orderUnits.id, kind: orderUnits.kind })
+          .from(orderUnits)
+          .where(inArray(orderUnits.id, unitIds))
+        for (const u of kinds) if (u.kind === "sale") saleUnitIds.add(u.id)
+      }
+
       for (const unitId of unitIds) {
         try {
           await applyAssetTransition(tx, unitId, assetAction, {
@@ -799,6 +812,13 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
             customerId: parentRequest.customerId,
             byUserId: session.user.id,
           })
+          if (assetAction === "deliver" && saleUnitIds.has(unitId)) {
+            await applyAssetTransition(tx, unitId, "sell", {
+              requestId: taskRequestId,
+              customerId: parentRequest.customerId,
+              byUserId: session.user.id,
+            })
+          }
         } catch (error) {
           if (!(error instanceof AssetTransitionError)) throw error
           // NOT_FOUND / INVALID_TRANSITION: unit isn't in the expected state

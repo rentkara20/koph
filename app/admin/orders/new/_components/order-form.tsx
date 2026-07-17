@@ -19,8 +19,11 @@ import { translateActionError } from "@/lib/i18n/action-errors"
 import { InlineCreateParty } from "@/components/inline-create-party"
 import { addAndSelectOption } from "@/lib/domain/inline-option"
 
+type LineType = "rental_asset" | "sold_product"
+
 type LineRow = {
   id: number
+  type: LineType
   description: string
   quantity: number
 }
@@ -30,6 +33,7 @@ let nextLineId = 1
 function emptyLine(): LineRow {
   return {
     id: nextLineId++,
+    type: "rental_asset",
     description: "",
     quantity: 1,
   }
@@ -75,6 +79,7 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
         customerConfirmationDate: (fd.get("customerConfirmationDate") as string) || undefined,
         notes: (fd.get("notes") as string) || undefined,
         lines: validLines.map((l) => ({
+          type: l.type,
           description: l.description,
           quantity: l.quantity,
         })),
@@ -196,7 +201,17 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("lineType")}</Label>
+                <Select
+                  value={line.type}
+                  onChange={(e) => updateLine(line.id, "type", e.target.value)}
+                >
+                  <option value="rental_asset">{t("lineTypeRental")}</option>
+                  <option value="sold_product">{t("lineTypeSale")}</option>
+                </Select>
+              </div>
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs">
                   {t("deviceSpec")} <span className="text-destructive">*</span>

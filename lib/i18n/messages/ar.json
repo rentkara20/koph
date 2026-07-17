@@ -30,7 +30,8 @@
       "people": "الأطراف",
       "money": "المالية",
       "system": "النظام"
-    }
+    },
+    "products": "منتجات للبيع"
   },
   "common": {
     "save": "حفظ",
@@ -1138,7 +1139,10 @@
         "active": "جارٍ",
         "pending": "لم يبدأ"
       }
-    }
+    },
+    "lineType": "النوع",
+    "lineTypeRental": "أصل إيجار",
+    "lineTypeSale": "منتج للبيع"
   },
   "assets": {
     "title": "الأصول",
@@ -1260,7 +1264,11 @@
       "retire": "سحب من الخدمة",
       "sell": "تحديد كمباع",
       "mark_lost": "تحديد كمفقود",
-      "found": "تم العثور عليه"
+      "found": "تم العثور عليه",
+      "qc_pass": "اجتياز فحص الجودة",
+      "qc_fail": "رسوب فحص الجودة",
+      "start_supplier_return": "بدء إرجاع للمورّد",
+      "confirm_supplier_return": "تأكيد إرجاع المورّد"
     },
     "eventTypes": {
       "status_change": "تغيير حالة",
@@ -1417,7 +1425,10 @@
       "selectPartner": "اختر الشريك",
       "noReadyPo": "حدّد أمر الشراء كجاهز للاستلام لإنشاء المهام",
       "collectedOf": "تم استلام {picked} من {planned}"
-    }
+    },
+    "intakeKind": "الوجهة",
+    "intakeKindRental": "أصل إيجار",
+    "intakeKindSale": "منتج للبيع"
   },
   "warranty": {
     "title": "مركز الضمان",
@@ -1877,5 +1888,13 @@
     "manualSignatureUploaded": "تم رفع الملف الموقّع: {fileName}",
     "manualSignatureApproved": "تمت الموافقة على السند الموقّع يدوياً",
     "manualSignatureRejected": "تم رفض الملف الموقّع: {reason}"
+  },
+  "products": {
+    "title": "منتجات للبيع",
+    "subtitle": "أصناف تُباع للعملاء — وحدات مُسريَلة ومخزون بالكمية",
+    "serializedTitle": "منتجات مُسريَلة",
+    "serializedHint": "وحدات مُباعة تُتابَع فردياً بالسيريال/الوسم",
+    "emptySerialized": "لا توجد منتجات مُسريَلة للبيع بعد",
+    "stockTitle": "مخزون بالكمية والكتالوج"
   }
 }

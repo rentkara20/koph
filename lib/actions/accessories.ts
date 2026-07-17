@@ -1,11 +1,18 @@
 "use server"
 
-// Accessories (Milestone 3 / P6). Three categories: serialized_asset (should
-// really be tracked as an Asset — this module only handles trackable /
-// non_serialized in practice), trackable (optional serial, unit rows), and
-// non_serialized (quantity by location). Attaching to a request/asset and
-// the delivery/collection checklist are atomic, own-event operations —
-// distinct from asset status transitions.
+// Products-for-sale quantity stock (formerly "Accessories", Milestone 3 / P6).
+// This module now backs the NON-serialized side of products-for-sale: quantity
+// counted by location. Serialized sold products are order_units with
+// kind="sale" (see lib/actions/products.ts) — NOT this module.
+//
+// The `category` column is a legacy tracking-mode tag, not the rental/sale
+// classifier (that is order_unit.kind). Its value "serialized_asset" predates
+// the rental/sale split and is misleading: a serialized sold product should be
+// created as an order_unit(kind="sale"), not here. The value is kept as-is for
+// now because renaming it requires a production data migration; category still
+// only meaningfully drives the trackable / non_serialized stock paths below.
+// Attaching to a request/asset and the delivery/collection checklist are
+// atomic, own-event operations — distinct from asset status transitions.
 import { and, desc, eq, gte, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
@@ -41,7 +48,7 @@ export async function createAccessoryItem(input: z.infer<typeof createItemSchema
 
   const id = createId()
   await db.insert(accessoryItems).values({ id, ...parsed.data })
-  revalidatePath("/admin/accessories")
+  revalidatePath("/admin/products")
   return { id }
 }
 
@@ -110,7 +117,7 @@ export async function receiveAccessoryStock(
         target: [accessoryStock.accessoryItemId, accessoryStock.location],
         set: { qty: sql`${accessoryStock.qty} + ${qty}`, updatedAt: Date.now() },
       })
-    revalidatePath("/admin/accessories")
+    revalidatePath("/admin/products")
     return { id: item.id }
   }
 
@@ -123,7 +130,7 @@ export async function receiveAccessoryStock(
     status: "in_stock",
     location: DEFAULT_LOCATION,
   })
-  revalidatePath("/admin/accessories")
+  revalidatePath("/admin/products")
   return { id }
 }
 

@@ -70,7 +70,8 @@ export async function applyAssetTransition(
   if (!unit) throw ASSET_NOT_FOUND
 
   const from = unit.status as AssetStatus
-  if (!canAssetTransition(from, action)) {
+  const kind = (unit.kind ?? "rental") as "rental" | "sale"
+  if (!canAssetTransition(from, action, kind)) {
     throw new AssetTransitionError(
       "INVALID_TRANSITION",
       `Cannot perform "${action}" on an asset in status "${from}"`,

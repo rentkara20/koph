@@ -1,0 +1,1 @@
+ALTER TABLE `purchase_order_line` ADD `kind` text DEFAULT 'rental' NOT NULL;

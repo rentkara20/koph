@@ -1018,6 +1018,13 @@ export const orderLines = sqliteTable(
     orderId: text("order_id")
       .notNull()
       .references(() => orders.id, { onDelete: "cascade" }),
+    // Per-line fulfilment type. A single order mixes lines: rental_asset lines
+    // draw from rental inventory and must return; sold_product lines draw from
+    // products-for-sale (serialized order_unit(kind=sale) or qty-stock) and end
+    // as sold. Existing rows backfill to "rental_asset".
+    type: text("type", { enum: ["rental_asset", "sold_product"] })
+      .notNull()
+      .default("rental_asset"),
     description: text("description").notNull(),
     brand: text("brand"),
     model: text("model"),
@@ -1060,6 +1067,14 @@ export const orderUnits = sqliteTable(
     warrantyEnd: integer("warranty_end"),
     // KARA asset tag (KARA-00001). Nullable until back-filled; unique when set.
     assetTag: text("asset_tag"),
+    // Ownership/return semantics — NOT serialization. A rental unit is
+    // company-owned and must return; a sale unit is a serialized product sold
+    // to the customer (ownership transfers, never returns). Non-serial sold
+    // products live in the qty-stock tables, not here. Existing rows backfill
+    // to "rental" (all historical order_units were rental assets).
+    kind: text("kind", { enum: ["rental", "sale"] })
+      .notNull()
+      .default("rental"),
     status: text("status", {
       enum: [
         "receiving_qc",
@@ -1094,6 +1109,7 @@ export const orderUnits = sqliteTable(
     index("order_unit_line_idx").on(t.orderLineId),
     index("order_unit_po_line_idx").on(t.purchaseOrderLineId),
     index("order_unit_status_idx").on(t.status),
+    index("order_unit_kind_idx").on(t.kind),
     uniqueIndex("order_unit_serial_idx")
       .on(sql`lower(trim(${t.serialNumber}))`)
       .where(sql`${t.serialNumber} IS NOT NULL AND trim(${t.serialNumber}) <> ''`),
@@ -1228,6 +1244,13 @@ export const purchaseOrderLines = sqliteTable(
     brand: text("brand"),
     model: text("model"),
     requiresSerial: integer("requires_serial", { mode: "boolean" }).notNull().default(true),
+    // Destination inventory for units received against this line: rental pool
+    // (order_unit.kind=rental) or products-for-sale (order_unit.kind=sale).
+    // Serialization (requiresSerial) is independent of this. Existing rows
+    // backfill to "rental".
+    kind: text("kind", { enum: ["rental", "sale"] })
+      .notNull()
+      .default("rental"),
     qtyOrdered: integer("qty_ordered").notNull(),
     qtyReceived: integer("qty_received").notNull().default(0),
     // Units collected from the supplier by pickup partners (in transit until

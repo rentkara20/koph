@@ -211,6 +211,20 @@
       "when": 1784283537198,
       "tag": "0029_supplier_returns",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1784306504729,
+      "tag": "0030_rental_sale_split",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1784307100496,
+      "tag": "0031_po_line_kind",
+      "breakpoints": true
     }
   ]
 }

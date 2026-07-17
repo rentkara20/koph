@@ -44,6 +44,10 @@ export type AssetFilters = {
   status?: AssetStatus
   search?: string
   page?: number
+  // Which inventory this view manages. The Assets page is rental-only; the
+  // Products-for-sale page passes "sale". Defaults to rental so every existing
+  // caller keeps its historical (rental) behavior.
+  kind?: "rental" | "sale"
 }
 
 export async function getAssets(filters: AssetFilters = {}) {
@@ -52,6 +56,7 @@ export async function getAssets(filters: AssetFilters = {}) {
 
   const page = Math.max(1, filters.page ?? 1)
   const conds = []
+  conds.push(eq(orderUnits.kind, filters.kind ?? "rental"))
   if (filters.status) conds.push(eq(orderUnits.status, filters.status))
   if (filters.search?.trim()) {
     const q = `%${filters.search.trim()}%`
@@ -119,12 +124,13 @@ export async function getAssets(filters: AssetFilters = {}) {
   return { assets: rows, total, page, pageSize: PAGE_SIZE }
 }
 
-export async function getAssetStatusCounts() {
+export async function getAssetStatusCounts(kind: "rental" | "sale" = "rental") {
   const session = await getStaffSession()
   if (!session) return []
   return db
     .select({ status: orderUnits.status, total: count() })
     .from(orderUnits)
+    .where(eq(orderUnits.kind, kind))
     .groupBy(orderUnits.status)
 }
 
@@ -383,7 +389,11 @@ export async function createAssetCore(
   // Receiving-QC gate: a PO with qcRequired mints at "receiving_qc" so the
   // unit is not available inventory until an explicit qc_pass. Only the
   // receiving flow sets this — direct entry always mints at in_stock.
-  initialStatus: "in_stock" | "receiving_qc" = "in_stock"
+  initialStatus: "in_stock" | "receiving_qc" = "in_stock",
+  // Ownership/return semantics of the minted unit. Rental (default) enters the
+  // rental pool and must return; sale is a serialized product-for-sale that
+  // ends as sold. The receiving flow passes the PO line's kind.
+  kind: "rental" | "sale" = "rental"
 ): Promise<{ assetId: string }> {
   const d = createAssetSchema.parse(input)
   const serialNumber = d.serialNumber ? d.serialNumber.toUpperCase() : null
@@ -392,15 +402,21 @@ export async function createAssetCore(
   let orderId: string | null = null
   let purchaseOrderLineId: string | null = null
   let purchaseOrderId: string | null = null
+  // Effective kind. For a PO origin the caller passes the PO line's kind. For
+  // an order-line origin we DERIVE it from the line's own type so a direct
+  // asset created from a sold_product line lands in products-for-sale, never
+  // the rental pool — the order line's type is authoritative here.
+  let effectiveKind: "rental" | "sale" = kind
 
   if (d.orderLineId) {
     const [line] = await tx
-      .select({ id: orderLines.id, orderId: orderLines.orderId })
+      .select({ id: orderLines.id, orderId: orderLines.orderId, type: orderLines.type })
       .from(orderLines)
       .where(eq(orderLines.id, d.orderLineId))
     if (!line) throw new Error("Order line not found")
     orderLineId = line.id
     orderId = line.orderId
+    effectiveKind = line.type === "sold_product" ? "sale" : "rental"
   } else {
     const [line] = await tx
       .select({
@@ -447,6 +463,7 @@ export async function createAssetCore(
     notes: d.notes || null,
     assetTag,
     status: initialStatus,
+    kind: effectiveKind,
   })
 
   await tx.insert(assetEvents).values({
@@ -462,7 +479,7 @@ export async function createAssetCore(
     aggregateType: "asset",
     aggregateId: assetId,
     eventType: "AssetCreated",
-    payload: { orderLineId, orderId, purchaseOrderLineId, purchaseOrderId, serialNumber, assetTag },
+    payload: { orderLineId, orderId, purchaseOrderLineId, purchaseOrderId, serialNumber, assetTag, kind: effectiveKind },
     dedupeKey: `asset:${assetId}:AssetCreated`,
     actorUserId,
   })

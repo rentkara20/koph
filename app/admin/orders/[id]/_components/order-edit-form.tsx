@@ -17,9 +17,12 @@ import { Separator } from "@/components/ui/separator"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { ExternalLink } from "lucide-react"
 
+type LineType = "rental_asset" | "sold_product"
+
 type LineRow = {
   key: number
   dbId?: string
+  type: LineType
   description: string
   quantity: number
 }
@@ -55,14 +58,18 @@ export function OrderEditForm({
       ? initialLines.map((l) => ({
           key: nextKey++,
           dbId: l.id,
+          type: (l.type ?? "rental_asset") as LineType,
           description: l.description,
           quantity: l.quantity,
         }))
-      : [{ key: nextKey++, description: "", quantity: 1 }]
+      : [{ key: nextKey++, type: "rental_asset" as LineType, description: "", quantity: 1 }]
   )
 
   function addLine() {
-    setLines((prev) => [...prev, { key: nextKey++, description: "", quantity: 1 }])
+    setLines((prev) => [
+      ...prev,
+      { key: nextKey++, type: "rental_asset" as LineType, description: "", quantity: 1 },
+    ])
   }
 
   function removeLine(key: number) {
@@ -90,6 +97,7 @@ export function OrderEditForm({
         notes: (fd.get("notes") as string) || undefined,
         lines: validLines.map((l) => ({
           id: l.dbId,
+          type: l.type,
           description: l.description,
           quantity: l.quantity,
         })),
@@ -206,7 +214,17 @@ export function OrderEditForm({
               )}
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-4">
+              <div className="space-y-1">
+                <Label className="text-xs">{t("lineType")}</Label>
+                <Select
+                  value={line.type}
+                  onChange={(e) => updateLine(line.key, "type", e.target.value)}
+                >
+                  <option value="rental_asset">{t("lineTypeRental")}</option>
+                  <option value="sold_product">{t("lineTypeSale")}</option>
+                </Select>
+              </div>
               <div className="space-y-1 sm:col-span-2">
                 <Label className="text-xs">
                   {t("deviceSpec")} <span className="text-destructive">*</span>

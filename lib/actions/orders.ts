@@ -102,6 +102,7 @@ export async function createOrder(
         d.lines.map((l, i) => ({
           id: createId(),
           orderId: id,
+          type: l.type,
           description: l.description,
           brand: l.brand || null,
           model: l.model || null,
@@ -251,6 +252,7 @@ export async function updateOrder(
         await tx
           .update(orderLines)
           .set({
+            type: l.type,
             description: l.description,
             brand: l.brand || null,
             model: l.model || null,
@@ -266,6 +268,7 @@ export async function updateOrder(
         toInsert.push({
           id: createId(),
           orderId: id,
+          type: l.type,
           description: l.description,
           brand: l.brand || null,
           model: l.model || null,

@@ -1,6 +1,6 @@
 "use server"
 
-import { eq, sql } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import type { LibSQLDatabase } from "drizzle-orm/libsql"
 import { db } from "@/lib/db"
 import { customers, orderLines, orderUnits, purchaseOrderLines } from "@/lib/db/schema"
@@ -36,7 +36,12 @@ export async function getNotionAssetRows(
     .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
     .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
 
-  const rows = assetId ? await query.where(eq(orderUnits.id, assetId)) : await query
+  // The Notion "Assets" database mirrors the rental fleet only — sold products
+  // (kind="sale") are not company-held assets and must not sync there.
+  const rentalOnly = eq(orderUnits.kind, "rental")
+  const rows = assetId
+    ? await query.where(and(eq(orderUnits.id, assetId), rentalOnly))
+    : await query.where(rentalOnly)
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? ""
   return rows

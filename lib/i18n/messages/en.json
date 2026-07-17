@@ -30,7 +30,8 @@
       "people": "People",
       "money": "Money",
       "system": "System"
-    }
+    },
+    "products": "Products for Sale"
   },
   "common": {
     "save": "Save",
@@ -1138,7 +1139,10 @@
         "active": "in progress",
         "pending": "not started"
       }
-    }
+    },
+    "lineType": "Type",
+    "lineTypeRental": "Rental asset",
+    "lineTypeSale": "Sold product"
   },
   "assets": {
     "title": "Assets",
@@ -1260,7 +1264,11 @@
       "retire": "Retire",
       "sell": "Mark sold",
       "mark_lost": "Mark lost",
-      "found": "Found"
+      "found": "Found",
+      "qc_pass": "Pass QC",
+      "qc_fail": "Fail QC",
+      "start_supplier_return": "Start supplier return",
+      "confirm_supplier_return": "Confirm supplier return"
     },
     "eventTypes": {
       "status_change": "Status changed",
@@ -1417,7 +1425,10 @@
       "selectPartner": "Select partner",
       "noReadyPo": "Mark the PO ready for pickup to create tasks",
       "collectedOf": "{picked} of {planned} collected"
-    }
+    },
+    "intakeKind": "Destination",
+    "intakeKindRental": "Rental asset",
+    "intakeKindSale": "Product for sale"
   },
   "warranty": {
     "title": "Warranty Center",
@@ -1877,5 +1888,13 @@
     "manualSignatureUploaded": "Signed file uploaded: {fileName}",
     "manualSignatureApproved": "Manually signed receipt approved",
     "manualSignatureRejected": "Signed file rejected: {reason}"
+  },
+  "products": {
+    "title": "Products for Sale",
+    "subtitle": "Items sold to customers — serialized units and quantity stock",
+    "serializedTitle": "Serialized products",
+    "serializedHint": "Sold units tracked individually by serial / tag",
+    "emptySerialized": "No serialized products for sale yet",
+    "stockTitle": "Quantity stock & catalog"
   }
 }

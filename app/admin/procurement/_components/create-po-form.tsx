@@ -21,13 +21,23 @@ type LineRow = {
   brand: string
   model: string
   requiresSerial: boolean
+  kind: "rental" | "sale"
   qtyOrdered: string
   unitCost: string
 }
 
 let nextKey = 1
 function emptyLine(): LineRow {
-  return { key: nextKey++, itemDescription: "", brand: "", model: "", requiresSerial: true, qtyOrdered: "1", unitCost: "" }
+  return {
+    key: nextKey++,
+    itemDescription: "",
+    brand: "",
+    model: "",
+    requiresSerial: true,
+    kind: "rental",
+    qtyOrdered: "1",
+    unitCost: "",
+  }
 }
 
 export function CreatePoForm({ suppliers }: { suppliers: Supplier[] }) {
@@ -61,6 +71,7 @@ export function CreatePoForm({ suppliers }: { suppliers: Supplier[] }) {
           brand: l.brand.trim() || undefined,
           model: l.model.trim() || undefined,
           requiresSerial: l.requiresSerial,
+          kind: l.kind,
           qtyOrdered: parseInt(l.qtyOrdered, 10) || 0,
           unitCost: l.unitCost.trim() ? parseFloat(l.unitCost) : undefined,
         })),
@@ -162,7 +173,19 @@ export function CreatePoForm({ suppliers }: { suppliers: Supplier[] }) {
                 onChange={(e) => updateLine(line.key, { unitCost: e.target.value })}
               />
             </div>
-            <div className="flex items-end gap-2 sm:col-span-6">
+            <div className="flex flex-wrap items-end gap-4 sm:col-span-6">
+              <div>
+                <Label className="text-xs">{t("intakeKind")}</Label>
+                <Select
+                  value={line.kind}
+                  onChange={(e) =>
+                    updateLine(line.key, { kind: e.target.value as "rental" | "sale" })
+                  }
+                >
+                  <option value="rental">{t("intakeKindRental")}</option>
+                  <option value="sale">{t("intakeKindSale")}</option>
+                </Select>
+              </div>
               <label className="flex items-center gap-1.5 text-xs">
                 <input
                   type="checkbox"

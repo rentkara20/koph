@@ -28,6 +28,8 @@ export async function getInventoryByLocation() {
   return db
     .select({ location: orderUnits.location, status: orderUnits.status, count: count() })
     .from(orderUnits)
+    // Rental fleet only — sold products (kind="sale") are not KARA-held inventory.
+    .where(eq(orderUnits.kind, "rental"))
     .groupBy(orderUnits.location, orderUnits.status)
     .orderBy(orderUnits.location)
 }
@@ -51,6 +53,8 @@ export async function getInventoryByModel() {
     .from(orderUnits)
     .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
     .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+    // Rental fleet only — sold products (kind="sale") are not KARA-held inventory.
+    .where(eq(orderUnits.kind, "rental"))
     .groupBy(brandCol, modelCol, orderUnits.status)
     .orderBy(desc(count()))
     .limit(100)

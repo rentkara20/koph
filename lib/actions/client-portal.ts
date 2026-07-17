@@ -83,7 +83,10 @@ export async function getClientPortalData(token: string) {
       currentRequestId: orderUnits.currentRequestId,
     })
     .from(orderUnits)
-    .where(eq(orderUnits.currentCustomerId, customer.id))
+    // Rental only: the portal's actions (return / extension / issue) are rental
+    // concepts. Sold products (kind="sale") transferred ownership and are not
+    // shown as returnable/extendable assets here.
+    .where(and(eq(orderUnits.currentCustomerId, customer.id), eq(orderUnits.kind, "rental")))
 
   const signatures = await db
     .select({

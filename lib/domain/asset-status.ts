@@ -62,13 +62,42 @@ const TRANSITIONS: Record<AssetAction, { from: AssetStatus[]; to: AssetStatus }>
 
 const GUIDED_ACTIONS = new Set<AssetAction>(["start_supplier_return", "confirm_supplier_return"])
 
+// Ownership/return semantics of a unit (order_unit.kind). NOT serialization —
+// a sale unit may or may not have a serial (non-serial sold products live in
+// qty-stock, not here). A rental unit is company-owned and returns; a sale
+// unit is sold to the customer and never re-enters the rental pool.
+export type AssetKind = "rental" | "sale"
+
+// Sale units follow a reduced lifecycle: once sold they never return to the
+// rental pool, so the rental-return actions are forbidden for them. A sale
+// unit that is lost/damaged is handled the same way (damaged/lost) but is
+// never "returned" or "restocked" into rentable inventory.
+const SALE_FORBIDDEN_ACTIONS: ReadonlySet<AssetAction> = new Set<AssetAction>([
+  "return", // rental collection back to warehouse
+  "restock", // returned/damaged -> in_stock rental pool
+  "found", // lost -> returned (rental limbo)
+])
+
+// For sale units, "sell" is the normal completion of the sale and is reachable
+// from any live customer-facing state, including the delivered handoff. Rental
+// units keep the base rule (sell only surplus stock: in_stock/returned/retired).
+const SALE_SELL_FROM: readonly AssetStatus[] = ["in_stock", "reserved", "assigned", "delivered"]
+
 // Terminal states: nothing moves out of them except found (lost) — kept
 // explicit here so retire/sell stay auditable one-way doors.
 export const TERMINAL_ASSET_STATUSES: AssetStatus[] = ["retired", "sold"]
 
-export function canAssetTransition(from: AssetStatus, action: AssetAction): boolean {
+export function canAssetTransition(
+  from: AssetStatus,
+  action: AssetAction,
+  kind: AssetKind = "rental"
+): boolean {
   const rule = TRANSITIONS[action]
   if (!rule) return false
+  if (kind === "sale") {
+    if (SALE_FORBIDDEN_ACTIONS.has(action)) return false
+    if (action === "sell") return SALE_SELL_FROM.includes(from)
+  }
   return rule.from.includes(from)
 }
 
@@ -76,9 +105,9 @@ export function assetStatusAfter(action: AssetAction): AssetStatus {
   return TRANSITIONS[action].to
 }
 
-export function assetActionsFor(status: AssetStatus): AssetAction[] {
-  return (Object.keys(TRANSITIONS) as AssetAction[]).filter((a) =>
-    TRANSITIONS[a].from.includes(status) && !GUIDED_ACTIONS.has(a)
+export function assetActionsFor(status: AssetStatus, kind: AssetKind = "rental"): AssetAction[] {
+  return (Object.keys(TRANSITIONS) as AssetAction[]).filter(
+    (a) => canAssetTransition(status, a, kind) && !GUIDED_ACTIONS.has(a)
   )
 }
 

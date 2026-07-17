@@ -164,7 +164,9 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
       .groupBy(purchaseOrders.id)
       .orderBy(purchaseOrders.orderedAt)
       .limit(LIMIT),
-    // WAREHOUSE — units awaiting QC after receipt
+    // WAREHOUSE — units awaiting QC after receipt. Intentionally all kinds:
+    // both rental assets and products-for-sale pass through receiving_qc and
+    // the warehouse must clear both queues.
     db
       .select({
         count: sql<number>`count(*)`,
@@ -240,11 +242,13 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
         )
       )
       .limit(100),
-    // Order ids that actually have delivered units (so we only remind on live rentals)
+    // Order ids that actually have delivered units (so we only remind on live
+    // rentals). Rental-only: collection reminders apply to rental assets that
+    // must return; sold products (kind="sale") never re-enter collection.
     db
       .select({ orderId: orderUnits.orderId })
       .from(orderUnits)
-      .where(eq(orderUnits.status, "delivered"))
+      .where(and(eq(orderUnits.status, "delivered"), eq(orderUnits.kind, "rental")))
       .groupBy(orderUnits.orderId),
     // OPERATIONS — active requests untouched for STALLED_DAYS (oversight signal)
     db

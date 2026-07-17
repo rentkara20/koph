@@ -1,22 +1,7 @@
-import { getTranslations } from "next-intl/server"
-import { getAccessoryItems, getAccessoryStock, getAccessoryUnits } from "@/lib/actions/accessories"
-import { AccessoriesManager } from "./_components/accessories-manager"
+import { redirect } from "next/navigation"
 
-export default async function AccessoriesPage() {
-  const [t, items, stock, units] = await Promise.all([
-    getTranslations("accessories"),
-    getAccessoryItems(),
-    getAccessoryStock(),
-    getAccessoryUnits(),
-  ])
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
-      </div>
-      <AccessoriesManager items={items} stock={stock} units={units} />
-    </div>
-  )
+// "Accessories" was renamed to "Products for Sale" (route /admin/products).
+// Kept as a permanent redirect so existing deep links / bookmarks resolve.
+export default function AccessoriesPage() {
+  redirect("/admin/products")
 }
