@@ -63,7 +63,7 @@ export default async function RequestDetailPage({
       await Promise.all(
         tasks.map(async (task) => [task.id, await getBatchSummaryForTask(task.id)] as const)
       )
-    ).filter(([, summary]) => summary !== null)
+    ).filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => entry[1] !== null)
   )
 
   return (
