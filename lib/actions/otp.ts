@@ -11,6 +11,9 @@ import { decideOtpVerification } from "@/lib/domain/otp-verification"
 import { getDeliveryOtpExpiryMs } from "@/lib/actions/settings"
 import { getSessionWithRole } from "@/lib/auth/session"
 import { logActivity } from "@/lib/utils/activity"
+import { getAffectedRequestIds, getTasksForRequest } from "@/lib/actions/tasks"
+
+const TERMINAL_TASK_STATUSES = ["closed", "rejected", "failed", "cancelled"]
 
 // Salt secret for OTP hashing. BETTER_AUTH_SECRET is always configured in any
 // real environment; the literal fallback only keeps local dev booting.
@@ -37,6 +40,23 @@ export async function generateDeliveryOtp(
     .where(eq(signatureRequests.id, signatureRequestId))
   if (!sig) return { error: "Signature request not found" }
   if (TERMINAL.includes(sig.status)) return { error: "This signature request is no longer active" }
+
+  // A signature request scoped to a genuine multi-request batch MUST carry
+  // partnerTaskId — isDeliveryStageUnlocked's requestId-scoped lookup filters
+  // on (partnerTaskId, requestId) and silently reports "unlocked" (no OTP
+  // configured) if it can't find this row. Refuse clearly instead of enabling
+  // an OTP that would never actually gate the courier's sign flow.
+  if (sig.requestId && !sig.partnerTaskId) {
+    const tasksForRequest = await getTasksForRequest(sig.requestId)
+    const activeTask = tasksForRequest.find((t) => !TERMINAL_TASK_STATUSES.includes(t.status))
+    const affectedRequestIds = activeTask ? await getAffectedRequestIds(activeTask.id) : []
+    if (affectedRequestIds.length > 1) {
+      return {
+        error:
+          "This signature request isn't linked to its delivery task, so an OTP here would never gate the courier's sign-off. Delete it and create a new one from the task.",
+      }
+    }
+  }
 
   const code = generateOtpCode()
   const otpHash = await hashOtp(sig.id, code, OTP_SECRET)

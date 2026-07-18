@@ -165,6 +165,7 @@ export async function BatchTaskView({ token, data }: { token: string; data: Data
                     <OnSiteSigningFlow
                       taskToken={token}
                       requestId={group.request.id}
+                      customerId={group.customer?.id}
                       customerName={group.customer?.name ?? null}
                       customerMobile={group.customer?.mobile ?? null}
                       stageUnlocked={stageUnlocked}

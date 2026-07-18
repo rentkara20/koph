@@ -3,7 +3,7 @@ import Link from "next/link"
 import { getLocale, getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getCustomerDeliveryOptions, getRequest, deleteRequest } from "@/lib/actions/requests"
-import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
+import { getTasksForRequest, getPartnersWithContracts, getBatchSummaryForTask } from "@/lib/actions/tasks"
 import { getSignatureRequestsForRequest } from "@/lib/actions/signatures"
 import { appBaseUrl } from "@/lib/utils/public-url"
 import { buildDeliveryNoteName } from "@/lib/utils/city-iata"
@@ -54,6 +54,17 @@ export default async function RequestDetailPage({
   if (!data) notFound()
 
   const { request, items, customer, requestType, logs } = data
+
+  // Delivery Batching v2 P5: only genuinely-batched tasks (touching >1
+  // request) get a summary — getBatchSummaryForTask returns null otherwise,
+  // so single-request tasks keep the exact existing WhatsApp wording.
+  const batchSummaryByTaskId = Object.fromEntries(
+    (
+      await Promise.all(
+        tasks.map(async (task) => [task.id, await getBatchSummaryForTask(task.id)] as const)
+      )
+    ).filter(([, summary]) => summary !== null)
+  )
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -268,6 +279,7 @@ export default async function RequestDetailPage({
                 requestTypeSlug={requestType?.slug ?? null}
                 taskServicesMap={taskServicesMap}
                 allServices={allServices}
+                batchSummaryByTaskId={batchSummaryByTaskId}
               />
               <div className="mt-3">
                 <PartialResolutionPanel

@@ -393,6 +393,7 @@ export function TasksSection({
   requestTypeSlug,
   taskServicesMap,
   allServices,
+  batchSummaryByTaskId,
 }: {
   requestId: string
   requestNumber: string
@@ -403,6 +404,10 @@ export function TasksSection({
   requestTypeSlug: string | null
   taskServicesMap: Record<string, ServiceItem[]>
   allServices: ActiveService[]
+  // Delivery Batching v2 P5 — present only for tasks that genuinely span more
+  // than one request; drives a single WhatsApp message covering the whole
+  // trip instead of naming just this page's own request.
+  batchSummaryByTaskId?: Record<string, { requestNumber: string; customerName: string | null }[]>
 }) {
   const messageTemplates = useOperationalMessageTemplates()
   const t = useTranslations("tasks")
@@ -526,11 +531,17 @@ export function TasksSection({
 
                   {/* WhatsApp the task link to the partner */}
                   {isActive && !isExpired && task.executionMode === "manual" && (() => {
+                    const batchSummary = batchSummaryByTaskId?.[task.id]
+                    const requestNumberValue = batchSummary
+                      ? `${batchSummary.length} طلبات ضمن هذه الرحلة: ${batchSummary
+                          .map((r) => (r.customerName ? `${r.requestNumber} (${r.customerName})` : r.requestNumber))
+                          .join("، ")}`
+                      : requestNumber
                     const url = buildWhatsappUrl(
                       task.partnerMobile,
                       renderMessageTemplate(messageTemplates.partnerAssignment, {
                         partner_name: task.partnerName ?? "",
-                        request_number: requestNumber,
+                        request_number: requestNumberValue,
                         task_link: taskLink(task.taskToken),
                       })
                     )

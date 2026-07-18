@@ -35,7 +35,12 @@ import {
   submitSignatureSchema,
   firstError,
 } from "@/lib/validation/schemas"
-import { getAffectedRequestIds, loadTaskBatchGroup } from "@/lib/actions/tasks"
+import { getAffectedRequestIds, loadTaskBatchGroup, getTasksForRequest } from "@/lib/actions/tasks"
+
+// Terminal task statuses — a signature request should never bind itself to a
+// task that's already closed/rejected/failed/cancelled (no active trip left
+// to gate).
+const TERMINAL_TASK_STATUSES = ["closed", "rejected", "failed", "cancelled"]
 
 // Statuses from which a signature request can never transition again
 const TERMINAL_SIGNATURE_STATUSES = ["signed", "rejected", "cancelled", "expired"]
@@ -167,9 +172,17 @@ export async function createSignatureRequest(
   const verificationId = generateVerificationId()
   const id = createId()
 
+  // Bind to the request's own active task when one exists — required so the
+  // per-request OTP/stage-unlock gate (isDeliveryStageUnlocked) can find this
+  // row for a batched task, which scopes its lookup by (partnerTaskId,
+  // requestId) and would otherwise silently treat the stage as unlocked.
+  const tasksForRequest = await getTasksForRequest(requestId)
+  const activeTask = tasksForRequest.find((t) => !TERMINAL_TASK_STATUSES.includes(t.status))
+
   await db.insert(signatureRequests).values({
     id,
     requestId,
+    partnerTaskId: activeTask?.id ?? null,
     initiatedBy: "admin",
     initiatorId: session.user.id,
     customerId: req.customerId,

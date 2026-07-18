@@ -35,9 +35,44 @@ type Props = {
   // P4) — routes signing to the request-scoped action instead of the legacy
   // whole-task one, so the signature never covers more than this one request.
   requestId?: string
+  // Set only for a batched task — lets consecutive groups for the SAME
+  // customer prefill name/mobile/national ID instead of re-asking, without
+  // touching the per-request signature_request record (each group still
+  // signs and submits independently).
+  customerId?: string
 }
 
-export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, stageUnlocked, requestId }: Props) {
+// sessionStorage-only prefill cache, keyed by task+customer, so the same
+// person isn't asked to retype their details for every request in one trip.
+// Never persisted server-side or reused across a different customerId — each
+// signature_request/customer_signature row is still written per-group as
+// before; this only saves the courier from re-typing.
+type PrefillData = { fullName: string; mobile: string; nationalId: string }
+
+function prefillKey(taskToken: string, customerId: string) {
+  return `koph:sig-prefill:${taskToken}:${customerId}`
+}
+
+function loadPrefill(taskToken: string, customerId?: string): PrefillData | null {
+  if (!customerId || typeof window === "undefined") return null
+  try {
+    const raw = window.sessionStorage.getItem(prefillKey(taskToken, customerId))
+    return raw ? (JSON.parse(raw) as PrefillData) : null
+  } catch {
+    return null
+  }
+}
+
+function savePrefill(taskToken: string, customerId: string | undefined, data: PrefillData) {
+  if (!customerId || typeof window === "undefined") return
+  try {
+    window.sessionStorage.setItem(prefillKey(taskToken, customerId), JSON.stringify(data))
+  } catch {
+    // Best-effort only — storage full/disabled never blocks signing.
+  }
+}
+
+export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, stageUnlocked, requestId, customerId }: Props) {
   const t = useTranslations("signatures.signing")
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -53,9 +88,10 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   const [saving, setSaving] = useState(false)
 
   function handleStart() {
-    setFullName(customerName ?? "")
-    setMobile(customerMobile ?? "")
-    setNationalId("")
+    const prefill = loadPrefill(taskToken, customerId)
+    setFullName(prefill?.fullName ?? customerName ?? "")
+    setMobile(prefill?.mobile ?? customerMobile ?? "")
+    setNationalId(prefill?.nationalId ?? "")
     setOtp("")
     setOutcome(null)
     setRemarks("")
@@ -108,6 +144,11 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
       : await signOnSiteByTaskToken(taskToken, payload)
     setSaving(false)
     if (result.error) { setError(translateActionError(result.error)); setStep("pad"); return }
+    savePrefill(taskToken, customerId, {
+      fullName: fullName.trim(),
+      mobile: mobile.trim(),
+      nationalId: nationalId.trim(),
+    })
     setStep("done")
     router.refresh()
   }

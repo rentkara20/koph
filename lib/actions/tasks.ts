@@ -144,6 +144,25 @@ export async function getAffectedRequestIds(taskId: string): Promise<string[]> {
   return [...ids]
 }
 
+// Delivery Batching v2 P5: request/customer summary for every request a task
+// touches, used to build ONE WhatsApp message covering the whole trip instead
+// of one message per request. Returns null for a plain single-request task —
+// callers should fall back to the existing single-requestNumber wording.
+export async function getBatchSummaryForTask(
+  taskId: string
+): Promise<{ requestNumber: string; customerName: string | null }[] | null> {
+  const affectedRequestIds = await getAffectedRequestIds(taskId)
+  if (affectedRequestIds.length <= 1) return null
+
+  const rows = await db
+    .select({ requestNumber: requests.requestNumber, customerName: customers.name })
+    .from(requests)
+    .leftJoin(customers, eq(customers.id, requests.customerId))
+    .where(inArray(requests.id, affectedRequestIds))
+
+  return rows
+}
+
 // ─── Delivery-task-item allocation ────────────────────────────────────────────
 // Guarded, atomic per-item allocation (mirrors the pickup_task_line / CAS
 // pattern already used for purchase_order_line quantities). The remaining-
