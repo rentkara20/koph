@@ -5,13 +5,7 @@ import { getBatchByStatementToken } from "@/lib/actions/payments"
 import { Badge } from "@/components/ui/badge"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { formatDate } from "@/lib/utils/format"
-
-const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success"> = {
-  draft: "outline",
-  approved: "info",
-  sent_to_finance: "warning",
-  paid: "success",
-}
+import { paymentBatchStatusVariant as BATCH_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 function makeMoney(locale: string) {
   const fmt = new Intl.NumberFormat(locale === "ar" ? "ar-SA" : "en-SA", {

@@ -1,15 +1,16 @@
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { Plus } from "lucide-react"
+import { FileSpreadsheet, Plus } from "lucide-react"
 import { getPartners } from "@/lib/actions/partners"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 export default async function PartnersPage() {
-  const [t, tCommon, partnerList] = await Promise.all([
+  const [t, tCommon, tImportExport, partnerList] = await Promise.all([
     getTranslations("partners"),
     getTranslations("common"),
+    getTranslations("importExport"),
     getPartners(),
   ])
 
@@ -17,10 +18,19 @@ export default async function PartnersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <Link href="/admin/partners/new" className={cn(buttonVariants(), "gap-1.5")}>
-          <Plus className="size-4" />
-          {t("new")}
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/admin/settings/import-export?module=partner"
+            className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}
+          >
+            <FileSpreadsheet className="size-4" />
+            {tImportExport("linkLabel")}
+          </Link>
+          <Link href="/admin/partners/new" className={cn(buttonVariants(), "gap-1.5")}>
+            <Plus className="size-4" />
+            {t("new")}
+          </Link>
+        </div>
       </div>
 
       {partnerList.length === 0 ? (

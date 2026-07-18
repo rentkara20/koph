@@ -2,12 +2,16 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { revokeAllOtherSessions } from "@/lib/actions/session-security"
 import { Button } from "@/components/ui/button"
 
 export function SessionSecurityPanel({ activeSessionCount }: { activeSessionCount: number }) {
   const router = useRouter()
+  const t = useTranslations("sessionSecurityPage")
+  const tToast = useTranslations("toast")
+  const tCommon = useTranslations("common")
   const [confirming, setConfirming] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -18,11 +22,14 @@ export function SessionSecurityPanel({ activeSessionCount }: { activeSessionCoun
       if (result.error) {
         toast.error(result.error)
       } else {
-        toast.success(`Signed out ${result.revoked ?? 0} other session(s).`)
+        const revoked = result.revoked ?? 0
+        toast.success(
+          t(revoked === 1 ? "signedOutResult" : "signedOutResultPlural", { count: revoked })
+        )
         router.refresh()
       }
     } catch {
-      toast.error("Something went wrong. Please try again.")
+      toast.error(tToast("genericError"))
     } finally {
       setLoading(false)
       setConfirming(false)
@@ -32,22 +39,22 @@ export function SessionSecurityPanel({ activeSessionCount }: { activeSessionCoun
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
-        {activeSessionCount} active session{activeSessionCount !== 1 ? "s" : ""} across all users.
+        {t(activeSessionCount === 1 ? "activeSessions" : "activeSessionsPlural", {
+          count: activeSessionCount,
+        })}
       </p>
       {!confirming ? (
         <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
-          Sign out all other sessions
+          {t("signOutAllOthers")}
         </Button>
       ) : (
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            This signs out every user except you. Continue?
-          </span>
+          <span className="text-sm text-muted-foreground">{t("confirmSignOutBody")}</span>
           <Button variant="destructive" size="sm" onClick={handleRevoke} disabled={loading}>
-            {loading ? "Signing out…" : "Confirm"}
+            {loading ? t("signingOut") : t("confirm")}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setConfirming(false)} disabled={loading}>
-            Cancel
+            {tCommon("cancel")}
           </Button>
         </div>
       )}

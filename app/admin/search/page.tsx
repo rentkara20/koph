@@ -2,22 +2,7 @@ import Link from "next/link"
 import { globalSearch } from "@/lib/actions/search"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-
-const REQUEST_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  draft: "outline",
-  assigned: "info",
-  in_progress: "warning",
-  completed: "success",
-  failed: "destructive",
-  on_hold: "secondary",
-  cancelled: "secondary",
-}
-
-const PARTNER_STATUS_VARIANT: Record<string, "outline" | "success" | "secondary"> = {
-  active: "success",
-  inactive: "secondary",
-  suspended: "outline",
-}
+import { adminRequestStatusVariant as REQUEST_STATUS_VARIANT, partnerStatusVariant as PARTNER_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function SearchPage({
   searchParams,

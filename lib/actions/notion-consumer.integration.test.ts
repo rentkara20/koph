@@ -6,7 +6,7 @@
 import { afterAll, beforeAll, describe, expect, test, vi } from "vitest"
 import { createClient } from "@libsql/client"
 import { drizzle } from "drizzle-orm/libsql"
-import { migrate } from "drizzle-orm/libsql/migrator"
+import { migrate } from "@/lib/db/test-migrate"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -43,7 +43,7 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "notion-consumer-test-"))
   const client = createClient({ url: `file:${join(dir, "test.db")}` })
   db = drizzle(client, { schema })
-  await migrate(db, { migrationsFolder: "./lib/db/migrations" })
+  await migrate(client, { migrationsFolder: "./lib/db/migrations" })
 })
 
 afterAll(() => {

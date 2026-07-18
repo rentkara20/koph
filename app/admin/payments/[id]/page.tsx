@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { getBatchWithPayments } from "@/lib/actions/payments"
@@ -11,20 +12,7 @@ import { BatchActions } from "./_components/batch-actions"
 import { CopyStatementLink } from "./_components/copy-statement-link"
 import { PaymentLineActions } from "./_components/payment-line-actions"
 import { cn } from "@/lib/utils"
-
-const STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success"> = {
-  draft: "outline",
-  approved: "info",
-  sent_to_finance: "warning",
-  paid: "success",
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  draft: "Draft",
-  approved: "Approved",
-  sent_to_finance: "Sent to Finance",
-  paid: "Paid",
-}
+import { paymentBatchStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function PaymentBatchPage({
   params,
@@ -32,6 +20,13 @@ export default async function PaymentBatchPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const t = await getTranslations("payments")
+  const STATUS_LABEL: Record<string, string> = {
+    draft: t("statusDraft"),
+    approved: t("statusApproved"),
+    sent_to_finance: t("statusSentToFinance"),
+    paid: t("statusPaid"),
+  }
   const data = await getBatchWithPayments(id)
 
   if (!data) notFound()
@@ -58,7 +53,7 @@ export default async function PaymentBatchPage({
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground mt-0.5">
-              Generated {formatDate(batch.generatedAt)}
+              {t("generated", { date: formatDate(batch.generatedAt) })}
             </p>
           </div>
         </div>
@@ -70,19 +65,19 @@ export default async function PaymentBatchPage({
         <CardContent className="pt-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div>
-              <p className="text-xs text-muted-foreground">Partner</p>
+              <p className="text-xs text-muted-foreground">{t("partner")}</p>
               <p className="font-medium mt-0.5">{batch.partnerName ?? "—"}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Period</p>
+              <p className="text-xs text-muted-foreground">{t("period")}</p>
               <p className="font-mono font-medium mt-0.5">{batch.period}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Total amount (SAR)</p>
+              <p className="text-xs text-muted-foreground">{t("totalAmountSar")}</p>
               <p className="font-semibold tabular-nums mt-0.5">{batch.totalAmount.toFixed(2)}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Payments</p>
+              <p className="text-xs text-muted-foreground">{t("paymentsCount")}</p>
               <p className="font-medium mt-0.5">{payments.length}</p>
             </div>
           </div>
@@ -93,19 +88,19 @@ export default async function PaymentBatchPage({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
                 {batch.approvedAt && (
                   <div>
-                    <p className="text-xs text-muted-foreground">Approved</p>
+                    <p className="text-xs text-muted-foreground">{t("approvedAt")}</p>
                     <p className="font-medium mt-0.5">{formatDate(batch.approvedAt)}</p>
                   </div>
                 )}
                 {batch.sentAt && (
                   <div>
-                    <p className="text-xs text-muted-foreground">Sent to finance</p>
+                    <p className="text-xs text-muted-foreground">{t("sentAt")}</p>
                     <p className="font-medium mt-0.5">{formatDate(batch.sentAt)}</p>
                   </div>
                 )}
                 {batch.paidAt && (
                   <div>
-                    <p className="text-xs text-muted-foreground">Paid</p>
+                    <p className="text-xs text-muted-foreground">{t("paidAt")}</p>
                     <p className="font-medium mt-0.5">{formatDate(batch.paidAt)}</p>
                   </div>
                 )}
@@ -137,7 +132,7 @@ export default async function PaymentBatchPage({
         <CardHeader>
           <div className="flex items-center justify-between gap-4">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Payments ({payments.length})
+              {t("paymentsCount")} ({payments.length})
             </CardTitle>
             {batch.status === "paid" && (
               <BatchActions
@@ -159,17 +154,17 @@ export default async function PaymentBatchPage({
         <CardContent className="p-0">
           {payments.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground text-center">
-              No payments in this batch.
+              {t("noPayments")}
             </p>
           ) : (
             <table className="w-full text-sm">
               <thead className="border-b bg-muted/50">
                 <tr>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Request</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">Pricing</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">Qty</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">Unit (SAR)</th>
-                  <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Total (SAR)</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">{t("request")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">{t("pricing")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">{t("qty")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">{t("unitSar")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">{t("totalSar")}</th>
                   <th className="px-4 py-2.5 text-end font-medium text-muted-foreground"></th>
                 </tr>
               </thead>
@@ -213,7 +208,7 @@ export default async function PaymentBatchPage({
               <tfoot className="border-t bg-muted/50">
                 <tr>
                   <td colSpan={4} className="px-4 py-2.5 text-right text-sm font-medium text-muted-foreground hidden sm:table-cell">
-                    Total
+                    {t("total")}
                   </td>
                   <td className="px-4 py-2.5 font-semibold tabular-nums">
                     {payments.reduce((s, p) => s + p.totalAmount, 0).toFixed(2)}

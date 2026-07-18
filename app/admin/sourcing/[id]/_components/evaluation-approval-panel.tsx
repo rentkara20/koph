@@ -12,11 +12,9 @@ import { translateActionError } from "@/lib/i18n/action-errors"
 type QuotationOption = { id: string; supplierName: string | null }
 
 export function EvaluationApprovalPanel({
-  sourcingRequestId,
   status,
   latestEvaluationId,
 }: {
-  sourcingRequestId: string
   status: string
   quotationOptions: QuotationOption[]
   latestEvaluationId: string | null
@@ -83,14 +81,14 @@ export function EvaluationApprovalPanel({
     )
   }
 
-  if (status === "approved") {
+  if (status === "approved" && latestEvaluationId) {
     return (
       <div className="space-y-3 rounded-lg border p-3">
         {error && <p className="text-sm text-destructive">{error}</p>}
         <Button
           size="sm"
           disabled={pending}
-          onClick={() => run(() => handoffToProcurementCase({ sourcingRequestId }), "handedOff", "handoff")}
+          onClick={() => run(() => handoffToProcurementCase({ evaluationId: latestEvaluationId }), "handedOff", "handoff")}
         >
           {pending && <Loader2 className="me-2 size-4 animate-spin" />}
           {t("handoff")}

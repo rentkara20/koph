@@ -170,6 +170,71 @@ export const DEFAULT_RFQ_TEMPLATES: RfqMessageTemplates = {
   ].join("\n"),
 }
 
+export type WarrantyRequestMessageTemplates = {
+  whatsappBody: string
+  emailSubject: string
+  emailBody: string
+}
+
+export const WARRANTY_REQUEST_TEMPLATE_VARIABLES = [
+  "supplier_name",
+  "batch_ref",
+  "warranty_product",
+  "items",
+  "company_name",
+] as const
+
+export const DEFAULT_WARRANTY_REQUEST_TEMPLATES: WarrantyRequestMessageTemplates = {
+  whatsappBody: [
+    "مرحباً {{supplier_name}}،",
+    "",
+    "طلب تفعيل ضمان — مرجع {{batch_ref}}",
+    "",
+    'نرجو تفعيل ضمان "{{warranty_product}}" للأجهزة التالية:',
+    "",
+    "{{items}}",
+    "",
+    "الرجاء تزويدنا بتاريخ بداية ونهاية الضمان لكل جهاز.",
+    "",
+    "شكراً لكم،",
+    "{{company_name}}",
+  ].join("\n"),
+  emailSubject: "Warranty activation request {{batch_ref}} | {{company_name}}",
+  emailBody: [
+    "Dear {{supplier_name}},",
+    "",
+    'Please activate "{{warranty_product}}" warranty for the following devices (ref {{batch_ref}}):',
+    "",
+    "{{items}}",
+    "",
+    "Please provide the warranty start and end date for each device.",
+    "",
+    "Kind regards,",
+    "{{company_name}}",
+  ].join("\n"),
+}
+
+export function validateWarrantyRequestTemplates(templates: WarrantyRequestMessageTemplates): { error?: string } {
+  const fields = [templates.whatsappBody, templates.emailSubject, templates.emailBody]
+  for (const field of fields) {
+    for (const match of field.matchAll(VARIABLE_PATTERN)) {
+      if (!WARRANTY_REQUEST_TEMPLATE_VARIABLES.includes(match[1] as (typeof WARRANTY_REQUEST_TEMPLATE_VARIABLES)[number])) {
+        return { error: `Unknown template variable: {{${match[1]}}}` }
+      }
+    }
+  }
+  if (!templates.whatsappBody.includes("{{items}}")) return { error: "WhatsApp template must include {{items}}" }
+  if (!templates.emailBody.includes("{{items}}")) return { error: "Email template must include {{items}}" }
+  if (!templates.whatsappBody.trim() || !templates.emailSubject.trim() || !templates.emailBody.trim()) {
+    return { error: "Templates cannot be empty" }
+  }
+  if (templates.whatsappBody.length > 4000 || templates.emailBody.length > 10000) {
+    return { error: "Template is too long" }
+  }
+  if (templates.emailSubject.length > 200) return { error: "Email subject is too long" }
+  return {}
+}
+
 const VARIABLE_PATTERN = /{{\s*([a-z_]+)\s*}}/g
 
 export function renderMessageTemplate(

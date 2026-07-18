@@ -10,11 +10,15 @@ import { OTP_EXPIRY_MIN_HOURS, OTP_EXPIRY_MAX_HOURS } from "@/lib/utils/otp-hash
 import {
   DEFAULT_RFQ_TEMPLATES,
   DEFAULT_OPERATIONAL_TEMPLATES,
+  DEFAULT_WARRANTY_REQUEST_TEMPLATES,
   validateRfqTemplates,
   validateOperationalTemplates,
+  validateWarrantyRequestTemplates,
   type OperationalMessageTemplates,
   type RfqMessageTemplates,
+  type WarrantyRequestMessageTemplates,
 } from "@/lib/domain/message-templates"
+import { ENGLISH_FONT_OPTIONS, type EnglishFontFamily } from "@/lib/domain/fonts"
 
 export type SettingsActionResult = { error?: string }
 
@@ -82,6 +86,48 @@ export async function resetRfqMessageTemplates(): Promise<SettingsActionResult> 
   await setSetting("messageTemplate.rfq", DEFAULT_RFQ_TEMPLATES, session.user.id)
   revalidatePath("/admin/settings/message-templates")
   revalidatePath("/admin/sourcing", "layout")
+  return {}
+}
+
+// ─── Warranty request message ───────────────────────────────────────────────
+
+export async function getWarrantyRequestMessageTemplates(): Promise<WarrantyRequestMessageTemplates> {
+  const stored = await getSetting<Partial<WarrantyRequestMessageTemplates>>("messageTemplate.warrantyRequest", {})
+  return {
+    whatsappBody: stored.whatsappBody || DEFAULT_WARRANTY_REQUEST_TEMPLATES.whatsappBody,
+    emailSubject: stored.emailSubject || DEFAULT_WARRANTY_REQUEST_TEMPLATES.emailSubject,
+    emailBody: stored.emailBody || DEFAULT_WARRANTY_REQUEST_TEMPLATES.emailBody,
+  }
+}
+
+export async function readWarrantyRequestTemplatesForAdmin(): Promise<WarrantyRequestMessageTemplates | null> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return null
+  return getWarrantyRequestMessageTemplates()
+}
+
+export async function updateWarrantyRequestTemplates(
+  input: WarrantyRequestMessageTemplates
+): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  const validation = validateWarrantyRequestTemplates(input)
+  if (validation.error) return validation
+
+  await setSetting("messageTemplate.warrantyRequest", input, session.user.id)
+  revalidatePath("/admin/settings/message-templates")
+  revalidatePath("/admin/warranty", "layout")
+  return {}
+}
+
+export async function resetWarrantyRequestTemplates(): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  await setSetting("messageTemplate.warrantyRequest", DEFAULT_WARRANTY_REQUEST_TEMPLATES, session.user.id)
+  revalidatePath("/admin/settings/message-templates")
+  revalidatePath("/admin/warranty", "layout")
   return {}
 }
 
@@ -253,6 +299,41 @@ export async function updateDeliveryOtpSettings(
   return {}
 }
 
+// ─── Warranty settings ───────────────────────────────────────────────────────
+
+const WARRANTY_DEFAULTS = {
+  warrantyExpiryAlertDays: 30,
+} as const
+
+/** Days-before-expiry threshold for the "expiring soon" warranty bucket, bounded 1–180 (default 30). */
+export async function getWarrantyExpiryAlertDays(): Promise<number> {
+  const days = await getSetting("warrantyExpiryAlertDays", WARRANTY_DEFAULTS.warrantyExpiryAlertDays)
+  return Math.min(180, Math.max(1, Math.floor(days)))
+}
+
+export async function readWarrantySettingsForAdmin(): Promise<{ expiryAlertDays: number } | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+  return { expiryAlertDays: await getWarrantyExpiryAlertDays() }
+}
+
+export async function updateWarrantySettings(
+  input: Partial<{ expiryAlertDays: number }>
+): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+
+  if (input.expiryAlertDays !== undefined) {
+    const n = input.expiryAlertDays
+    if (!Number.isInteger(n) || n < 1 || n > 180) return { error: "Expiry alert window must be 1–180 days" }
+    await setSetting("warrantyExpiryAlertDays", n, session.user.id)
+  }
+
+  revalidatePath("/admin/warranty")
+  revalidatePath("/admin/settings/warranty")
+  return {}
+}
+
 // ─── Pricing & payments settings ────────────────────────────────────────────
 
 export type PricingPaymentSettings = {
@@ -394,6 +475,7 @@ export async function updateNotificationSettings(
 
 export type BrandingSettings = {
   defaultLocale: "en" | "ar"
+  englishFontFamily: EnglishFontFamily
 }
 
 export async function getDefaultLocale(): Promise<"en" | "ar"> {
@@ -401,10 +483,19 @@ export async function getDefaultLocale(): Promise<"en" | "ar"> {
   return locale === "ar" ? "ar" : "en"
 }
 
+export async function getEnglishFontFamily(): Promise<EnglishFontFamily> {
+  const font = await getSetting<EnglishFontFamily>("englishFontFamily", "geist")
+  return ENGLISH_FONT_OPTIONS.includes(font) ? font : "geist"
+}
+
 export async function readBrandingSettingsForAdmin(): Promise<BrandingSettings | null> {
   const session = await getSessionWithRole("admin")
   if (!session) return null
-  return { defaultLocale: await getDefaultLocale() }
+  const [defaultLocale, englishFontFamily] = await Promise.all([
+    getDefaultLocale(),
+    getEnglishFontFamily(),
+  ])
+  return { defaultLocale, englishFontFamily }
 }
 
 export async function updateBrandingSettings(
@@ -420,7 +511,15 @@ export async function updateBrandingSettings(
     await setSetting("defaultLocale", input.defaultLocale, session.user.id)
   }
 
+  if (input.englishFontFamily !== undefined) {
+    if (!ENGLISH_FONT_OPTIONS.includes(input.englishFontFamily)) {
+      return { error: "Unsupported font family" }
+    }
+    await setSetting("englishFontFamily", input.englishFontFamily, session.user.id)
+  }
+
   revalidatePath("/admin/settings/branding")
+  revalidatePath("/", "layout")
   return {}
 }
 

@@ -40,6 +40,7 @@ interface NamedListManagerProps {
 export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedSlugs = [] }: NamedListManagerProps) {
   const router = useRouter()
   const tToast = useTranslations("toast")
+  const tCommon = useTranslations("common")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editEn, setEditEn] = useState("")
   const [editAr, setEditAr] = useState("")
@@ -104,7 +105,7 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
                     disabled={idx === 0 || loading !== null}
                     onClick={() => run(`up-${item.id}`, () => actions.move(item.id, "up"))}
                     className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    aria-label="Move up"
+                    aria-label={tCommon("moveUp")}
                   >
                     <ChevronUp className="size-3" />
                   </button>
@@ -112,7 +113,7 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
                     disabled={idx === items.length - 1 || loading !== null}
                     onClick={() => run(`down-${item.id}`, () => actions.move(item.id, "down"))}
                     className="rounded p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    aria-label="Move down"
+                    aria-label={tCommon("moveDown")}
                   >
                     <ChevronDown className="size-3" />
                   </button>
@@ -123,13 +124,13 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
                     <Input
                       value={editEn}
                       onChange={(e) => setEditEn(e.target.value)}
-                      placeholder="English"
+                      placeholder={tCommon("nameEnglish")}
                       className="h-9 min-w-0 flex-1 text-sm"
                     />
                     <Input
                       value={editAr}
                       onChange={(e) => setEditAr(e.target.value)}
-                      placeholder="عربي"
+                      placeholder={tCommon("nameArabic")}
                       className="h-9 min-w-0 flex-1 text-sm"
                       dir="rtl"
                     />
@@ -137,14 +138,14 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
                       onClick={() => saveEdit(item.id)}
                       disabled={loading !== null}
                       className="flex size-9 items-center justify-center text-green-600 hover:text-green-700"
-                      aria-label="Save"
+                      aria-label={tCommon("save")}
                     >
                       <Check className="size-4" />
                     </button>
                     <button
                       onClick={() => setEditingId(null)}
                       className="flex size-9 items-center justify-center text-muted-foreground hover:text-foreground"
-                      aria-label="Cancel"
+                      aria-label={tCommon("cancel")}
                     >
                       <X className="size-4" />
                     </button>
@@ -153,7 +154,7 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1.5 text-sm font-medium">
                       {item.nameEn}
-                      {locked && <Lock className="size-3 text-muted-foreground" aria-label="System-managed" />}
+                      {locked && <Lock className="size-3 text-muted-foreground" aria-label={tCommon("systemManaged")} />}
                     </p>
                     <p className="text-xs text-muted-foreground" dir="rtl">
                       {item.nameAr}
@@ -164,12 +165,12 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
                 {editingId !== item.id && (
                   <div className="flex shrink-0 items-center gap-2">
                     <Badge variant={item.isActive ? "success" : "secondary"}>
-                      {item.isActive ? "Active" : "Inactive"}
+                      {item.isActive ? tCommon("active") : tCommon("inactive")}
                     </Badge>
                     <button
                       onClick={() => startEdit(item)}
                       className="flex size-9 items-center justify-center text-muted-foreground hover:text-foreground"
-                      aria-label="Edit"
+                      aria-label={tCommon("edit")}
                     >
                       <Pencil className="size-3.5" />
                     </button>
@@ -179,7 +180,7 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
                         disabled={loading !== null}
                         className="min-h-9 px-2 text-xs text-muted-foreground hover:text-foreground"
                       >
-                        {item.isActive ? "Disable" : "Enable"}
+                        {item.isActive ? tCommon("disable") : tCommon("enable")}
                       </button>
                     )}
                   </div>
@@ -201,7 +202,7 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs">
-                Name (English) <span className="text-destructive">*</span>
+                {tCommon("nameEnglish")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 value={addEn}
@@ -212,7 +213,7 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">
-                الاسم (عربي) <span className="text-destructive">*</span>
+                {tCommon("nameArabic")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 value={addAr}
@@ -229,10 +230,10 @@ export function NamedListManager({ items, actions, emptyLabel, addLabel, lockedS
               size="sm"
               onClick={() => { setShowAdd(false); setAddEn(""); setAddAr(""); setError("") }}
             >
-              Cancel
+              {tCommon("cancel")}
             </Button>
             <Button type="submit" size="sm" disabled={loading === "add"}>
-              {loading === "add" ? "Adding…" : addLabel}
+              {loading === "add" ? tCommon("adding") : addLabel}
             </Button>
           </div>
         </form>

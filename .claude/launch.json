@@ -9,6 +9,20 @@
       "autoPort": true
     },
     {
+      "name": "koph-dev-2",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3010,
+      "autoPort": true
+    },
+    {
+      "name": "koph-dev-3",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3013,
+      "autoPort": true
+    },
+    {
       "name": "koph-prod-local",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start"],

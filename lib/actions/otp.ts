@@ -83,7 +83,11 @@ export async function generateDeliveryOtp(
 
 export async function verifyDeliveryOtp(
   taskToken: string,
-  code: string
+  code: string,
+  // Delivery Batching v2 P4: set only for a genuine cross-request batch, to
+  // scope the OTP lookup to this one request's own signature request instead
+  // of the (nonexistent, for a batch) single task-wide one.
+  requestId?: string
 ): Promise<OtpVerifyResult> {
   if (!checkRateLimit(`otp-verify:${taskToken}`, 10)) {
     return { error: "Too many attempts. Please wait a minute and try again." }
@@ -97,13 +101,24 @@ export async function verifyDeliveryOtp(
     .where(eq(partnerTasks.taskToken, taskToken))
   if (!task) return { error: "Task not found" }
   if (task.expiresAt < Date.now()) return { error: "Link expired" }
-  if (!task.requestId) return { error: "Task has no linked request" }
+  const scopedRequestId = requestId ?? task.requestId
+  if (!scopedRequestId) return { error: "Task has no linked request" }
 
-  // The active delivery signature request carrying an OTP for this request.
+  // The active delivery signature request carrying an OTP for this request —
+  // scoped to this task's own signature request when a batch requestId is
+  // given, so one request group's OTP can never verify a different group.
   const [sig] = await db
     .select()
     .from(signatureRequests)
-    .where(and(eq(signatureRequests.requestId, task.requestId), isNotNull(signatureRequests.otpHash)))
+    .where(
+      requestId
+        ? and(
+            eq(signatureRequests.partnerTaskId, task.id),
+            eq(signatureRequests.requestId, requestId),
+            isNotNull(signatureRequests.otpHash)
+          )
+        : and(eq(signatureRequests.requestId, scopedRequestId), isNotNull(signatureRequests.otpHash))
+    )
     .orderBy(desc(signatureRequests.createdAt))
     .limit(1)
   if (!sig || TERMINAL.includes(sig.status)) return { error: "No active verification code. Ask the office to send one." }
@@ -147,17 +162,27 @@ export async function verifyDeliveryOtp(
 
 // ─── Courier (public): is the signature stage unlocked for this task? ─────────
 
-export async function isDeliveryStageUnlocked(taskToken: string): Promise<boolean> {
+export async function isDeliveryStageUnlocked(taskToken: string, requestId?: string): Promise<boolean> {
   const [task] = await db
-    .select({ requestId: partnerTasks.requestId })
+    .select({ id: partnerTasks.id, requestId: partnerTasks.requestId })
     .from(partnerTasks)
     .where(eq(partnerTasks.taskToken, taskToken))
-  if (!task?.requestId) return false
+  if (!task) return false
+  const scopedRequestId = requestId ?? task.requestId
+  if (!scopedRequestId) return false
 
   const [sig] = await db
     .select({ otpEnabled: signatureRequests.otpEnabled, otpVerifiedAt: signatureRequests.otpVerifiedAt })
     .from(signatureRequests)
-    .where(and(eq(signatureRequests.requestId, task.requestId), isNotNull(signatureRequests.otpHash)))
+    .where(
+      requestId
+        ? and(
+            eq(signatureRequests.partnerTaskId, task.id),
+            eq(signatureRequests.requestId, requestId),
+            isNotNull(signatureRequests.otpHash)
+          )
+        : and(eq(signatureRequests.requestId, scopedRequestId), isNotNull(signatureRequests.otpHash))
+    )
     .orderBy(desc(signatureRequests.createdAt))
     .limit(1)
 

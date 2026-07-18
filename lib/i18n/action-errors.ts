@@ -43,6 +43,7 @@ const AR: Record<string, string> = {
   "Failed to delete customer location": "تعذر حذف موقع العميل",
   "Failed to update contact locations": "تعذر تحديث مواقع الموظف",
   "Item not found": "العنصر غير موجود",
+  "Serial number already exists": "الرقم التسلسلي مستخدم من قبل",
   "Name is required": "الاسم مطلوب",
 
   // Tasks
@@ -164,5 +165,12 @@ function isArabicLocale(): boolean {
  */
 export function translateActionError(message: string): string {
   if (!isArabicLocale()) return message
-  return AR[message] ?? message
+  if (AR[message]) return AR[message]
+  // Parameterized errors: "<known prefix>: <value>" keeps the value verbatim.
+  const sep = message.indexOf(": ")
+  if (sep > 0) {
+    const prefix = message.slice(0, sep)
+    if (AR[prefix]) return `${AR[prefix]}: ${message.slice(sep + 2)}`
+  }
+  return message
 }

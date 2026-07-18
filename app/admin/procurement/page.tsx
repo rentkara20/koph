@@ -3,14 +3,7 @@ import { getTranslations } from "next-intl/server"
 import { getPurchaseOrders } from "@/lib/actions/procurement"
 import { Badge } from "@/components/ui/badge"
 import { formatDate } from "@/lib/utils/format"
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  draft: "secondary",
-  ordered: "default",
-  partially_received: "warning",
-  received: "success",
-  cancelled: "destructive",
-}
+import { poStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function ProcurementPage() {
   const [t, pos] = await Promise.all([getTranslations("procurement"), getPurchaseOrders()])

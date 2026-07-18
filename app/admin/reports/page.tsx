@@ -11,24 +11,7 @@ import {
 } from "@/lib/actions/reports"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-
-const REQUEST_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
-  draft: "outline",
-  assigned: "info",
-  in_progress: "warning",
-  completed: "success",
-  failed: "destructive",
-  on_hold: "secondary",
-  cancelled: "secondary",
-  rescheduled: "outline",
-}
-
-const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success"> = {
-  draft: "outline",
-  approved: "info",
-  sent_to_finance: "warning",
-  paid: "success",
-}
+import { adminRequestStatusVariant as REQUEST_STATUS_VARIANT, paymentBatchStatusVariant as BATCH_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function ReportsPage() {
   const [

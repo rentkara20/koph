@@ -18,7 +18,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  --font-sans: var(--font-family-sans);
   --font-mono: var(--font-geist-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -64,6 +64,8 @@
 }
 
 :root {
+  --font-family-sans: var(--font-geist-sans), Inter, system-ui, sans-serif;
+
   /* ─── KARA brand ────────────────────────────────────────────────────────────
    * Purple #512A83 / Blue #60B5D1 — the identity, not decoration. Wired into
    * primary, focus ring, and sidebar active below so every surface carries it.

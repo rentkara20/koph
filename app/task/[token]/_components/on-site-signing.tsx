@@ -4,7 +4,7 @@ import { useRef, useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { CheckCircle2, ChevronRight, PenLine, X } from "lucide-react"
-import { signOnSiteByTaskToken } from "@/lib/actions/signatures"
+import { signOnSiteByTaskToken, signOnSiteForRequestGroup } from "@/lib/actions/signatures"
 import { verifyDeliveryOtp } from "@/lib/actions/otp"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,9 +31,13 @@ type Props = {
   customerMobile: string | null
   // False when a delivery OTP is configured and not yet verified for this task.
   stageUnlocked: boolean
+  // Set only for a genuine cross-request batched task (Delivery Batching v2
+  // P4) — routes signing to the request-scoped action instead of the legacy
+  // whole-task one, so the signature never covers more than this one request.
+  requestId?: string
 }
 
-export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, stageUnlocked }: Props) {
+export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, stageUnlocked, requestId }: Props) {
   const t = useTranslations("signatures.signing")
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -65,7 +69,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     if (!/^\d{6}$/.test(otp.trim())) { setError(t("otpPlaceholder")); return }
     setSaving(true)
     setError("")
-    const result = await verifyDeliveryOtp(taskToken, otp.trim())
+    const result = await verifyDeliveryOtp(taskToken, otp.trim(), requestId)
     setSaving(false)
     if (result.error) { setError(translateActionError(result.error)); return }
     setStep("outcome")
@@ -90,7 +94,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   async function handleConfirm(data: string) {
     setSaving(true)
     setError("")
-    const result = await signOnSiteByTaskToken(taskToken, {
+    const payload = {
       fullName: fullName.trim(),
       nationalId: nationalId.trim(),
       mobile: mobile.trim() || undefined,
@@ -98,7 +102,10 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
       deliveryOutcome: outcome ?? undefined,
       remarks: remarks.trim() || undefined,
       signatureData: data,
-    })
+    }
+    const result = requestId
+      ? await signOnSiteForRequestGroup(taskToken, requestId, payload)
+      : await signOnSiteByTaskToken(taskToken, payload)
     setSaving(false)
     if (result.error) { setError(translateActionError(result.error)); setStep("pad"); return }
     setStep("done")

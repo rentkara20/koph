@@ -5,19 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
 import { SignatureDeleteButton } from "./_components/signature-delete-button"
-
-type StatusVariant = "outline" | "info" | "success" | "secondary"
-
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  draft: "outline",
-  sent: "info",
-  opened: "info",
-  otp_verified: "info",
-  signed: "success",
-  rejected: "secondary",
-  expired: "secondary",
-  cancelled: "secondary",
-}
+import { signatureStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",

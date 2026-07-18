@@ -8,18 +8,80 @@ import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 
 export type ActionResult = { error?: string; id?: string }
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+export type CustomerCoreInput = {
+  name: string
+  contactPerson?: string | null
+  mobile?: string | null
+  email?: string | null
+  city?: string | null
+  address?: string | null
+  mapsLink?: string | null
+  notes?: string | null
+}
+
+// Tx-scoped create, reused by the "use server" wrapper below AND the CSV
+// Import/Export Center. Throws on invalid input (mirrors createAssetCore's
+// throw-in-Core / catch-in-wrapper convention) rather than returning an error
+// envelope, since a Core function has no ActionResult contract to honor.
+export async function createCustomerCore(
+  tx: Tx,
+  input: CustomerCoreInput,
+  actorUserId: string | null
+): Promise<{ id: string }> {
+  const name = input.name?.trim()
+  if (!name) throw new Error("Name is required")
+
+  const id = createId()
+  await tx.insert(customers).values({
+    id,
+    name,
+    contactPerson: input.contactPerson || null,
+    mobile: input.mobile || null,
+    email: input.email || null,
+    city: input.city || null,
+    address: input.address || null,
+    mapsLink: input.mapsLink || null,
+    notes: input.notes || null,
+    createdBy: actorUserId,
+  })
+
+  return { id }
+}
+
+export async function updateCustomerCore(
+  tx: Tx,
+  id: string,
+  input: CustomerCoreInput
+): Promise<{ id: string }> {
+  const name = input.name?.trim()
+  if (!name) throw new Error("Name is required")
+
+  await tx
+    .update(customers)
+    .set({
+      name,
+      contactPerson: input.contactPerson || null,
+      mobile: input.mobile || null,
+      email: input.email || null,
+      city: input.city || null,
+      address: input.address || null,
+      mapsLink: input.mapsLink || null,
+      notes: input.notes || null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(customers.id, id))
+
+  return { id }
+}
 
 export async function createCustomer(formData: FormData): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  const name = (formData.get("name") as string)?.trim()
-  if (!name) return { error: "Name is required" }
-
-  const id = createId()
-  await db.insert(customers).values({
-    id,
-    name,
+  const input: CustomerCoreInput = {
+    name: (formData.get("name") as string) ?? "",
     contactPerson: (formData.get("contactPerson") as string) || null,
     mobile: (formData.get("mobile") as string) || null,
     email: (formData.get("email") as string) || null,
@@ -27,8 +89,17 @@ export async function createCustomer(formData: FormData): Promise<ActionResult> 
     address: (formData.get("address") as string) || null,
     mapsLink: (formData.get("mapsLink") as string) || null,
     notes: (formData.get("notes") as string) || null,
-    createdBy: session.user.id,
-  })
+  }
+
+  let id = ""
+  try {
+    await db.transaction(async (tx) => {
+      const result = await createCustomerCore(tx, input, session.user.id)
+      id = result.id
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to create customer" }
+  }
 
   revalidatePath("/admin/customers")
   return { id }
@@ -38,23 +109,24 @@ export async function updateCustomer(id: string, formData: FormData): Promise<Ac
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  const name = (formData.get("name") as string)?.trim()
-  if (!name) return { error: "Name is required" }
+  const input: CustomerCoreInput = {
+    name: (formData.get("name") as string) ?? "",
+    contactPerson: (formData.get("contactPerson") as string) || null,
+    mobile: (formData.get("mobile") as string) || null,
+    email: (formData.get("email") as string) || null,
+    city: (formData.get("city") as string) || null,
+    address: (formData.get("address") as string) || null,
+    mapsLink: (formData.get("mapsLink") as string) || null,
+    notes: (formData.get("notes") as string) || null,
+  }
 
-  await db
-    .update(customers)
-    .set({
-      name,
-      contactPerson: (formData.get("contactPerson") as string) || null,
-      mobile: (formData.get("mobile") as string) || null,
-      email: (formData.get("email") as string) || null,
-      city: (formData.get("city") as string) || null,
-      address: (formData.get("address") as string) || null,
-      mapsLink: (formData.get("mapsLink") as string) || null,
-      notes: (formData.get("notes") as string) || null,
-      updatedAt: Date.now(),
+  try {
+    await db.transaction(async (tx) => {
+      await updateCustomerCore(tx, id, input)
     })
-    .where(eq(customers.id, id))
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to update customer" }
+  }
 
   revalidatePath("/admin/customers")
   revalidatePath(`/admin/customers/${id}`)

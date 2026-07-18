@@ -9,6 +9,21 @@ import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { createSupplierSchema, firstError } from "@/lib/validation/schemas"
 
 export type ActionResult = { error?: string; id?: string }
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+export type SupplierCoreInput = {
+  name: string
+  contactPerson?: string | null
+  mobile?: string | null
+  email?: string | null
+  city?: string | null
+  address?: string | null
+  notes?: string | null
+  pickupContactName?: string | null
+  pickupContactMobile?: string | null
+  pickupMapsUrl?: string | null
+  pickupNotes?: string | null
+}
 
 function parseSupplierForm(formData: FormData) {
   return createSupplierSchema.safeParse({
@@ -26,29 +41,77 @@ function parseSupplierForm(formData: FormData) {
   })
 }
 
+// Tx-scoped create, reused by the "use server" wrapper below AND the CSV
+// Import/Export Center. Throws on invalid input (mirrors createCustomerCore's
+// throw-in-Core / catch-in-wrapper convention).
+export async function createSupplierCore(
+  tx: Tx,
+  input: SupplierCoreInput,
+  actorUserId: string | null
+): Promise<{ id: string }> {
+  const name = input.name?.trim()
+  if (!name) throw new Error("Name is required")
+
+  const id = createId()
+  await tx.insert(suppliers).values({
+    id,
+    name,
+    contactPerson: input.contactPerson || null,
+    mobile: input.mobile || null,
+    email: input.email || null,
+    city: input.city || null,
+    address: input.address || null,
+    notes: input.notes || null,
+    pickupContactName: input.pickupContactName || null,
+    pickupContactMobile: input.pickupContactMobile || null,
+    pickupMapsUrl: input.pickupMapsUrl || null,
+    pickupNotes: input.pickupNotes || null,
+    createdBy: actorUserId,
+  })
+
+  return { id }
+}
+
+export async function updateSupplierCore(
+  tx: Tx,
+  id: string,
+  input: SupplierCoreInput
+): Promise<{ id: string }> {
+  const name = input.name?.trim()
+  if (!name) throw new Error("Name is required")
+
+  await tx
+    .update(suppliers)
+    .set({
+      name,
+      contactPerson: input.contactPerson || null,
+      mobile: input.mobile || null,
+      email: input.email || null,
+      city: input.city || null,
+      address: input.address || null,
+      notes: input.notes || null,
+      pickupContactName: input.pickupContactName || null,
+      pickupContactMobile: input.pickupContactMobile || null,
+      pickupMapsUrl: input.pickupMapsUrl || null,
+      pickupNotes: input.pickupNotes || null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(suppliers.id, id))
+
+  return { id }
+}
+
 export async function createSupplier(formData: FormData): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
   const parsed = parseSupplierForm(formData)
   if (!parsed.success) return { error: firstError(parsed.error) }
-  const data = parsed.data
 
-  const id = createId()
-  await db.insert(suppliers).values({
-    id,
-    name: data.name,
-    contactPerson: data.contactPerson || null,
-    mobile: data.mobile || null,
-    email: data.email || null,
-    city: data.city || null,
-    address: data.address || null,
-    notes: data.notes || null,
-    pickupContactName: data.pickupContactName || null,
-    pickupContactMobile: data.pickupContactMobile || null,
-    pickupMapsUrl: data.pickupMapsUrl || null,
-    pickupNotes: data.pickupNotes || null,
-    createdBy: session.user.id,
+  let id = ""
+  await db.transaction(async (tx) => {
+    const result = await createSupplierCore(tx, parsed.data, session.user.id)
+    id = result.id
   })
 
   revalidatePath("/admin/suppliers")
@@ -61,25 +124,10 @@ export async function updateSupplier(id: string, formData: FormData): Promise<Ac
 
   const parsed = parseSupplierForm(formData)
   if (!parsed.success) return { error: firstError(parsed.error) }
-  const data = parsed.data
 
-  await db
-    .update(suppliers)
-    .set({
-      name: data.name,
-      contactPerson: data.contactPerson || null,
-      mobile: data.mobile || null,
-      email: data.email || null,
-      city: data.city || null,
-      address: data.address || null,
-      notes: data.notes || null,
-      pickupContactName: data.pickupContactName || null,
-      pickupContactMobile: data.pickupContactMobile || null,
-      pickupMapsUrl: data.pickupMapsUrl || null,
-      pickupNotes: data.pickupNotes || null,
-      updatedAt: Date.now(),
-    })
-    .where(eq(suppliers.id, id))
+  await db.transaction(async (tx) => {
+    await updateSupplierCore(tx, id, parsed.data)
+  })
 
   revalidatePath("/admin/suppliers")
   revalidatePath(`/admin/suppliers/${id}`)

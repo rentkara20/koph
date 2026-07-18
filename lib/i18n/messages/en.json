@@ -34,6 +34,7 @@
     "products": "Products for Sale"
   },
   "common": {
+    "unauthorized": "Unauthorized.",
     "save": "Save",
     "cancel": "Cancel",
     "delete": "Delete",
@@ -70,7 +71,18 @@
     "of": "of",
     "showing": "Showing {from}–{to} of {total}",
     "pagination": "Pagination",
-    "request": "Request"
+    "request": "Request",
+    "active": "Active",
+    "inactive": "Inactive",
+    "enable": "Enable",
+    "disable": "Disable",
+    "nameEnglish": "Name (English)",
+    "nameArabic": "الاسم (عربي)",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "systemManaged": "System-managed",
+    "saving": "Saving…",
+    "adding": "Adding…"
   },
   "auth": {
     "login": "Log in",
@@ -227,7 +239,9 @@
         "reasonPlaceholder": "Enter the cancellation reason"
       }
     },
-    "reopen": "Reopen"
+    "reopen": "Reopen",
+    "deleteItemConfirm": "Delete this item?",
+    "accessoriesPlaceholder": "charger, case, adapter…"
   },
   "tasks": {
     "title": "Tasks",
@@ -627,7 +641,25 @@
       "batched": "In batch",
       "paid": "Paid",
       "on_hold": "On hold"
-    }
+    },
+    "statusDraft": "Draft",
+    "statusApproved": "Approved",
+    "statusSentToFinance": "Sent to Finance",
+    "statusPaid": "Paid",
+    "generated": "Generated {date}",
+    "partner": "Partner",
+    "totalAmountSar": "Total amount (SAR)",
+    "paymentsCount": "Payments",
+    "approvedAt": "Approved",
+    "sentAt": "Sent to finance",
+    "paidAt": "Paid",
+    "noPayments": "No payments in this batch.",
+    "request": "Request",
+    "pricing": "Pricing",
+    "qty": "Qty",
+    "unitSar": "Unit (SAR)",
+    "totalSar": "Total (SAR)",
+    "total": "Total"
   },
   "statement": {
     "title": "Partner payment statement",
@@ -673,6 +705,129 @@
     "requestTypes": "Request types",
     "services": "Services catalog",
     "consent": "Consent versions"
+  },
+  "warrantyConfigPage": {
+    "title": "Warranty Configuration",
+    "subtitle": "Warranty product catalog and the expiring-soon alert window — batches and per-asset assignment stay in Warranty Center.",
+    "generalTitle": "General",
+    "productsTitle": "Warranty products"
+  },
+  "sessionSecurityPage": {
+    "title": "Token & Session Policy",
+    "subtitle": "Login sessions and magic-link expiry.",
+    "currentPolicyTitle": "Current policy (code-defined)",
+    "sessionLengthLabel": "Login session length:",
+    "sessionLengthValue": "7 days, refreshed every 24h of activity",
+    "minPasswordLabel": "Minimum password length:",
+    "minPasswordValue": "10 characters",
+    "policyNote": "These stay in code rather than Settings: better-auth builds this config once when the server starts, so a bad value here could silently weaken login security until the next deploy catches it. Contact engineering to change these.",
+    "magicLinkTitle": "Magic-link expiry",
+    "magicLinkBody": "Task and partner-activation link expiry are configurable under <link>Request & Task Configuration</link>.",
+    "incidentResponseTitle": "Security incident response",
+    "activeSessions": "{count} active session across all users.",
+    "activeSessionsPlural": "{count} active sessions across all users.",
+    "signOutAllOthers": "Sign out all other sessions",
+    "confirmSignOutBody": "This signs out every user except you. Continue?",
+    "signingOut": "Signing out…",
+    "confirm": "Confirm",
+    "signedOutResult": "Signed out {count} other session.",
+    "signedOutResultPlural": "Signed out {count} other sessions."
+  },
+  "servicesPage": {
+    "title": "Services catalog",
+    "serviceCount": "{count} service",
+    "serviceCountPlural": "{count} services",
+    "allServicesTitle": "All services",
+    "emptyState": "No services yet. Add the first one below.",
+    "addService": "Add service",
+    "newService": "New service"
+  },
+  "rolesPage": {
+    "title": "Roles & Permissions",
+    "subtitle": "Current role capabilities (reference only).",
+    "matrixTitle": "admin / finance / viewer / partner",
+    "areaCore": "Requests, orders, assets, partners, customers",
+    "areaPayments": "Payment batches (generate, approve, send, mark paid)",
+    "areaSettings": "Settings",
+    "areaSignOff": "Task sign-off (creates a payment record)",
+    "readOnly": "read-only",
+    "adminLabel": "admin",
+    "financeLabel": "finance",
+    "viewerLabel": "viewer",
+    "body": "Roles are checked in code at every server action (<code1>getSessionWithRole</code1>), not read from a settings table — a role matrix stored as data and a bug in how it's read would silently open up financial or destructive actions. Adding a new role (e.g. a dispatcher role scoped to task assignment only) is a scoped code change; ask engineering. The <code2>partner</code2> role is excluded entirely from this admin area and only reaches token-scoped pages and its own portal."
+  },
+  "requestTasksPage": {
+    "title": "Request & Task Configuration",
+    "subtitle": "Request types, task failure reasons, and workflow rules — no code change needed.",
+    "generalTitle": "General",
+    "requestTypesTitle": "Request types",
+    "requestTypesEmpty": "No request types yet.",
+    "requestTypesAdd": "Add request type",
+    "failureReasonsTitle": "Task failure reasons",
+    "failureReasonsEmpty": "No failure reasons yet.",
+    "failureReasonsAdd": "Add failure reason"
+  },
+  "pricingPaymentsPage": {
+    "title": "Pricing & Payments",
+    "subtitle": "Business-month rules for partner payment batching.",
+    "batchingTitle": "Payment batching",
+    "modelsTitle": "Contract pricing models",
+    "modelsBody": "Pricing models (per order, per item, per day, per hour, fixed) are defined in code because each one drives a distinct payment calculation formula. Adding a new model requires a code change — this is intentional so a bad settings value can never silently miscalculate a partner payment. Contact engineering to add a new pricing model."
+  },
+  "notificationsPage": {
+    "title": "Notifications",
+    "subtitle": "Retention and weekly digest email.",
+    "inAppTitle": "In-app notifications"
+  },
+  "integrationsPage": {
+    "title": "Integrations",
+    "subtitle": "External systems connected to KOPH.",
+    "notionTitle": "Notion",
+    "otherTitle": "Other integrations",
+    "otherBody": "WhatsApp task/signing links use wa.me deep links (no API keys, nothing to configure). Resend (email) and Vercel Blob (file storage) are configured via environment variables only, since they hold live credentials that shouldn't live in an app-editable table."
+  },
+  "brandingPage": {
+    "title": "Branding & Locale",
+    "subtitle": "Default language for new accounts.",
+    "localeTitle": "Locale",
+    "logoConsentTitle": "Logo & consent text",
+    "logoConsentBody": "The consent text shown on signature screens is already versioned in the database (consent_version table) rather than hardcoded — ask engineering to add a new version when legal text needs to change. The KARA logo is a brand asset, not a per-tenant setting, so it stays a static file."
+  },
+  "assetRulesPage": {
+    "title": "Asset & Inventory Rules",
+    "subtitle": "What's configurable here today, and why some things aren't.",
+    "elsewhereTitle": "Already configurable elsewhere",
+    "elsewhereBody": "Required delivery photo count (proof-of-delivery) lives under <link>Request & Task Configuration</link>.",
+    "codeDefinedTitle": "Intentionally code-defined",
+    "codeDefinedBody": "Asset statuses (in stock, reserved, assigned, delivered, returned, maintenance, damaged, retired, sold, lost) and the transitions between them are a state machine in code (<code>lib/domain/asset-status.ts</code>), not a settings list. Every inventory-integrity fix from the audit — the double-booking race, orphaned \"assigned\" units on cancellation — depends on that state machine staying exactly as coded. Turning it into editable data would reopen the same bugs. There is currently no low-stock alerting feature to attach a threshold setting to — flag if that's wanted and it can be built with a real consumer, rather than adding a number nothing reads yet."
+  },
+  "settingsIndex": {
+    "title": "Settings",
+    "subtitle": "Configure platform-wide options.",
+    "companyLocationsTitle": "Company locations",
+    "companyLocationsDesc": "Warehouses, offices, contacts, and map links used automatically in courier routes.",
+    "messageTemplatesTitle": "Message Templates",
+    "messageTemplatesDesc": "Customize WhatsApp and email wording with a separate professional layout for each channel.",
+    "requestTasksTitle": "Request & Task Configuration",
+    "requestTasksDesc": "Request types, task failure reasons, photo requirements, and link expiry — no code change needed.",
+    "servicesTitle": "Services catalog",
+    "servicesDesc": "Manage the checklist services that can be assigned to partner tasks.",
+    "pricingPaymentsTitle": "Pricing & Payments",
+    "pricingPaymentsDesc": "Business-month timezone rules for partner payment batching.",
+    "sessionSecurityTitle": "Token & Session Policy",
+    "sessionSecurityDesc": "Login session info, magic-link expiry, and incident-response sign-out.",
+    "notificationsTitle": "Notifications",
+    "notificationsDesc": "Retention window and the weekly ops digest email.",
+    "brandingTitle": "Branding & Locale",
+    "brandingDesc": "Default language for new accounts.",
+    "assetRulesTitle": "Asset & Inventory Rules",
+    "assetRulesDesc": "What's configurable vs. intentionally fixed in the asset state machine.",
+    "warrantyConfigTitle": "Warranty Configuration",
+    "warrantyConfigDesc": "Warranty product catalog and the expiring-soon alert window.",
+    "rolesTitle": "Roles & Permissions",
+    "rolesDesc": "Reference for what each role can do.",
+    "integrationsTitle": "Integrations",
+    "integrationsDesc": "Notion sync pause/resume and other connected systems."
   },
   "toast": {
     "saved": "Saved",
@@ -860,6 +1015,7 @@
     "variables": "Available variables",
     "variablesHint": "KOPH replaces these variables automatically. Required links and identifiers cannot be removed.",
     "rfqHint": "Separate wording for supplier WhatsApp and email.",
+    "warrantyRequestHint": "Sent when requesting warranty activation for one or more devices from a provider.",
     "whatsappBody": "WhatsApp message",
     "emailSubject": "Email subject",
     "emailBody": "Email message",
@@ -879,6 +1035,7 @@
     "resetFailed": "Templates could not be restored",
     "types": {
       "rfq": "Supplier quotation request",
+      "warrantyRequest": "Warranty activation request",
       "partnerAssignment": "New task sent to partner",
       "partnerPickup": "Supplier pickup sent to partner",
       "customerEnRoute": "Partner is on the way to customer",
@@ -1006,7 +1163,10 @@
     "addPhotos": "Add photos",
     "addMorePhotos": "Add more ({count}/{max})",
     "maxPhotos": "Maximum {max} photos allowed",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "batchTitle": "Multi-stop delivery",
+    "batchSubtitle": "This trip covers {count} requests",
+    "batchGroupItems": "{count} items"
   },
   "trust": {
     "secureLink": "Secure link",
@@ -1329,7 +1489,9 @@
       "resolveQcIssuesHint": "A device has an issue. Resolve its supplier return or replacement before delivery.",
       "createPartialDeliveryHint": "A passed device is ready now. Create a separate delivery, then deliver the replacement later.",
       "createDeliveryJobHint": "The devices are ready. Continue directly to a delivery job for this customer order.",
-      "reviewInventoryHint": "Receiving is complete. Review the devices now available in inventory."
+      "reviewInventoryHint": "Receiving is complete. Review the devices now available in inventory.",
+      "backToPo": "Back to purchase order",
+      "finishReceiving": "Finish receiving"
     },
     "remaining": "{received} / {ordered} received",
     "fullyReceived": "Fully received",
@@ -1433,6 +1595,8 @@
   "warranty": {
     "title": "Warranty Center",
     "subtitle": "Coverage, activation, and expiry across all assets",
+    "importExportLink": "Import/Export",
+    "exportAssignmentsLink": "Export assignments",
     "card": "Warranty",
     "noWarranty": "No warranty assigned",
     "assignWarranty": "Assign warranty",
@@ -1472,6 +1636,54 @@
       "expiringSoon": "Expiring soon",
       "expired": "Expired",
       "certificateMissing": "Certificate missing"
+    },
+    "supplier": "Warranty provider",
+    "noProductsYet": "No warranty products defined yet.",
+    "goToSettings": "Add one in Warranty Configuration",
+    "expiryAlertDays": "Expiry alert window (days)",
+    "expiryAlertDaysHint": "How many days before expiry an asset shows as \"expiring soon\"",
+    "saveSettings": "Save",
+    "settingsSaved": "Settings saved",
+    "durationMonths": "Duration (months)",
+    "registry": {
+      "title": "Warranty registry",
+      "subtitle": "Every asset, its warranty coverage, and what's missing",
+      "viewRegistry": "View warranty registry",
+      "backToCenter": "Back to warranty center",
+      "statNone": "No warranty registered",
+      "statExpiringSoon": "Expiring soon",
+      "statExpired": "Expired",
+      "statActive": "Active",
+      "filterAll": "All",
+      "serial": "Serial",
+      "device": "Device",
+      "supplier": "Supplier",
+      "purchaseDate": "Purchase date",
+      "warrantyType": "Warranty type",
+      "warrantyProvider": "Warranty provider",
+      "expiresOn": "Expires",
+      "noAssets": "No assets found",
+      "requestWarranty": "Request warranty",
+      "selectedCount": "{count, plural, one {# device selected} other {# devices selected}}",
+      "requestSent": "Warranty requested for {count, plural, one {# device} other {# devices}}",
+      "withDeviceHint": "already requested with the purchase PO",
+      "chooseSupplier": "choose a warranty provider",
+      "reviewMessage": "Review message",
+      "copyMessage": "Copy message",
+      "copyFailed": "Couldn't copy message",
+      "openEmailApp": "Open email app",
+      "openWhatsapp": "Open WhatsApp",
+      "done": "Done",
+      "searchPlaceholder": "Search serial, device, supplier…",
+      "allBrands": "All brands",
+      "mixedBrandsWarning": "Selected devices span more than one brand ({brands}) — one warranty product usually applies to one brand only.",
+      "statuses": {
+        "none": "No warranty",
+        "pending": "Pending",
+        "active": "Active",
+        "expiring_soon": "Expiring soon",
+        "expired": "Expired"
+      }
     }
   },
   "accessories": {
@@ -1578,6 +1790,15 @@
     "subtitle": "Sourcing requests, RFQs, and supplier quotations",
     "newRequest": "New sourcing request",
     "noRequests": "No sourcing requests yet",
+    "unsourced": {
+      "title": "Unsourced items",
+      "subtitle": "Every pending item across all open requests — pick items from any mix of customers and send one RFQ to one supplier",
+      "empty": "No pending items — everything is already sourced or on an RFQ",
+      "item": "Item",
+      "quantity": "Qty",
+      "pickSupplier": "— Select supplier —",
+      "selectionSummary": "{itemCount, plural, one {# item} other {# items}} selected across {requestCount, plural, one {# request} other {# requests}}"
+    },
     "description": "Description",
     "sourceType": "Source",
     "sourceTypes": {
@@ -1665,7 +1886,7 @@
     },
     "selectItems": "Items to include",
     "selectSuppliers": "Suppliers",
-    "rfqHistory": "RFQ history",
+    "rfqHistory": "Requests for quotation",
     "sendViaWhatsapp": "WhatsApp",
     "sendViaEmail": "Email",
     "copyMessage": "Copy message",
@@ -1723,10 +1944,19 @@
       "closed": "Closed",
       "cancelled": "Cancelled",
       "superseded": "Superseded"
-    }
+    },
+    "nextStepPoTitle": "Sourcing handed off — next: purchase order",
+    "nextStepPoDescription": "Continue in the procurement case: link the ERP PO reference and the purchase order is created automatically from the awarded quote.",
+    "nextStepPoAction": "Continue to procurement case",
+    "rfqSummary": "{total} requests · {responded} responded · {awaiting} awaiting reply",
+    "awaitingReply": "Awaiting reply",
+    "enterQuote": "Enter quote",
+    "hideQuoteForm": "Hide quote form",
+    "andMoreItems": "and {count} more"
   },
   "procurementCase": {
     "title": "Procurement Case",
+    "coversRequests": "{count, plural, one {Covers # sourcing request} other {Covers # sourcing requests}}",
     "sources": {
       "commercial_flow": "From commercial sourcing flow",
       "system_manual": "Manual purchase order"
@@ -1895,6 +2125,74 @@
     "serializedTitle": "Serialized products",
     "serializedHint": "Sold units tracked individually by serial / tag",
     "emptySerialized": "No serialized products for sale yet",
-    "stockTitle": "Quantity stock & catalog"
+    "stockTitle": "Quantity stock & catalog",
+    "exportData": "Export data"
+  },
+  "importExport": {
+    "linkLabel": "Import/Export",
+    "exportDataLabel": "Export data",
+    "pageTitle": "CSV Import/Export Center",
+    "pageSubtitle": "Export current data, download a blank template, or bulk-import Assets, Customers, Orders, Suppliers, Partners, Warranty products, and Warranty batches. Every import is validated and previewed before anything is committed.",
+    "modules": {
+      "asset": "Assets",
+      "customer": "Customers",
+      "order": "Orders",
+      "supplier": "Suppliers",
+      "partner": "Partners",
+      "warrantyProduct": "Warranty product",
+      "warrantyBatch": "Warranty batch",
+      "request": "Requests",
+      "warrantyAssignment": "Warranty assignments",
+      "productForSale": "Products for sale"
+    },
+    "exportCsv": "Export CSV",
+    "downloadTemplate": "Download template",
+    "uploadCsv": "Upload CSV",
+    "processing": "Processing…",
+    "importing": "Importing…",
+    "confirmImport": "Confirm import ({count} rows)",
+    "exportOnlyNotice": "This module is export-only — data is too lifecycle-sensitive for bulk CSV import.",
+    "failedToProcessFile": "Failed to process file",
+    "commitFailed": "Commit failed",
+    "importCompleteMessage": "Import complete: {success} of {total} rows committed.",
+    "importFailedMessage": "Import failed, nothing was committed: {error}",
+    "rowsTotal": "{count} rows total",
+    "newCount": "{count} new",
+    "updateCount": "{count} update",
+    "errorCount": "{count} error",
+    "showingFirstRows": "Showing the first {shown} rows of {total} — all rows will still be processed on confirm.",
+    "newSection": "New",
+    "updateSection": "Update",
+    "errorsSection": "Errors",
+    "errorColumn": "Error",
+    "rowNumberColumn": "#",
+    "exportAssignments": "Export assignments"
+  },
+  "followUpDelivery": {
+    "open": "Create Follow-up Delivery",
+    "loadingRemaining": "Loading remaining quantities…",
+    "nothingRemaining": "Nothing remaining to allocate on this request.",
+    "deliveredRemaining": "({delivered}/{quantity} delivered, {remaining} remaining)",
+    "partner": "Partner",
+    "selectPartner": "— Select partner —",
+    "selectPartnerError": "Select a partner",
+    "qtyError": "Enter at least one quantity to allocate",
+    "created": "Follow-up delivery created",
+    "contract": "Contract",
+    "contractHint": "(review before confirming)",
+    "noContract": "— No contract —",
+    "notes": "Notes",
+    "cancel": "Cancel",
+    "createTask": "Create task",
+    "resolveTitle": "Resolve partial delivery",
+    "markRescheduled": "Mark rescheduled",
+    "markCancelled": "Mark cancelled",
+    "markFailed": "Mark failed",
+    "statusUpdated": "Request status updated",
+    "acceptPartialLabel": "Accept partial as final",
+    "acceptPartialHint": "(waives remaining quantity — reason required)",
+    "reasonPlaceholder": "Why is the remaining quantity being waived?",
+    "reasonRequired": "A reason is required",
+    "markedCompleted": "Request marked as completed"
   }
 }

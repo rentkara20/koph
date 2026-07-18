@@ -4,16 +4,18 @@ import { getTranslations } from "next-intl/server"
 import {
   readOperationalMessageTemplatesForAdmin,
   readRfqMessageTemplatesForAdmin,
+  readWarrantyRequestTemplatesForAdmin,
 } from "@/lib/actions/settings"
 import { MessageTemplateSettingsForm } from "@/components/settings/message-template-settings-form"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 export default async function MessageTemplatesSettingsPage() {
-  const [t, rfqTemplates, operationalTemplates] = await Promise.all([
+  const [t, rfqTemplates, operationalTemplates, warrantyRequestTemplates] = await Promise.all([
     getTranslations("messageTemplates"),
     readRfqMessageTemplatesForAdmin(),
     readOperationalMessageTemplatesForAdmin(),
+    readWarrantyRequestTemplatesForAdmin(),
   ])
 
   return (
@@ -30,8 +32,12 @@ export default async function MessageTemplatesSettingsPage() {
         </div>
       </div>
 
-      {rfqTemplates && operationalTemplates ? (
-        <MessageTemplateSettingsForm rfqInitial={rfqTemplates} operationalInitial={operationalTemplates} />
+      {rfqTemplates && operationalTemplates && warrantyRequestTemplates ? (
+        <MessageTemplateSettingsForm
+          rfqInitial={rfqTemplates}
+          operationalInitial={operationalTemplates}
+          warrantyRequestInitial={warrantyRequestTemplates}
+        />
       ) : (
         <p className="text-sm text-muted-foreground">{t("unauthorized")}</p>
       )}

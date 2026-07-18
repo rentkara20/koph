@@ -158,8 +158,14 @@ export function MobileReceiving({
     <div className="mx-auto min-h-[calc(100dvh-7rem)] max-w-xl space-y-5 pb-28">
       <header className="sticky top-0 z-10 -mx-4 border-b bg-background/95 px-4 py-3 backdrop-blur sm:mx-0 sm:rounded-b-xl">
         <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" render={<Link href={`/admin/procurement/${purchaseOrderId}`} />}>
-            <ArrowLeft className="size-5 rtl:rotate-180" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-1.5 px-2"
+            render={<Link href={`/admin/procurement/${purchaseOrderId}`} />}
+          >
+            <ArrowLeft className="size-4 rtl:rotate-180" />
+            <span className="hidden sm:inline">{t("backToPo")}</span>
           </Button>
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-lg font-semibold">{t("title")}</h1>
@@ -266,10 +272,19 @@ export function MobileReceiving({
       )}
 
       {hasRemaining && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t bg-background/95 p-3 backdrop-blur sm:static sm:rounded-xl sm:border">
+        <div className="fixed inset-x-0 bottom-0 z-20 space-y-2 border-t bg-background/95 p-3 backdrop-blur sm:static sm:rounded-xl sm:border">
           <Button className="h-12 w-full text-base" onClick={scanning ? stopCamera : startCamera} disabled={pending || !selectedLine}>
             {scanning ? <X className="size-5" /> : cameraError ? <RefreshCw className="size-5" /> : <Camera className="size-5" />}
             {scanning ? t("stopCamera") : t("scanCamera")}
+          </Button>
+          {/* Explicit exit for a partial receipt (shipment split, shift ended) —
+              the operator isn't forced to scan every remaining unit right now. */}
+          <Button
+            variant="outline"
+            className="h-11 w-full text-sm"
+            render={<Link href={`/admin/procurement/${purchaseOrderId}`} />}
+          >
+            {t("finishReceiving")}
           </Button>
         </div>
       )}

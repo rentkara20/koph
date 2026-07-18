@@ -4,7 +4,7 @@ import { LocaleToggle } from "./locale-toggle"
 
 const LOGO_RATIO = 558 / 244
 
-type StatusVariant = "outline" | "info" | "success" | "secondary"
+import type { BadgeVariant } from "@/lib/domain/status-variant"
 
 function KaraLogo({ className }: { className?: string }) {
   const height = 24
@@ -41,7 +41,7 @@ export function SignHeader({
   documentName: string
   subtitle?: string | null
   statusLabel: string
-  statusVariant: StatusVariant
+  statusVariant: BadgeVariant
 }) {
   return (
     <header className="sticky top-0 z-10 bg-kara-purple text-primary-foreground shadow-sm">

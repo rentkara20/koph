@@ -1,8 +1,12 @@
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { getWarrantyCenter, getWarrantyProducts } from "@/lib/actions/warranty"
+import { FileSpreadsheet, Settings2 } from "lucide-react"
+import { getWarrantyCenter, getActiveWarrantyProducts } from "@/lib/actions/warranty"
 import { getPurchaseOrders } from "@/lib/actions/procurement"
+import { getSuppliers } from "@/lib/actions/suppliers"
 import { Badge } from "@/components/ui/badge"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { WarrantySetup } from "./_components/warranty-setup"
 
 const BUCKETS = [
@@ -16,18 +20,46 @@ const BUCKETS = [
 ] as const
 
 export default async function WarrantyCenterPage() {
-  const [t, center, products, purchaseOrders] = await Promise.all([
+  const [t, center, products, purchaseOrders, suppliers] = await Promise.all([
     getTranslations("warranty"),
     getWarrantyCenter(),
-    getWarrantyProducts(),
+    getActiveWarrantyProducts(),
     getPurchaseOrders(),
+    getSuppliers(),
   ])
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/admin/warranty/registry" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+            {t("registry.viewRegistry")}
+          </Link>
+          <Link
+            href="/admin/settings/import-export?module=warrantyProduct"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+          >
+            <FileSpreadsheet className="size-3.5" />
+            {t("importExportLink")}
+          </Link>
+          <Link
+            href="/admin/settings/import-export?module=warrantyAssignment"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+          >
+            <FileSpreadsheet className="size-3.5" />
+            {t("exportAssignmentsLink")}
+          </Link>
+          <Link
+            href="/admin/settings/warranty"
+            className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }))}
+          >
+            <Settings2 className="size-4" />
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -57,7 +89,7 @@ export default async function WarrantyCenterPage() {
         })}
       </div>
 
-      <WarrantySetup products={products} purchaseOrders={purchaseOrders} />
+      <WarrantySetup products={products} purchaseOrders={purchaseOrders} suppliers={suppliers} />
     </div>
   )
 }

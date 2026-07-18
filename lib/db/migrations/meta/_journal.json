@@ -225,6 +225,55 @@
       "when": 1784307100496,
       "tag": "0031_po_line_kind",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1784343653724,
+      "tag": "0032_new_marvel_zombies",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1784351095666,
+      "tag": "0033_useful_shotgun",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1784353064437,
+      "tag": "0034_bizarre_phantom_reporter",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1784368155084,
+      "tag": "0035_cultured_bastion",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1784369397267,
+      "tag": "0036_broad_the_twelve",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1784376102463,
+      "tag": "0037_fast_big_bertha",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1784392221478,
+      "tag": "0038_tricky_natasha_romanoff",
+      "breakpoints": true
     }
   ]
 }

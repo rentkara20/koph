@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { createClient } from "@libsql/client"
 import { drizzle } from "drizzle-orm/libsql"
-import { migrate } from "drizzle-orm/libsql/migrator"
+import { migrate } from "@/lib/db/test-migrate"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -15,7 +15,7 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "order-unit-availability-"))
   const client = createClient({ url: `file:${join(dir, "test.db")}` })
   db = drizzle(client, { schema })
-  await migrate(db, { migrationsFolder: "./lib/db/migrations" })
+  await migrate(client, { migrationsFolder: "./lib/db/migrations" })
 })
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -81,6 +81,67 @@ describe("getAvailableOrderUnitsCore", () => {
         supplierName: "Supplier",
       },
     ])
+  })
+
+  it("includes free stock from manual POs (no sourcing chain) but excludes units allocated to another order", async () => {
+    const supplierId = createId()
+    await db.insert(schema.suppliers).values({ id: supplierId, name: "Manual Supplier" })
+
+    // Free stock: manual PO → case has no sourcingRequestId.
+    const manualCaseId = createId()
+    const manualPoId = createId()
+    const manualPoLineId = createId()
+    const freeUnitId = createId()
+    await db.insert(schema.procurementCases).values({ id: manualCaseId, source: "system_manual", supplierId })
+    await db.insert(schema.purchaseOrders).values({
+      id: manualPoId, supplierId, poNumber: "PO-MANUAL-1", status: "received", procurementCaseId: manualCaseId,
+    })
+    await db.insert(schema.purchaseOrderLines).values({
+      id: manualPoLineId, purchaseOrderId: manualPoId, itemDescription: "Free Laptop", qtyOrdered: 1, qtyReceived: 1,
+    })
+    await db.insert(schema.orderUnits).values({
+      id: freeUnitId, purchaseOrderLineId: manualPoLineId, purchaseOrderId: manualPoId,
+      serialNumber: "SERIAL-FREE-1", status: "in_stock",
+    })
+
+    // Allocated stock: chain resolves to a DIFFERENT order — must not leak.
+    const otherCustomerId = createId()
+    const otherOrderId = createId()
+    const otherSourcingId = createId()
+    const otherCaseId = createId()
+    const otherPoId = createId()
+    const otherPoLineId = createId()
+    await db.insert(schema.customers).values({ id: otherCustomerId, name: "Other Customer" })
+    await db.insert(schema.orders).values({ id: otherOrderId, orderNumber: "30303", customerId: otherCustomerId })
+    await db.insert(schema.sourcingRequests).values({
+      id: otherSourcingId, sourceType: "customer_order", orderId: otherOrderId, description: "Other devices",
+    })
+    await db.insert(schema.procurementCases).values({
+      id: otherCaseId, source: "commercial_flow", sourcingRequestId: otherSourcingId, supplierId,
+    })
+    await db.insert(schema.purchaseOrders).values({
+      id: otherPoId, supplierId, poNumber: "PO-OTHER-1", status: "received", procurementCaseId: otherCaseId,
+    })
+    await db.insert(schema.purchaseOrderLines).values({
+      id: otherPoLineId, purchaseOrderId: otherPoId, itemDescription: "Reserved Laptop", qtyOrdered: 1, qtyReceived: 1,
+    })
+    await db.insert(schema.orderUnits).values({
+      id: createId(), purchaseOrderLineId: otherPoLineId, purchaseOrderId: otherPoId,
+      serialNumber: "SERIAL-OTHER-1", status: "in_stock",
+    })
+
+    // A fresh order with no chain of its own: sees the free unit only.
+    const customerId = createId()
+    const orderId = createId()
+    await db.insert(schema.customers).values({ id: customerId, name: "Fresh Customer" })
+    await db.insert(schema.orders).values({ id: orderId, orderNumber: "40404", customerId })
+
+    const { getAvailableOrderUnitsCore } = await import("./orders")
+    const units = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, orderId))
+
+    const serials = units.map((u) => u.serialNumber)
+    expect(serials).toContain("SERIAL-FREE-1")
+    expect(serials).not.toContain("SERIAL-OTHER-1")
   })
 })
 

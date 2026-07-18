@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { Plus, Search } from "lucide-react"
+import { FileSpreadsheet, Plus, Search } from "lucide-react"
 import { getSuppliers } from "@/lib/actions/suppliers"
 import { buttonVariants } from "@/components/ui/button"
 import { formatDate } from "@/lib/utils/format"
@@ -12,9 +12,10 @@ export default async function SuppliersPage({
   searchParams: Promise<{ q?: string }>
 }) {
   const { q } = await searchParams
-  const [t, tCommon, supplierList] = await Promise.all([
+  const [t, tCommon, tImportExport, supplierList] = await Promise.all([
     getTranslations("suppliers"),
     getTranslations("common"),
+    getTranslations("importExport"),
     getSuppliers(q),
   ])
 
@@ -22,10 +23,19 @@ export default async function SuppliersPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <Link href="/admin/suppliers/new" className={cn(buttonVariants(), "gap-1.5")}>
-          <Plus className="size-4" />
-          {t("new")}
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/admin/settings/import-export?module=supplier"
+            className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}
+          >
+            <FileSpreadsheet className="size-4" />
+            {tImportExport("linkLabel")}
+          </Link>
+          <Link href="/admin/suppliers/new" className={cn(buttonVariants(), "gap-1.5")}>
+            <Plus className="size-4" />
+            {t("new")}
+          </Link>
+        </div>
       </div>
 
       {/* Search */}

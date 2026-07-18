@@ -29,6 +29,8 @@ type Service = {
 export function ServicesManager({ services }: { services: Service[] }) {
   const router = useRouter()
   const tToast = useTranslations("toast")
+  const tCommon = useTranslations("common")
+  const t = useTranslations("servicesPage")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editEn, setEditEn] = useState("")
   const [editAr, setEditAr] = useState("")
@@ -81,9 +83,7 @@ export function ServicesManager({ services }: { services: Service[] }) {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {services.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-4 text-center">
-          No services yet. Add the first one below.
-        </p>
+        <p className="text-sm text-muted-foreground py-4 text-center">{t("emptyState")}</p>
       ) : (
         <div className="divide-y rounded-lg border">
           {services.map((svc, idx) => (
@@ -112,13 +112,13 @@ export function ServicesManager({ services }: { services: Service[] }) {
                   <Input
                     value={editEn}
                     onChange={(e) => setEditEn(e.target.value)}
-                    placeholder="English"
+                    placeholder={tCommon("nameEnglish")}
                     className="h-7 text-xs"
                   />
                   <Input
                     value={editAr}
                     onChange={(e) => setEditAr(e.target.value)}
-                    placeholder="عربي"
+                    placeholder={tCommon("nameArabic")}
                     className="h-7 text-xs"
                     dir="rtl"
                   />
@@ -149,7 +149,7 @@ export function ServicesManager({ services }: { services: Service[] }) {
               {editingId !== svc.id && (
                 <div className="flex items-center gap-2 shrink-0">
                   <Badge variant={svc.isActive ? "success" : "secondary"}>
-                    {svc.isActive ? "Active" : "Inactive"}
+                    {svc.isActive ? tCommon("active") : tCommon("inactive")}
                   </Badge>
                   <button
                     onClick={() => startEdit(svc)}
@@ -162,7 +162,7 @@ export function ServicesManager({ services }: { services: Service[] }) {
                     disabled={loading !== null}
                     className="text-xs text-muted-foreground hover:text-foreground"
                   >
-                    {svc.isActive ? "Disable" : "Enable"}
+                    {svc.isActive ? tCommon("disable") : tCommon("enable")}
                   </button>
                 </div>
               )}
@@ -174,16 +174,16 @@ export function ServicesManager({ services }: { services: Service[] }) {
       {/* Add service form */}
       {!showAdd ? (
         <Button variant="outline" size="sm" onClick={() => setShowAdd(true)}>
-          Add service
+          {t("addService")}
         </Button>
       ) : (
         <form onSubmit={handleAdd} className="rounded-lg border p-4 space-y-3">
-          <p className="text-sm font-medium">New service</p>
+          <p className="text-sm font-medium">{t("newService")}</p>
           <Separator />
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label className="text-xs">
-                Name (English) <span className="text-destructive">*</span>
+                {tCommon("nameEnglish")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 value={addEn}
@@ -195,7 +195,7 @@ export function ServicesManager({ services }: { services: Service[] }) {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">
-                الاسم (عربي) <span className="text-destructive">*</span>
+                {tCommon("nameArabic")} <span className="text-destructive">*</span>
               </Label>
               <Input
                 value={addAr}
@@ -213,10 +213,10 @@ export function ServicesManager({ services }: { services: Service[] }) {
               size="sm"
               onClick={() => { setShowAdd(false); setAddEn(""); setAddAr(""); setError("") }}
             >
-              Cancel
+              {tCommon("cancel")}
             </Button>
             <Button type="submit" size="sm" disabled={loading === "add"}>
-              {loading === "add" ? "Adding…" : "Add service"}
+              {loading === "add" ? tCommon("adding") : t("addService")}
             </Button>
           </div>
         </form>

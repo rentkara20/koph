@@ -11,19 +11,13 @@ import { Select } from "@/components/ui/select"
 import { attachAccessory, updateAccessoryChecklist } from "@/lib/actions/accessories"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import type { AccessoryItem } from "@/lib/db/schema"
+import { accessoryStateVariant as STATE_VARIANT } from "@/lib/domain/status-variant"
 
 type Attached = {
   id: string
   nameEn: string
   serialNumber: string | null
   checklistState: "delivered" | "collected" | "missing" | "damaged"
-}
-
-const STATE_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  delivered: "default",
-  collected: "success",
-  missing: "destructive",
-  damaged: "destructive",
 }
 
 export function AssetAccessories({

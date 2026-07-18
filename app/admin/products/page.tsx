@@ -5,6 +5,9 @@ import { getAccessoryItems, getAccessoryStock, getAccessoryUnits } from "@/lib/a
 import { Badge } from "@/components/ui/badge"
 import { ASSET_STATUS_VARIANT } from "@/app/admin/assets/status-variant"
 import { AccessoriesManager } from "@/app/admin/accessories/_components/accessories-manager"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { FileSpreadsheet } from "lucide-react"
 
 // Products for Sale (kind = "sale"): items whose ownership transfers to the
 // customer. Serialized sold units live in order_unit(kind=sale) and appear in
@@ -23,9 +26,18 @@ export default async function ProductsForSalePage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
+        </div>
+        <Link
+          href="/admin/settings/import-export?module=productForSale"
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+        >
+          <FileSpreadsheet className="size-3.5" />
+          {t("exportData")}
+        </Link>
       </div>
 
       <section className="space-y-3">

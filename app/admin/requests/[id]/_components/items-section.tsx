@@ -31,6 +31,8 @@ function ItemEditRow({
   onSave: (data: Item) => void
   onCancel: () => void
 }) {
+  const t = useTranslations("requests")
+  const tCommon = useTranslations("common")
   const [description, setDescription] = useState(item.description)
   const [brand, setBrand] = useState(item.brand ?? "")
   const [model, setModel] = useState(item.model ?? "")
@@ -59,7 +61,7 @@ function ItemEditRow({
       <td className="px-3 py-2" colSpan={4}>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           <div className="sm:col-span-2 space-y-1">
-            <Label className="text-xs">Description *</Label>
+            <Label className="text-xs">{t("description")} *</Label>
             <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -68,7 +70,7 @@ function ItemEditRow({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Qty</Label>
+            <Label className="text-xs">{t("quantity")}</Label>
             <Input
               type="number"
               min={1}
@@ -78,7 +80,7 @@ function ItemEditRow({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Brand</Label>
+            <Label className="text-xs">{t("brand")}</Label>
             <Input
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
@@ -86,7 +88,7 @@ function ItemEditRow({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Model</Label>
+            <Label className="text-xs">{t("model")}</Label>
             <Input
               value={model}
               onChange={(e) => setModel(e.target.value)}
@@ -94,7 +96,7 @@ function ItemEditRow({
             />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">Serial number</Label>
+            <Label className="text-xs">{t("serialNumber")}</Label>
             <Input
               value={serialNumber}
               onChange={(e) => setSerialNumber(e.target.value)}
@@ -102,23 +104,23 @@ function ItemEditRow({
             />
           </div>
           <div className="sm:col-span-3 space-y-1">
-            <Label className="text-xs">Accessories</Label>
+            <Label className="text-xs">{t("accessories")}</Label>
             <Input
               value={accessories}
               onChange={(e) => setAccessories(e.target.value)}
               className="h-7 text-xs"
-              placeholder="charger, case, adapter…"
+              placeholder={t("accessoriesPlaceholder")}
             />
           </div>
         </div>
         <div className="flex gap-2 mt-2 justify-end">
           <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
             <X className="size-3.5" />
-            Cancel
+            {tCommon("cancel")}
           </Button>
           <Button type="button" size="sm" onClick={handleSave} disabled={saving || !description.trim()}>
             <Check className="size-3.5" />
-            {saving ? "Saving…" : "Save"}
+            {saving ? tCommon("loading") : tCommon("save")}
           </Button>
         </div>
       </td>
@@ -135,6 +137,8 @@ export function ItemsSection({
 }) {
   const router = useRouter()
   const tToast = useTranslations("toast")
+  const t = useTranslations("requests")
+  const tCommon = useTranslations("common")
   const [items, setItems] = useState<Item[]>(initialItems)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addingNew, setAddingNew] = useState(false)
@@ -159,7 +163,7 @@ export function ItemsSection({
   }
 
   async function handleDelete(itemId: string) {
-    if (!confirm("Delete this item?")) return
+    if (!confirm(t("deleteItemConfirm"))) return
     setDeletingId(itemId)
     try {
       const result = await deleteRequestItem(itemId, requestId)
@@ -198,14 +202,14 @@ export function ItemsSection({
       <table className="w-full text-sm">
         <thead className="border-b bg-muted/50">
           <tr>
-            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Description</th>
-            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden sm:table-cell">
-              Brand / Model
+            <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">{t("description")}</th>
+            <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">
+              {t("brand")} / {t("model")}
             </th>
-            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground hidden md:table-cell">
-              S/N
+            <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">
+              {t("serialNumber")}
             </th>
-            <th className="px-4 py-2.5 text-left font-medium text-muted-foreground">Qty</th>
+            <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">{t("quantity")}</th>
             <th className="px-2 py-2.5 w-16" />
           </tr>
         </thead>
@@ -238,7 +242,7 @@ export function ItemsSection({
                     <button
                       onClick={() => { setAddingNew(false); setEditingId(item.id) }}
                       className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-                      title="Edit"
+                      title={tCommon("edit")}
                     >
                       <Pencil className="size-3.5" />
                     </button>
@@ -246,7 +250,7 @@ export function ItemsSection({
                       onClick={() => handleDelete(item.id)}
                       disabled={deletingId === item.id}
                       className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-                      title="Delete"
+                      title={tCommon("delete")}
                     >
                       <Trash2 className="size-3.5" />
                     </button>
@@ -272,7 +276,7 @@ export function ItemsSection({
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1"
           >
             <Plus className="size-3.5" />
-            Add item
+            {t("addItem")}
           </button>
         </div>
       )}

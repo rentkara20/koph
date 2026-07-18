@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { readNotificationSettingsForAdmin } from "@/lib/actions/settings"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,7 +8,11 @@ import { NotificationSettingsForm } from "@/components/settings/notification-set
 import { cn } from "@/lib/utils"
 
 export default async function NotificationSettingsPage() {
-  const settings = await readNotificationSettingsForAdmin()
+  const [settings, t, tCommon] = await Promise.all([
+    readNotificationSettingsForAdmin(),
+    getTranslations("notificationsPage"),
+    getTranslations("common"),
+  ])
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -19,10 +24,8 @@ export default async function NotificationSettingsPage() {
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Notifications</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Retention and weekly digest email.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -30,7 +33,7 @@ export default async function NotificationSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              In-app notifications
+              {t("inAppTitle")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -38,7 +41,7 @@ export default async function NotificationSettingsPage() {
           </CardContent>
         </Card>
       ) : (
-        <p className="text-sm text-muted-foreground">Unauthorized.</p>
+        <p className="text-sm text-muted-foreground">{tCommon("unauthorized")}</p>
       )}
     </div>
   )

@@ -16,6 +16,7 @@ export default async function ProcurementCasePage({
       <ProcurementCasePanel
         procurementCase={data.procurementCase}
         linkedPurchaseOrders={data.linkedPurchaseOrders}
+        sourceRequests={data.sourceRequests}
       />
     </div>
   )

@@ -35,6 +35,7 @@ import {
   submitSignatureSchema,
   firstError,
 } from "@/lib/validation/schemas"
+import { getAffectedRequestIds, loadTaskBatchGroup } from "@/lib/actions/tasks"
 
 // Statuses from which a signature request can never transition again
 const TERMINAL_SIGNATURE_STATUSES = ["signed", "rejected", "cancelled", "expired"]
@@ -83,6 +84,12 @@ async function buildSnapshotJson(input: {
   remarks: string | null
   signer: { fullName: string; position: string | null; nationalId: string | null }
   signedAt: number
+  // Delivery Batching v2 P4: when this signature covers only ONE request
+  // group's items within a batched task (not every item of the request),
+  // scope the snapshot to exactly those items — a legal receipt must never
+  // imply acknowledgement of items outside what was actually on this trip.
+  // Undefined/omitted (legacy, non-batched) keeps the whole-request snapshot.
+  onlyItemIds?: string[]
 }): Promise<string | null> {
   if (!input.requestId) return null
 
@@ -96,6 +103,10 @@ async function buildSnapshotJson(input: {
     .from(customers)
     .where(eq(customers.id, input.customerId))
 
+  const itemFilter = input.onlyItemIds
+    ? and(eq(requestItems.requestId, input.requestId), inArray(requestItems.id, input.onlyItemIds))
+    : eq(requestItems.requestId, input.requestId)
+
   const rawItems = await db
     .select({
       id: requestItems.id,
@@ -107,7 +118,7 @@ async function buildSnapshotJson(input: {
       accessories: requestItems.accessories,
     })
     .from(requestItems)
-    .where(eq(requestItems.requestId, input.requestId))
+    .where(itemFilter)
 
   const condMap = new Map(
     (input.itemConditions ?? []).map((c) => [c.requestItemId, c])
@@ -992,6 +1003,284 @@ export async function signOnSiteByTaskToken(
 
   revalidatePath(`/task/${taskToken}`)
   if (req.id) revalidatePath(`/admin/requests/${req.id}`)
+
+  return { id, token: sigReq.secureToken }
+}
+
+// ─── Partner: per-request-group signature status for a batched task ─────────
+// Delivery Batching v2 P4. One entry per request the task's delivery_task_item
+// rows touch — never a single shared entry, since a signature_request must
+// never cover items from more than one request (see project_koph_delivery_
+// batching memory / design doc).
+
+export type BatchSignatureStatus = {
+  requestId: string
+  requestNumber: string
+  sigReq: typeof signatureRequests.$inferSelect | null
+  sig: typeof customerSignatures.$inferSelect | null
+  signLink: string | null
+}
+
+export async function getBatchSignaturesForTaskToken(taskToken: string): Promise<BatchSignatureStatus[]> {
+  const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.taskToken, taskToken))
+  if (!task || task.kind !== "request" || task.requestId) return []
+
+  const affectedRequestIds = await getAffectedRequestIds(task.id)
+  const requestRows = await db.select().from(requests).where(inArray(requests.id, affectedRequestIds))
+
+  return Promise.all(
+    requestRows.map(async (req) => {
+      const [sigReq] = await db
+        .select()
+        .from(signatureRequests)
+        .where(and(eq(signatureRequests.partnerTaskId, task.id), eq(signatureRequests.requestId, req.id)))
+        .orderBy(desc(signatureRequests.createdAt))
+        .limit(1)
+
+      const sig = sigReq
+        ? (await db.select().from(customerSignatures).where(eq(customerSignatures.signatureRequestId, sigReq.id)))[0]
+        : undefined
+
+      return {
+        requestId: req.id,
+        requestNumber: req.requestNumber,
+        sigReq: sigReq ?? null,
+        sig: sig ?? null,
+        signLink: sigReq ? publicUrl(`/sign/${sigReq.secureToken}`) : null,
+      }
+    })
+  )
+}
+
+// ─── Partner: sign on-site for ONE request group of a batched task ──────────
+// Delivery Batching v2 P4. Same on-site flow as signOnSiteByTaskToken, but for
+// a genuine cross-request batch, scoped to exactly one request's items in this
+// task. Never touches partner_task.status — a single request's delivery
+// outcome must not flip the whole multi-customer trip's status; the courier
+// still explicitly marks the whole task done via the normal task actions once
+// every stop is complete. requests.status DOES move for the specific request
+// (refused → failed, partial → on_hold), mirroring the legacy per-request
+// behavior, just narrowed to the one request instead of assumed singular.
+
+export async function signOnSiteForRequestGroup(
+  taskToken: string,
+  requestId: string,
+  data: {
+    fullName: string
+    nationalId: string
+    signatureData: string
+    mobile?: string
+    position?: string
+    deliveryOutcome?: DeliveryOutcome
+    remarks?: string
+    itemConditions?: {
+      requestItemId: string
+      condition: "good" | "damaged" | "missing"
+      receivedQuantity?: number
+    }[]
+  }
+): Promise<SignatureActionResult> {
+  if (!checkRateLimit(`sig-onsite-batch:${taskToken}:${requestId}`, 10)) {
+    return { error: "Too many attempts. Please wait a minute and try again." }
+  }
+  const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.taskToken, taskToken))
+  if (!task) return { error: "Task not found" }
+  if (task.kind !== "request") {
+    return { error: "This task is not a request-kind delivery task" }
+  }
+  if (task.taskTokenExpiresAt < Date.now()) return { error: "Link expired" }
+  if (!["in_progress", "pending_signoff"].includes(task.status)) {
+    return { error: "Task is not active for on-site signing" }
+  }
+
+  const parsed = signOnSiteSchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
+
+  const group = await loadTaskBatchGroup(task.id, requestId)
+  if (!group) return { error: "This request is not part of this task" }
+  const groupItemIds = group.items.map((i) => i.id)
+
+  const [req] = await db.select().from(requests).where(eq(requests.id, requestId))
+  if (!req) return { error: "Request not found" }
+
+  // Find existing pending sig request for THIS (task, request) pair, or
+  // auto-create one — never reused across a different request in the batch.
+  let [sigReq] = await db
+    .select()
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.partnerTaskId, task.id),
+        eq(signatureRequests.requestId, requestId),
+        eq(signatureRequests.status, "sent")
+      )
+    )
+    .limit(1)
+
+  if (!sigReq) {
+    const [existing] = await db
+      .select()
+      .from(signatureRequests)
+      .where(and(eq(signatureRequests.partnerTaskId, task.id), eq(signatureRequests.requestId, requestId)))
+      .orderBy(desc(signatureRequests.createdAt))
+      .limit(1)
+
+    const isTimeExpired =
+      existing?.expiryEnabled && existing.expiresAt ? existing.expiresAt < Date.now() : false
+    if (existing && !TERMINAL_SIGNATURE_STATUSES.includes(existing.status) && !isTimeExpired) {
+      sigReq = existing
+    } else {
+      const id = createId()
+      const secureToken = generateSecureToken()
+      const newVerificationId = generateVerificationId()
+      await db.insert(signatureRequests).values({
+        id,
+        requestId,
+        partnerTaskId: task.id,
+        initiatedBy: "partner",
+        customerId: req.customerId,
+        documentName: "Delivery Note",
+        secureToken,
+        verificationId: newVerificationId,
+        requireNationalId: true,
+        status: "sent",
+      })
+      const [created] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
+      sigReq = created
+    }
+  }
+
+  if (!sigReq) return { error: "Could not find or create signature request" }
+  if (TERMINAL_SIGNATURE_STATUSES.includes(sigReq.status)) return { error: "This document is already signed or cancelled" }
+
+  // itemConditions supplied by the caller must only reference items actually
+  // in this request group's slice of the task — silently dropping anything
+  // else would be worse than rejecting the whole request outright.
+  if (data.itemConditions?.some((c) => !groupItemIds.includes(c.requestItemId))) {
+    return { error: "One or more item conditions do not belong to this request's items on this task" }
+  }
+
+  let verificationId = sigReq.verificationId
+  if (!verificationId) {
+    verificationId = generateVerificationId()
+    await db.update(signatureRequests).set({ verificationId }).where(eq(signatureRequests.id, sigReq.id))
+  }
+
+  const [customerRow] = await db.select({ name: customers.name }).from(customers).where(eq(customers.id, req.customerId))
+
+  const { ipAddress, userAgent } = await captureRequestMeta()
+  const now = Date.now()
+  const id = createId()
+  const fullName = data.fullName.trim()
+  const nationalId = data.nationalId.trim()
+  const signedAtIso = new Date(now).toISOString()
+
+  const auditDataHash = await buildAuditHash([
+    req.requestNumber,
+    req.quoteNumber,
+    customerRow?.name ?? "",
+    fullName,
+    nationalId,
+    signedAtIso,
+    verificationId,
+    ipAddress,
+    userAgent,
+  ])
+
+  const snapshotJson = await buildSnapshotJson({
+    requestId,
+    requestNumber: req.requestNumber,
+    quoteNumber: req.quoteNumber ?? "",
+    customerId: req.customerId,
+    itemConditions: data.itemConditions,
+    deliveryOutcome: data.deliveryOutcome ?? null,
+    remarks: data.remarks ?? null,
+    signer: { fullName, position: data.position ?? null, nationalId },
+    signedAt: now,
+    onlyItemIds: groupItemIds,
+  })
+
+  const outcome = data.deliveryOutcome ?? null
+  const refused = outcome === "refused"
+  const sigStatus = refused ? "rejected" : "signed"
+
+  try {
+    await db.transaction(async (tx) => {
+      assertSigned(await tx
+        .update(signatureRequests)
+        .set({ status: sigStatus, otpHash: null, otpExpiresAt: null, updatedAt: now })
+        .where(and(eq(signatureRequests.id, sigReq.id), eq(signatureRequests.status, sigReq.status))))
+
+      await tx.insert(customerSignatures).values({
+        id,
+        signatureRequestId: sigReq.id,
+        fullName,
+        mobile: data.mobile?.trim() ?? "",
+        nationalId,
+        position: data.position?.trim() || null,
+        signatureData: data.signatureData,
+        signatureMethod: "electronic",
+        deliveryOutcome: outcome,
+        remarks: data.remarks?.trim() || null,
+        snapshot: snapshotJson,
+        consentAcceptedAt: now,
+        signedAt: now,
+        signedAtTz: "Asia/Riyadh",
+        ipAddress,
+        userAgent,
+        auditDataHash,
+      })
+
+      if (data.itemConditions?.length) {
+        await tx.insert(signatureItemConditions).values(
+          data.itemConditions.map((c) => ({
+            id: createId(),
+            signatureRequestId: sigReq.id,
+            requestItemId: c.requestItemId,
+            condition: c.condition,
+            receivedQuantity: c.receivedQuantity ?? null,
+          }))
+        )
+      }
+
+      await tx.insert(signatureEvents).values({
+        id: createId(),
+        signatureRequestId: sigReq.id,
+        eventType: refused ? "rejected" : "signed",
+      })
+
+      await emitDomainEvent(tx, {
+        aggregateType: "signature_request",
+        aggregateId: sigReq.id,
+        eventType: refused ? "SignatureRejected" : "SignatureCompleted",
+        payload: { requestId, signatoryRole: sigReq.signatoryRole },
+        dedupeKey: `signature_request:${sigReq.id}:${refused ? "SignatureRejected" : "SignatureCompleted"}`,
+      })
+
+      // Request-level transition only, scoped to THIS request — never the
+      // task, and never any other request in the batch.
+      if (refused) {
+        await tx.update(requests).set({ status: "failed", updatedAt: now }).where(eq(requests.id, requestId))
+      } else if (outcome === "partial") {
+        await tx.update(requests).set({ status: "on_hold", updatedAt: now }).where(eq(requests.id, requestId))
+      }
+    })
+  } catch (e) {
+    if (e instanceof StaleSignatureError) return { error: "This document is already signed or cancelled" }
+    throw e
+  }
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: sigReq.id,
+    action: "signature_request_signed",
+    i18nKey: "activity.signatureRequestSigned",
+    i18nData: { fullName: data.fullName },
+    performedAs: "system",
+  })
+
+  revalidatePath(`/task/${taskToken}`)
+  revalidatePath(`/admin/requests/${requestId}`)
 
   return { id, token: sigReq.secureToken }
 }

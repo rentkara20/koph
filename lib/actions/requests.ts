@@ -227,6 +227,7 @@ export type RequestListItem = {
   createdAt: number
   customerName: string | null
   typeName: string | null
+  typeNameAr: string | null
 }
 
 export type RequestListPage = {
@@ -288,6 +289,7 @@ export async function getRequests(filters?: {
         createdAt: requests.createdAt,
         customerName: customers.name,
         typeName: requestTypes.nameEn,
+        typeNameAr: requestTypes.nameAr,
       })
       .from(requests)
       .leftJoin(customers, eq(requests.customerId, customers.id))

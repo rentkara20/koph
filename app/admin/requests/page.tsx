@@ -1,6 +1,6 @@
 import Link from "next/link"
-import { getTranslations } from "next-intl/server"
-import { Plus, Search } from "lucide-react"
+import { getLocale, getTranslations } from "next-intl/server"
+import { FileSpreadsheet, Plus, Search } from "lucide-react"
 import { getRequests } from "@/lib/actions/requests"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge, requestStatusVariant } from "@/components/ui/badge"
@@ -27,12 +27,16 @@ export default async function RequestsPage({
 }) {
   const { status, search, page } = await searchParams
   const pageNum = Math.max(1, Number(page) || 1)
-  const [t, tCommon, result] = await Promise.all([
+  const [t, tCommon, tImportExport, locale, result] = await Promise.all([
     getTranslations("requests"),
     getTranslations("common"),
+    getTranslations("importExport"),
+    getLocale(),
     getRequests({ status, search, page: pageNum }),
   ])
   const requestList = result.rows
+  const typeLabel = (r: { typeName: string | null; typeNameAr: string | null }) =>
+    locale === "ar" ? (r.typeNameAr ?? r.typeName) : (r.typeName ?? r.typeNameAr)
 
   const buildPageHref = (p: number) => {
     const sp = new URLSearchParams()
@@ -49,10 +53,19 @@ export default async function RequestsPage({
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <Link href="/admin/requests/new" className={cn(buttonVariants(), "gap-1.5")}>
-          <Plus className="size-4" />
-          {t("new")}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/settings/import-export?module=request"
+            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
+          >
+            <FileSpreadsheet className="size-3.5" />
+            {tImportExport("exportDataLabel")}
+          </Link>
+          <Link href="/admin/requests/new" className={cn(buttonVariants(), "gap-1.5")}>
+            <Plus className="size-4" />
+            {t("new")}
+          </Link>
+        </div>
       </div>
 
       {/* Filter */}
@@ -110,7 +123,7 @@ export default async function RequestsPage({
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">{r.customerName ?? "—"}</p>
                 <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  {r.typeName && <span>{r.typeName}</span>}
+                  {typeLabel(r) && <span>{typeLabel(r)}</span>}
                   {r.deliveryDate && <span>{formatDate(r.deliveryDate)}</span>}
                   {r.quoteNumber && <span className="font-mono">{r.quoteNumber}</span>}
                 </div>
@@ -158,7 +171,7 @@ export default async function RequestsPage({
                       {r.quoteNumber ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                      {r.typeName ?? "—"}
+                      {typeLabel(r) ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{r.customerName ?? "—"}</td>
                     <td className="px-4 py-3">

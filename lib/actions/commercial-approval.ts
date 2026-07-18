@@ -120,7 +120,9 @@ export async function createCommercialEvaluation(
 // procurement case to change them.
 
 const awardItemsSchema = z.object({
-  sourcingRequestId: z.string().trim().min(1),
+  // Sourcing V3: request membership is derived from the awarded items
+  // themselves (they may span more than one request) — no longer a required
+  // input the caller must get right.
   notes: z.string().trim().max(2000).optional(),
   awards: z
     .array(
@@ -134,11 +136,14 @@ const awardItemsSchema = z.object({
     .min(1),
 })
 
-// Loads every quotation line that belongs to this sourcing request, keyed by
-// line id, with the request item it quoted — the fact base for award guards.
-async function loadRequestQuotationLines(
+// Loads every quotation line that answered one of the given items, keyed by
+// line id, with the item it quoted and the supplier that offered it — the
+// fact base for award guards. Item-scoped (not request-scoped): a
+// consolidated RFQ leaves supplier_rfq.sourcingRequestId null, so finding
+// candidate lines via the RFQ's own request id would miss them.
+async function loadQuotationLinesForItems(
   tx: Tx,
-  sourcingRequestId: string
+  itemIds: string[]
 ): Promise<Map<string, QuotationLineFact & { supplierId: string }>> {
   const rows = await tx
     .select({
@@ -149,7 +154,7 @@ async function loadRequestQuotationLines(
     .from(supplierQuotationLines)
     .innerJoin(supplierQuotations, eq(supplierQuotationLines.quotationId, supplierQuotations.id))
     .innerJoin(supplierRfqs, eq(supplierQuotations.rfqId, supplierRfqs.id))
-    .where(eq(supplierRfqs.sourcingRequestId, sourcingRequestId))
+    .where(inArray(supplierQuotationLines.sourcingRequestItemId, itemIds))
 
   const map = new Map<string, QuotationLineFact & { supplierId: string }>()
   for (const r of rows) {
@@ -168,38 +173,59 @@ export async function awardSourcingItems(input: z.infer<typeof awardItemsSchema>
   const d = parsed.data
 
   let evaluationId = ""
+  let affectedRequestIds: string[] = []
   try {
     await db.transaction(async (tx) => {
-      const [request] = await tx
-        .select({ status: sourcingRequests.status })
+      const awardedItemIds = d.awards.map((a) => a.sourcingRequestItemId)
+
+      // Every awarded item must exist and be sourceable — request membership
+      // is derived from the items themselves (Sourcing V3: awards may span
+      // more than one request), not passed in and checked against one id.
+      const items = await tx
+        .select({
+          id: sourcingRequestItems.id,
+          status: sourcingRequestItems.status,
+          sourcingRequestId: sourcingRequestItems.sourcingRequestId,
+        })
+        .from(sourcingRequestItems)
+        .where(inArray(sourcingRequestItems.id, awardedItemIds))
+      if (items.length !== awardedItemIds.length) {
+        throw new Error("An awarded item was not found")
+      }
+      if (items.some((i) => ["cancelled", "not_sourced"].includes(i.status))) {
+        throw new Error("An awarded item is not sourceable")
+      }
+
+      affectedRequestIds = [...new Set(items.map((i) => i.sourcingRequestId))]
+      const requests = await tx
+        .select({ id: sourcingRequests.id, status: sourcingRequests.status })
         .from(sourcingRequests)
-        .where(eq(sourcingRequests.id, d.sourcingRequestId))
-      if (!request) throw new Error("Sourcing request not found")
-      if (["handed_off", "closed", "cancelled"].includes(request.status)) {
+        .where(inArray(sourcingRequests.id, affectedRequestIds))
+      if (requests.some((r) => ["handed_off", "closed", "cancelled"].includes(r.status))) {
         throw new Error("Sourcing request is closed")
       }
 
-      // Immutability lock: if the latest evaluation is already approved, its
-      // awards are frozen — supersede the procurement case to change them.
-      const [latestEval] = await tx
-        .select()
-        .from(commercialEvaluations)
-        .where(eq(commercialEvaluations.sourcingRequestId, d.sourcingRequestId))
-        .orderBy(desc(commercialEvaluations.createdAt))
-        .limit(1)
-      if (latestEval && latestEval.status === "active") {
-        const [approval] = await tx
-          .select({ decision: commercialApprovals.decision })
-          .from(commercialApprovals)
-          .where(eq(commercialApprovals.evaluationId, latestEval.id))
-          .orderBy(desc(commercialApprovals.decidedAt))
-          .limit(1)
-        if (approval?.decision === "approved") {
-          throw new Error("Awards are locked under an approved evaluation — supersede the procurement case to change them")
-        }
+      // Immutability lock: an item already governed by an active evaluation
+      // that has been approved is frozen — supersede the procurement case to
+      // change it. Checked per-item so a cross-request submission can't
+      // silently re-award an item locked by an unrelated approved evaluation.
+      const lockingEvaluations = await tx
+        .select({ evaluationId: commercialEvaluationLines.evaluationId })
+        .from(commercialEvaluationLines)
+        .innerJoin(commercialEvaluations, eq(commercialEvaluations.id, commercialEvaluationLines.evaluationId))
+        .innerJoin(commercialApprovals, eq(commercialApprovals.evaluationId, commercialEvaluations.id))
+        .where(
+          and(
+            inArray(commercialEvaluationLines.sourcingRequestItemId, awardedItemIds),
+            eq(commercialEvaluations.status, "active"),
+            eq(commercialApprovals.decision, "approved")
+          )
+        )
+      if (lockingEvaluations.length > 0) {
+        throw new Error("Awards are locked under an approved evaluation — supersede the procurement case to change them")
       }
 
-      const linesByLineId = await loadRequestQuotationLines(tx, d.sourcingRequestId)
+      const linesByLineId = await loadQuotationLinesForItems(tx, awardedItemIds)
       const validation = validateAwards(d.awards, linesByLineId)
       if (!validation.ok) {
         throw new Error(
@@ -207,40 +233,42 @@ export async function awardSourcingItems(input: z.infer<typeof awardItemsSchema>
             ? "An item was awarded more than once"
             : validation.error === "line_item_mismatch"
               ? "A chosen quotation did not quote that item"
-              : "A chosen quotation line does not belong to this request"
+              : "A chosen quotation line did not quote any of the awarded items"
         )
       }
 
-      // Every awarded item must belong to this request and be sourceable.
-      const awardedItemIds = d.awards.map((a) => a.sourcingRequestItemId)
-      const items = await tx
-        .select({ id: sourcingRequestItems.id, status: sourcingRequestItems.status })
-        .from(sourcingRequestItems)
-        .where(
-          and(
-            eq(sourcingRequestItems.sourcingRequestId, d.sourcingRequestId),
-            inArray(sourcingRequestItems.id, awardedItemIds)
-          )
-        )
-      if (items.length !== awardedItemIds.length) {
-        throw new Error("An awarded item does not belong to this request")
-      }
-      if (items.some((i) => ["cancelled", "not_sourced"].includes(i.status))) {
-        throw new Error("An awarded item is not sourceable")
-      }
-
-      // Supersede any prior active evaluation (append-only history).
-      if (latestEval && latestEval.status === "active") {
+      // Supersede any prior active evaluation that currently governs any of
+      // these items (surgical — only evaluations actually touching the items
+      // being re-awarded, not every evaluation for the affected requests).
+      const activeEvaluationIds = [
+        ...new Set(
+          (
+            await tx
+              .select({ evaluationId: commercialEvaluationLines.evaluationId })
+              .from(commercialEvaluationLines)
+              .innerJoin(commercialEvaluations, eq(commercialEvaluations.id, commercialEvaluationLines.evaluationId))
+              .where(
+                and(
+                  inArray(commercialEvaluationLines.sourcingRequestItemId, awardedItemIds),
+                  eq(commercialEvaluations.status, "active")
+                )
+              )
+          ).map((r) => r.evaluationId)
+        ),
+      ]
+      if (activeEvaluationIds.length > 0) {
         await tx
           .update(commercialEvaluations)
           .set({ status: "superseded", updatedAt: Date.now() })
-          .where(eq(commercialEvaluations.id, latestEval.id))
+          .where(inArray(commercialEvaluations.id, activeEvaluationIds))
       }
 
       evaluationId = createId()
       await tx.insert(commercialEvaluations).values({
         id: evaluationId,
-        sourcingRequestId: d.sourcingRequestId,
+        // Legacy single-request display convenience — null once items span
+        // more than one request; the real origin is per-item (see P3).
+        sourcingRequestId: affectedRequestIds.length === 1 ? affectedRequestIds[0] : null,
         notes: d.notes,
         createdBy: session.user.id,
       })
@@ -264,13 +292,13 @@ export async function awardSourcingItems(input: z.infer<typeof awardItemsSchema>
       await tx
         .update(sourcingRequests)
         .set({ status: "under_evaluation", updatedAt: Date.now() })
-        .where(eq(sourcingRequests.id, d.sourcingRequestId))
+        .where(inArray(sourcingRequests.id, affectedRequestIds))
 
       await emitDomainEvent(tx, {
         aggregateType: "commercial_evaluation",
         aggregateId: evaluationId,
         eventType: "CommercialEvaluationCreated",
-        payload: { sourcingRequestId: d.sourcingRequestId, awardCount: d.awards.length },
+        payload: { sourcingRequestIds: affectedRequestIds, awardCount: d.awards.length },
         dedupeKey: `commercial_evaluation:${evaluationId}:CommercialEvaluationCreated`,
         actorUserId: session.user.id,
       })
@@ -279,7 +307,9 @@ export async function awardSourcingItems(input: z.infer<typeof awardItemsSchema>
     return { error: error instanceof Error ? error.message : "Failed to award items" }
   }
 
-  revalidatePath(`/admin/sourcing/${d.sourcingRequestId}`)
+  for (const requestId of affectedRequestIds) {
+    revalidatePath(`/admin/sourcing/${requestId}`)
+  }
   return { id: evaluationId }
 }
 
@@ -312,13 +342,28 @@ export async function decideCommercialApproval(
       // Only the current active evaluation is decidable — never a superseded one.
       if (evaluation.status !== "active") throw new Error("EVAL_NOT_ACTIVE")
 
-      const [request] = await tx
-        .select({ status: sourcingRequests.status })
+      // Sourcing V3: derive every affected request from the evaluation's
+      // award lines — an evaluation may span more than one request now, so
+      // evaluation.sourcingRequestId (null once it does) can't be relied on.
+      const affectedRequestIds = [
+        ...new Set(
+          (
+            await tx
+              .select({ requestId: sourcingRequestItems.sourcingRequestId })
+              .from(commercialEvaluationLines)
+              .innerJoin(sourcingRequestItems, eq(sourcingRequestItems.id, commercialEvaluationLines.sourcingRequestItemId))
+              .where(eq(commercialEvaluationLines.evaluationId, d.evaluationId))
+          ).map((r) => r.requestId)
+        ),
+      ]
+      if (affectedRequestIds.length === 0) throw new Error("REQUEST_NOT_FOUND")
+
+      const requests = await tx
+        .select({ id: sourcingRequests.id, status: sourcingRequests.status })
         .from(sourcingRequests)
-        .where(eq(sourcingRequests.id, evaluation.sourcingRequestId))
-      if (!request) throw new Error("REQUEST_NOT_FOUND")
+        .where(inArray(sourcingRequests.id, affectedRequestIds))
       // Don't regress a request that's already handed off / closed.
-      if (["handed_off", "cancelled", "closed"].includes(request.status)) {
+      if (requests.some((r) => ["handed_off", "cancelled", "closed"].includes(r.status))) {
         throw new Error("REQUEST_LOCKED")
       }
 
@@ -332,7 +377,7 @@ export async function decideCommercialApproval(
       await tx
         .update(sourcingRequests)
         .set({ status: d.decision === "approved" ? "approved" : "rejected", updatedAt: Date.now() })
-        .where(eq(sourcingRequests.id, evaluation.sourcingRequestId))
+        .where(inArray(sourcingRequests.id, affectedRequestIds))
 
       await emitDomainEvent(tx, {
         aggregateType: "commercial_approval",
@@ -369,7 +414,7 @@ export async function decideCommercialApproval(
 // (lib/actions/procurement-case.ts:linkExternalPo).
 
 const handoffSchema = z.object({
-  sourcingRequestId: z.string().trim().min(1),
+  evaluationId: z.string().trim().min(1),
 })
 
 export async function handoffToProcurementCase(
@@ -383,22 +428,14 @@ export async function handoffToProcurementCase(
   const d = parsed.data
 
   let caseId = ""
+  let affectedRequestIds: string[] = []
   try {
     await db.transaction(async (tx) => {
-      const [request] = await tx
-        .select()
-        .from(sourcingRequests)
-        .where(eq(sourcingRequests.id, d.sourcingRequestId))
-      if (!request) throw new Error("Sourcing request not found")
-      if (request.status !== "approved") throw new Error("Sourcing request is not in approved status")
-
       const [evaluation] = await tx
         .select()
         .from(commercialEvaluations)
-        .where(eq(commercialEvaluations.sourcingRequestId, d.sourcingRequestId))
-        .orderBy(desc(commercialEvaluations.createdAt))
-        .limit(1)
-      if (!evaluation) throw new Error("No commercial evaluation found for this sourcing request")
+        .where(eq(commercialEvaluations.id, d.evaluationId))
+      if (!evaluation) throw new Error("Commercial evaluation not found")
 
       const [approval] = await tx
         .select()
@@ -407,19 +444,40 @@ export async function handoffToProcurementCase(
         .orderBy(desc(commercialApprovals.decidedAt))
         .limit(1)
       if (!approval || approval.decision !== "approved") {
-        throw new Error("No approved commercial approval found for this sourcing request")
+        throw new Error("No approved commercial approval found for this evaluation")
+      }
+
+      // Sourcing V3: every request an awarded item in this evaluation came
+      // from — an evaluation may span more than one request. Every one of
+      // them must be in "approved" status before handoff proceeds.
+      const awardLines = await tx
+        .select({
+          chosenQuotationLineId: commercialEvaluationLines.chosenQuotationLineId,
+          sourcingRequestItemId: commercialEvaluationLines.sourcingRequestItemId,
+        })
+        .from(commercialEvaluationLines)
+        .where(eq(commercialEvaluationLines.evaluationId, evaluation.id))
+
+      const awardedItemIds = awardLines.map((l) => l.sourcingRequestItemId)
+      const items = await tx
+        .select({ id: sourcingRequestItems.id, sourcingRequestId: sourcingRequestItems.sourcingRequestId })
+        .from(sourcingRequestItems)
+        .where(inArray(sourcingRequestItems.id, awardedItemIds))
+      affectedRequestIds = [...new Set(items.map((i) => i.sourcingRequestId))]
+
+      const requests = await tx
+        .select({ id: sourcingRequests.id, status: sourcingRequests.status })
+        .from(sourcingRequests)
+        .where(inArray(sourcingRequests.id, affectedRequestIds))
+      if (requests.some((r) => r.status !== "approved")) {
+        throw new Error("Every sourcing request covered by this evaluation must be approved first")
       }
 
       // Sourcing V2: group the approved evaluation's awards by supplier — one
       // procurement case per awarded supplier, each destined for its own
       // external ERP PO. Fall back to a single supplier-less case when the
       // evaluation has no award lines (legacy whole-quotation evaluations).
-      const awardLines = await tx
-        .select({ chosenQuotationLineId: commercialEvaluationLines.chosenQuotationLineId })
-        .from(commercialEvaluationLines)
-        .where(eq(commercialEvaluationLines.evaluationId, evaluation.id))
-
-      const linesByLineId = await loadRequestQuotationLines(tx, d.sourcingRequestId)
+      const linesByLineId = await loadQuotationLinesForItems(tx, awardedItemIds)
       const supplierIds = [
         ...new Set(
           awardLines
@@ -428,10 +486,15 @@ export async function handoffToProcurementCase(
         ),
       ]
 
+      // Legacy single-request display convenience on the case — null once
+      // the handoff spans more than one request (traceability then comes
+      // from commercialApprovalId, see getProcurementCaseSourceRequestsCore).
+      const caseSourcingRequestId = affectedRequestIds.length === 1 ? affectedRequestIds[0] : undefined
+
       if (supplierIds.length === 0) {
         const result = await createProcurementCaseCore(
           tx,
-          { source: "commercial_flow", sourcingRequestId: d.sourcingRequestId, commercialApprovalId: approval.id },
+          { source: "commercial_flow", sourcingRequestId: caseSourcingRequestId, commercialApprovalId: approval.id },
           session.user.id
         )
         caseId = result.caseId
@@ -441,7 +504,7 @@ export async function handoffToProcurementCase(
             tx,
             {
               source: "commercial_flow",
-              sourcingRequestId: d.sourcingRequestId,
+              sourcingRequestId: caseSourcingRequestId,
               commercialApprovalId: approval.id,
               supplierId,
             },
@@ -454,13 +517,15 @@ export async function handoffToProcurementCase(
       await tx
         .update(sourcingRequests)
         .set({ status: "handed_off", updatedAt: Date.now() })
-        .where(eq(sourcingRequests.id, d.sourcingRequestId))
+        .where(inArray(sourcingRequests.id, affectedRequestIds))
     })
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to hand off to procurement case" }
   }
 
-  revalidatePath(`/admin/sourcing/${d.sourcingRequestId}`)
+  for (const requestId of affectedRequestIds) {
+    revalidatePath(`/admin/sourcing/${requestId}`)
+  }
   revalidatePath("/admin/procurement")
   return { id: caseId }
 }

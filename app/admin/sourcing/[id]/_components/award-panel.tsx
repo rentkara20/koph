@@ -22,10 +22,8 @@ type Pick = { quotationLineId: string; reason: Reason }
 // item with a mandatory reason. Awards feed commercial_evaluation_line — the
 // single source of truth — via awardSourcingItems.
 export function AwardPanel({
-  sourcingRequestId,
   matrix,
 }: {
-  sourcingRequestId: string
   matrix: ComparisonRow[]
 }) {
   const t = useTranslations("sourcing")
@@ -53,7 +51,7 @@ export function AwardPanel({
   function handleSubmit() {
     setError("")
     startTransition(async () => {
-      const result = await awardSourcingItems({ sourcingRequestId, awards })
+      const result = await awardSourcingItems({ awards })
       if (result.error) {
         const msg = translateActionError(result.error)
         setError(msg)

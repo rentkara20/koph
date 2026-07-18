@@ -1,17 +1,20 @@
 import Link from "next/link"
+import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-const CAPABILITIES = [
-  { area: "Requests, orders, assets, partners, customers", admin: true, finance: false, viewer: "read-only" },
-  { area: "Payment batches (generate, approve, send, mark paid)", admin: true, finance: true, viewer: "read-only" },
-  { area: "Settings", admin: true, finance: false, viewer: false },
-  { area: "Task sign-off (creates a payment record)", admin: true, finance: true, viewer: false },
-] as const
+export default async function RolesSettingsPage() {
+  const t = await getTranslations("rolesPage")
 
-export default function RolesSettingsPage() {
+  const CAPABILITIES = [
+    { area: t("areaCore"), admin: true, finance: false, viewer: t("readOnly") as string | false },
+    { area: t("areaPayments"), admin: true, finance: true, viewer: t("readOnly") as string | false },
+    { area: t("areaSettings"), admin: true, finance: false, viewer: false as string | false },
+    { area: t("areaSignOff"), admin: true, finance: true, viewer: false as string | false },
+  ]
+
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div className="flex items-center gap-3">
@@ -22,17 +25,15 @@ export default function RolesSettingsPage() {
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Roles & Permissions</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Current role capabilities (reference only).
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("subtitle")}</p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            admin / finance / viewer / partner
+            {t("matrixTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -43,19 +44,18 @@ export default function RolesSettingsPage() {
                 <div key={row.area} className="grid grid-cols-[1fr_auto] items-center gap-3 p-3">
                   <span>{row.area}</span>
                   <span className="text-xs text-muted-foreground">
-                    admin: {row.admin ? "✓" : "✗"} · finance: {row.finance ? "✓" : "✗"} · viewer: {viewer}
+                    {t("adminLabel")}: {row.admin ? "✓" : "✗"} · {t("financeLabel")}:{" "}
+                    {row.finance ? "✓" : "✗"} · {t("viewerLabel")}: {viewer}
                   </span>
                 </div>
               )
             })}
           </div>
           <p className="text-xs text-muted-foreground">
-            Roles are checked in code at every server action (<code>getSessionWithRole</code>), not
-            read from a settings table — a role matrix stored as data and a bug in how it&apos;s read
-            would silently open up financial or destructive actions. Adding a new role (e.g. a
-            dispatcher role scoped to task assignment only) is a scoped code change; ask engineering.
-            The <code>partner</code> role is excluded entirely from this admin area and only reaches
-            token-scoped pages and its own portal.
+            {t.rich("body", {
+              code1: (chunks) => <code>{chunks}</code>,
+              code2: (chunks) => <code>{chunks}</code>,
+            })}
           </p>
         </CardContent>
       </Card>

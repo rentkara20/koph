@@ -14,18 +14,10 @@ import { assignWarranty, activateWarranty } from "@/lib/actions/warranty"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { formatDate } from "@/lib/utils/format"
 import type { getWarrantyForAsset } from "@/lib/actions/warranty"
+import { warrantyStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 type Warranty = Awaited<ReturnType<typeof getWarrantyForAsset>>
 type BatchOption = { id: string; productNameEn: string; unitsCovered: number; unitsAssigned: number }
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  assigned_not_activated: "warning",
-  activation_pending: "warning",
-  active: "success",
-  expired: "destructive",
-  cancelled: "secondary",
-  unknown: "secondary",
-}
 
 export function WarrantyCard({
   assetId,
@@ -40,6 +32,7 @@ export function WarrantyCard({
   const router = useRouter()
   const [batchId, setBatchId] = useState(batches[0]?.id ?? "")
   const [dueDate, setDueDate] = useState("")
+  const [startDate, setStartDate] = useState("")
   const [pending, startTransition] = useTransition()
 
   function handleAssign() {
@@ -58,7 +51,7 @@ export function WarrantyCard({
   function handleActivate() {
     if (!warranty) return
     startTransition(async () => {
-      const result = await activateWarranty(warranty.id)
+      const result = await activateWarranty(warranty.id, startDate || undefined)
       if (result.error) {
         toast.error(translateActionError(result.error))
         return
@@ -116,10 +109,16 @@ export function WarrantyCard({
             </p>
           )}
           {["assigned_not_activated", "activation_pending"].includes(warranty.status) && (
-            <Button size="sm" onClick={handleActivate} disabled={pending}>
-              {pending && <Loader2 className="me-1.5 size-3.5 animate-spin" />}
-              {t("activate")}
-            </Button>
+            <div className="flex flex-wrap items-end gap-2 pt-1">
+              <div>
+                <Label className="text-xs">{t("startDate")}</Label>
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="h-8" />
+              </div>
+              <Button size="sm" onClick={handleActivate} disabled={pending}>
+                {pending && <Loader2 className="me-1.5 size-3.5 animate-spin" />}
+                {t("activate")}
+              </Button>
+            </div>
           )}
         </div>
       )}

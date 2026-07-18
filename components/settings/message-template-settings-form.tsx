@@ -8,21 +8,28 @@ import { toast } from "sonner"
 import {
   resetOperationalMessageTemplates,
   resetRfqMessageTemplates,
+  resetWarrantyRequestTemplates,
   updateOperationalMessageTemplates,
   updateRfqMessageTemplates,
+  updateWarrantyRequestTemplates,
 } from "@/lib/actions/settings"
 import {
   DEFAULT_OPERATIONAL_TEMPLATES,
   DEFAULT_RFQ_TEMPLATES,
+  DEFAULT_WARRANTY_REQUEST_TEMPLATES,
   OPERATIONAL_TEMPLATE_VARIABLES,
   RFQ_TEMPLATE_VARIABLES,
+  WARRANTY_REQUEST_TEMPLATE_VARIABLES,
   renderMessageTemplate,
   validateOperationalTemplates,
   validateRfqTemplates,
+  validateWarrantyRequestTemplates,
   type OperationalMessageTemplates,
   type RfqMessageTemplates,
+  type WarrantyRequestMessageTemplates,
 } from "@/lib/domain/message-templates"
 import { buildRfqMessages } from "@/lib/domain/rfq-message"
+import { buildWarrantyRequestMessages } from "@/lib/domain/warranty-request-message"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -91,14 +98,17 @@ const GROUPS: Array<{
 export function MessageTemplateSettingsForm({
   rfqInitial,
   operationalInitial,
+  warrantyRequestInitial,
 }: {
   rfqInitial: RfqMessageTemplates
   operationalInitial: OperationalMessageTemplates
+  warrantyRequestInitial: WarrantyRequestMessageTemplates
 }) {
   const t = useTranslations("messageTemplates")
   const router = useRouter()
   const [rfq, setRfq] = useState(rfqInitial)
   const [operational, setOperational] = useState(operationalInitial)
+  const [warrantyRequest, setWarrantyRequest] = useState(warrantyRequestInitial)
   const [saving, setSaving] = useState(false)
 
   const rfqPreview = useMemo(
@@ -115,8 +125,28 @@ export function MessageTemplateSettingsForm({
     [rfq]
   )
 
+  const warrantyRequestPreview = useMemo(
+    () =>
+      buildWarrantyRequestMessages(
+        {
+          supplierContactName: "Ahmed",
+          warrantyProductName: "AppleCare+",
+          batchRef: "A1B2C3D4",
+          items: [
+            { serial: "SN-0001", device: "iPhone 14 Pro, 128GB" },
+            { serial: "SN-0002", device: "iPhone 14 Pro, 128GB" },
+          ],
+        },
+        warrantyRequest
+      ),
+    [warrantyRequest]
+  )
+
   async function save() {
-    const validation = validateRfqTemplates(rfq).error ?? validateOperationalTemplates(operational).error
+    const validation =
+      validateRfqTemplates(rfq).error ??
+      validateOperationalTemplates(operational).error ??
+      validateWarrantyRequestTemplates(warrantyRequest).error
     if (validation) return toast.error(validation)
     setSaving(true)
     try {
@@ -124,6 +154,8 @@ export function MessageTemplateSettingsForm({
       if (rfqResult.error) return toast.error(rfqResult.error)
       const operationalResult = await updateOperationalMessageTemplates(operational)
       if (operationalResult.error) return toast.error(operationalResult.error)
+      const warrantyResult = await updateWarrantyRequestTemplates(warrantyRequest)
+      if (warrantyResult.error) return toast.error(warrantyResult.error)
       toast.success(t("saved"))
       router.refresh()
     } catch {
@@ -137,14 +169,16 @@ export function MessageTemplateSettingsForm({
     if (!window.confirm(t("resetConfirm"))) return
     setSaving(true)
     try {
-      const [rfqResult, operationalResult] = await Promise.all([
+      const [rfqResult, operationalResult, warrantyResult] = await Promise.all([
         resetRfqMessageTemplates(),
         resetOperationalMessageTemplates(),
+        resetWarrantyRequestTemplates(),
       ])
-      const error = rfqResult.error ?? operationalResult.error
+      const error = rfqResult.error ?? operationalResult.error ?? warrantyResult.error
       if (error) return toast.error(error)
       setRfq(DEFAULT_RFQ_TEMPLATES)
       setOperational(DEFAULT_OPERATIONAL_TEMPLATES)
+      setWarrantyRequest(DEFAULT_WARRANTY_REQUEST_TEMPLATES)
       toast.success(t("resetDone"))
       router.refresh()
     } catch {
@@ -159,7 +193,7 @@ export function MessageTemplateSettingsForm({
       <div className="rounded-lg border bg-muted/30 p-3">
         <p className="text-sm font-medium">{t("variables")}</p>
         <div className="mt-2 flex flex-wrap gap-1.5" dir="ltr">
-          {[...new Set([...RFQ_TEMPLATE_VARIABLES, ...OPERATIONAL_TEMPLATE_VARIABLES])].map((variable) => (
+          {[...new Set([...RFQ_TEMPLATE_VARIABLES, ...OPERATIONAL_TEMPLATE_VARIABLES, ...WARRANTY_REQUEST_TEMPLATE_VARIABLES])].map((variable) => (
             <code key={variable} className="rounded bg-background px-2 py-1 text-xs">{`{{${variable}}}`}</code>
           ))}
         </div>
@@ -190,6 +224,50 @@ export function MessageTemplateSettingsForm({
             </div>
           </div>
           <EmailPreview subject={rfqPreview.emailSubject} body={rfqPreview.emailBody} />
+        </div>
+      </section>
+
+      <section className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+        <div>
+          <h2 className="font-semibold">{t("types.warrantyRequest")}</h2>
+          <p className="text-sm text-muted-foreground">{t("warrantyRequestHint")}</p>
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="warrantyWhatsappBody">{t("whatsappBody")}</Label>
+            <Textarea
+              id="warrantyWhatsappBody"
+              dir="auto"
+              rows={12}
+              value={warrantyRequest.whatsappBody}
+              onChange={(e) => setWarrantyRequest((v) => ({ ...v, whatsappBody: e.target.value }))}
+            />
+          </div>
+          <MessagePreview label={t("previewWhatsapp")} value={warrantyRequestPreview.whatsappBody} whatsapp />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <Label htmlFor="warrantyEmailSubject">{t("emailSubject")}</Label>
+              <Input
+                id="warrantyEmailSubject"
+                dir="auto"
+                value={warrantyRequest.emailSubject}
+                onChange={(e) => setWarrantyRequest((v) => ({ ...v, emailSubject: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="warrantyEmailBody">{t("emailBody")}</Label>
+              <Textarea
+                id="warrantyEmailBody"
+                dir="auto"
+                rows={11}
+                value={warrantyRequest.emailBody}
+                onChange={(e) => setWarrantyRequest((v) => ({ ...v, emailBody: e.target.value }))}
+              />
+            </div>
+          </div>
+          <EmailPreview subject={warrantyRequestPreview.emailSubject} body={warrantyRequestPreview.emailBody} />
         </div>
       </section>
 

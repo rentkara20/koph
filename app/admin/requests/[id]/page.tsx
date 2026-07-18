@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
-import { getTranslations } from "next-intl/server"
+import { getLocale, getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getCustomerDeliveryOptions, getRequest, deleteRequest } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts } from "@/lib/actions/tasks"
@@ -33,7 +33,7 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [data, tasks, partnersWithContracts, signatures, taskServicesMap, allServices, companyLocation, t, tCommon] = await Promise.all([
+  const [data, tasks, partnersWithContracts, signatures, taskServicesMap, allServices, companyLocation, t, tCommon, locale] = await Promise.all([
     getRequest(id),
     getTasksForRequest(id),
     getPartnersWithContracts(),
@@ -43,6 +43,7 @@ export default async function RequestDetailPage({
     getDefaultCompanyLocation(),
     getTranslations("requests"),
     getTranslations("common"),
+    getLocale(),
   ])
 
   const deliveryOptions = data
@@ -117,7 +118,9 @@ export default async function RequestDetailPage({
               )}
               <div>
                 <dt className="text-muted-foreground">{t("type")}</dt>
-                <dd className="font-medium mt-0.5">{requestType?.nameEn ?? "—"}</dd>
+                <dd className="font-medium mt-0.5">
+                  {(locale === "ar" ? requestType?.nameAr : requestType?.nameEn) ?? requestType?.nameEn ?? "—"}
+                </dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">{t("customer")}</dt>

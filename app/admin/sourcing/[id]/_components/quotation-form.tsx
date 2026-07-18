@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Loader2 } from "lucide-react"
+import { ChevronDown, Loader2, Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -69,6 +69,7 @@ export function QuotationForm({ rfqId, items }: { rfqId: string; items: Quotatio
   const [drafts, setDrafts] = useState<LineDraft[]>(() => items.map(() => emptyLine()))
   const [notes, setNotes] = useState("")
   const [error, setError] = useState("")
+  const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
   function updateLine(index: number, patch: Partial<LineDraft>) {
@@ -111,9 +112,27 @@ export function QuotationForm({ rfqId, items }: { rfqId: string; items: Quotatio
     })
   }
 
+  // Collapsed by default: with several suppliers, always-open forms bury the
+  // page. The operator opens the one supplier whose quote they're entering.
+  if (!open) {
+    return (
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)} className="w-full gap-1.5">
+        <Plus className="size-3.5" />
+        {t("enterQuote")}
+      </Button>
+    )
+  }
+
   return (
     <div className="space-y-3 rounded-lg border p-3">
-      <p className="text-sm font-medium">{t("submitQuotation")}</p>
+      <button
+        type="button"
+        onClick={() => setOpen(false)}
+        className="flex w-full items-center justify-between text-sm font-medium"
+      >
+        {t("submitQuotation")}
+        <ChevronDown className="size-4 text-muted-foreground" />
+      </button>
 
       {items.map((item, index) => {
         const d = drafts[index]

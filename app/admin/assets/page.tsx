@@ -1,9 +1,10 @@
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { Search } from "lucide-react"
+import { FileSpreadsheet, Search } from "lucide-react"
 import { getAssets, getAssetStatusCounts } from "@/lib/actions/assets"
 import type { AssetStatus } from "@/lib/domain/asset-status"
 import { Badge } from "@/components/ui/badge"
+import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { GenerateTagsButton } from "./_components/generate-tags-button"
 import { SyncNotionButton } from "./_components/sync-notion-button"
@@ -33,10 +34,11 @@ export default async function AssetsPage({
     ? (status as AssetStatus)
     : undefined
 
-  const [t, tCommon, { assets, total, page: currentPage, pageSize }, counts] =
+  const [t, tCommon, tImportExport, { assets, total, page: currentPage, pageSize }, counts] =
     await Promise.all([
       getTranslations("assets"),
       getTranslations("common"),
+      getTranslations("importExport"),
       getAssets({ search: q, status: statusFilter, page: page ? parseInt(page, 10) : 1 }),
       getAssetStatusCounts(),
     ])
@@ -61,6 +63,13 @@ export default async function AssetsPage({
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
         <div className="flex gap-2">
+          <Link
+            href="/admin/settings/import-export?module=asset"
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            <FileSpreadsheet className="size-3.5" />
+            {tImportExport("linkLabel")}
+          </Link>
           <SyncNotionButton />
           <GenerateTagsButton />
           <Link

@@ -12,6 +12,7 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import {
   commercialApprovals,
+  commercialEvaluationLines,
   orderUnits,
   partners,
   partnerTasks,
@@ -19,6 +20,7 @@ import {
   procurementCases,
   purchaseOrderLines,
   purchaseOrders,
+  sourcingRequestItems,
   sourcingRequests,
   suppliers,
 } from "@/lib/db/schema"
@@ -225,6 +227,60 @@ export async function supersedeProcurementCase(
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
+// Sourcing V3: which sourcing requests (any customer) this case's awarded
+// items actually came from. Derived from the evaluation chain, not from the
+// case's own (legacy, single) sourcingRequestId column — a case built from a
+// consolidated RFQ can be traced back to more than one request this way even
+// though procurement_case itself stays 1:1 with a request for now. Without
+// this, once items from multiple requests share a case/PO, there is no way
+// to tell which customer each item belongs to at receiving/delivery time.
+export async function getProcurementCaseSourceRequestsCore(
+  dbHandle: Tx | typeof db,
+  procurementCaseId: string
+): Promise<{ id: string; externalRef: string | null; title: string | null }[]> {
+  const [procurementCase] = await dbHandle
+    .select({ commercialApprovalId: procurementCases.commercialApprovalId, sourcingRequestId: procurementCases.sourcingRequestId })
+    .from(procurementCases)
+    .where(eq(procurementCases.id, procurementCaseId))
+  if (!procurementCase) return []
+
+  if (!procurementCase.commercialApprovalId) {
+    if (!procurementCase.sourcingRequestId) return []
+    const [request] = await dbHandle
+      .select({ id: sourcingRequests.id, externalRef: sourcingRequests.externalRef, title: sourcingRequests.title })
+      .from(sourcingRequests)
+      .where(eq(sourcingRequests.id, procurementCase.sourcingRequestId))
+    return request ? [request] : []
+  }
+
+  const [approval] = await dbHandle
+    .select({ evaluationId: commercialApprovals.evaluationId })
+    .from(commercialApprovals)
+    .where(eq(commercialApprovals.id, procurementCase.commercialApprovalId))
+  if (!approval) return []
+
+  const rows = await dbHandle
+    .selectDistinct({
+      id: sourcingRequests.id,
+      externalRef: sourcingRequests.externalRef,
+      title: sourcingRequests.title,
+    })
+    .from(commercialEvaluationLines)
+    .innerJoin(sourcingRequestItems, eq(sourcingRequestItems.id, commercialEvaluationLines.sourcingRequestItemId))
+    .innerJoin(sourcingRequests, eq(sourcingRequests.id, sourcingRequestItems.sourcingRequestId))
+    .where(eq(commercialEvaluationLines.evaluationId, approval.evaluationId))
+
+  return rows
+}
+
+export async function getProcurementCaseSourceRequests(
+  procurementCaseId: string
+): Promise<{ id: string; externalRef: string | null; title: string | null }[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+  return getProcurementCaseSourceRequestsCore(db, procurementCaseId)
+}
+
 export async function getProcurementCase(id: string) {
   const session = await getStaffSession()
   if (!session) return null
@@ -242,8 +298,9 @@ export async function getProcurementCase(id: string) {
     .select({ id: purchaseOrders.id, poNumber: purchaseOrders.poNumber, status: purchaseOrders.status })
     .from(purchaseOrders)
     .where(eq(purchaseOrders.procurementCaseId, id))
+  const sourceRequests = await getProcurementCaseSourceRequests(id)
 
-  return { procurementCase, sourcingRequest, approval, linkedPurchaseOrders }
+  return { procurementCase, sourcingRequest, approval, linkedPurchaseOrders, sourceRequests }
 }
 
 // Latest non-superseded case for a sourcing request (a supersede copies

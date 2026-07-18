@@ -5,13 +5,7 @@ import { ExternalLink } from "lucide-react"
 import { getMyEarnings, getMyStatements } from "@/lib/actions/partner-portal"
 import { Badge } from "@/components/ui/badge"
 import { formatDate } from "@/lib/utils/format"
-
-const BATCH_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success"> = {
-  draft: "outline",
-  approved: "info",
-  sent_to_finance: "warning",
-  paid: "success",
-}
+import { paymentBatchStatusVariant as BATCH_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function PartnerStatementsPage() {
   const [t, tPay, locale, statements, earnings] = await Promise.all([

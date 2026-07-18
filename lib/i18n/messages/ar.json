@@ -34,6 +34,7 @@
     "products": "منتجات للبيع"
   },
   "common": {
+    "unauthorized": "غير مصرح.",
     "save": "حفظ",
     "cancel": "إلغاء",
     "delete": "حذف",
@@ -70,7 +71,18 @@
     "of": "من",
     "showing": "عرض {from}–{to} من {total}",
     "pagination": "التنقل بين الصفحات",
-    "request": "الطلب"
+    "request": "الطلب",
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "enable": "تفعيل",
+    "disable": "تعطيل",
+    "nameEnglish": "الاسم (إنجليزي)",
+    "nameArabic": "الاسم (عربي)",
+    "moveUp": "تحريك لأعلى",
+    "moveDown": "تحريك لأسفل",
+    "systemManaged": "مُدار من النظام",
+    "saving": "جارٍ الحفظ…",
+    "adding": "جارٍ الإضافة…"
   },
   "auth": {
     "login": "تسجيل الدخول",
@@ -227,7 +239,9 @@
         "reasonPlaceholder": "اكتب سبب الإلغاء"
       }
     },
-    "reopen": "إعادة فتح"
+    "reopen": "إعادة فتح",
+    "deleteItemConfirm": "هل تريد حذف هذا الصنف؟",
+    "accessoriesPlaceholder": "شاحن، حقيبة، محوّل…"
   },
   "tasks": {
     "title": "المهام",
@@ -627,7 +641,25 @@
       "batched": "ضمن دفعة",
       "paid": "مدفوع",
       "on_hold": "موقوف"
-    }
+    },
+    "statusDraft": "مسودة",
+    "statusApproved": "معتمدة",
+    "statusSentToFinance": "أُرسلت للمالية",
+    "statusPaid": "مدفوعة",
+    "generated": "أُنشئت {date}",
+    "partner": "الشريك",
+    "totalAmountSar": "الإجمالي (ريال)",
+    "paymentsCount": "الدفعات",
+    "approvedAt": "الاعتماد",
+    "sentAt": "الإرسال للمالية",
+    "paidAt": "الدفع",
+    "noPayments": "لا توجد دفعات في هذه المجموعة.",
+    "request": "الطلب",
+    "pricing": "التسعير",
+    "qty": "الكمية",
+    "unitSar": "سعر الوحدة (ريال)",
+    "totalSar": "الإجمالي (ريال)",
+    "total": "الإجمالي"
   },
   "statement": {
     "title": "كشف حساب مدفوعات الشريك",
@@ -673,6 +705,129 @@
     "requestTypes": "أنواع الطلبات",
     "services": "كتالوج الخدمات",
     "consent": "إصدارات الموافقة"
+  },
+  "warrantyConfigPage": {
+    "title": "إعدادات الضمان",
+    "subtitle": "كتالوج منتجات الضمان ونافذة تنبيه قرب الانتهاء — الحزم والتخصيص لكل أصل يبقيان في مركز الضمان.",
+    "generalTitle": "عام",
+    "productsTitle": "منتجات الضمان"
+  },
+  "sessionSecurityPage": {
+    "title": "سياسة الجلسات والتوكن",
+    "subtitle": "جلسات الدخول وصلاحية الرابط السحري.",
+    "currentPolicyTitle": "السياسة الحالية (ثابتة في الكود)",
+    "sessionLengthLabel": "مدة جلسة الدخول:",
+    "sessionLengthValue": "7 أيام، تُجدَّد كل 24 ساعة من النشاط",
+    "minPasswordLabel": "الحد الأدنى لطول كلمة المرور:",
+    "minPasswordValue": "10 أحرف",
+    "policyNote": "هذه القيم تبقى في الكود بدلاً من الإعدادات: better-auth يبني هذا الإعداد مرة واحدة عند بدء تشغيل الخادم، لذا قيمة خاطئة هنا ممكن تضعف أمان الدخول بصمت لحد ما النشر التالي يكتشفها. تواصل مع فريق الهندسة لتغيير هذه القيم.",
+    "magicLinkTitle": "صلاحية الرابط السحري",
+    "magicLinkBody": "صلاحية روابط المهام وتفعيل الشركاء قابلة للتعديل تحت <link>إعدادات الطلبات والمهام</link>.",
+    "incidentResponseTitle": "الاستجابة لحوادث الأمان",
+    "activeSessions": "{count} جلسة نشطة عبر كل المستخدمين.",
+    "activeSessionsPlural": "{count} جلسة نشطة عبر كل المستخدمين.",
+    "signOutAllOthers": "تسجيل خروج كل الجلسات الأخرى",
+    "confirmSignOutBody": "هذا سيسجل خروج كل مستخدم ما عداك. متابعة؟",
+    "signingOut": "جارٍ تسجيل الخروج…",
+    "confirm": "تأكيد",
+    "signedOutResult": "تم تسجيل خروج {count} جلسة أخرى.",
+    "signedOutResultPlural": "تم تسجيل خروج {count} جلسة أخرى."
+  },
+  "servicesPage": {
+    "title": "كتالوج الخدمات",
+    "serviceCount": "{count} خدمة",
+    "serviceCountPlural": "{count} خدمة",
+    "allServicesTitle": "كل الخدمات",
+    "emptyState": "لا توجد خدمات بعد. أضف أول واحدة بالأسفل.",
+    "addService": "إضافة خدمة",
+    "newService": "خدمة جديدة"
+  },
+  "rolesPage": {
+    "title": "الأدوار والصلاحيات",
+    "subtitle": "صلاحيات الأدوار الحالية (للمرجعية فقط).",
+    "matrixTitle": "admin / finance / viewer / partner",
+    "areaCore": "الطلبات، الطلبيات، الأصول، الشركاء، العملاء",
+    "areaPayments": "دفعات المدفوعات (إنشاء، اعتماد، إرسال، تعليم كمدفوعة)",
+    "areaSettings": "الإعدادات",
+    "areaSignOff": "اعتماد إنجاز المهمة (ينشئ سجل دفع)",
+    "readOnly": "قراءة فقط",
+    "adminLabel": "admin",
+    "financeLabel": "finance",
+    "viewerLabel": "viewer",
+    "body": "الأدوار تُفحص في الكود عند كل server action (<code1>getSessionWithRole</code1>)، وليست مقروءة من جدول إعدادات — مصفوفة أدوار مخزّنة كبيانات مع أي خطأ في قراءتها ممكن تفتح بصمت إجراءات مالية أو مدمّرة. إضافة دور جديد (مثلاً دور موزّع مقتصر على تخصيص المهام) هو تعديل كود محدود النطاق؛ اسأل فريق الهندسة. دور <code2>partner</code2> مستبعد تماماً من منطقة الإدارة هذه ويصل فقط لصفحات مرتبطة بتوكن وبوابته الخاصة."
+  },
+  "requestTasksPage": {
+    "title": "إعدادات الطلبات والمهام",
+    "subtitle": "أنواع الطلبات، أسباب فشل المهام، وقواعد سير العمل — بدون تعديل كود.",
+    "generalTitle": "عام",
+    "requestTypesTitle": "أنواع الطلبات",
+    "requestTypesEmpty": "لا توجد أنواع طلبات بعد.",
+    "requestTypesAdd": "إضافة نوع طلب",
+    "failureReasonsTitle": "أسباب فشل المهام",
+    "failureReasonsEmpty": "لا توجد أسباب فشل بعد.",
+    "failureReasonsAdd": "إضافة سبب فشل"
+  },
+  "pricingPaymentsPage": {
+    "title": "التسعير والمدفوعات",
+    "subtitle": "قواعد الشهر التجاري لتجميع دفعات الشركاء.",
+    "batchingTitle": "تجميع الدفعات",
+    "modelsTitle": "نماذج تسعير العقود",
+    "modelsBody": "نماذج التسعير (لكل طلبية، لكل صنف، لكل يوم، لكل ساعة، ثابت) مُعرَّفة في الكود لأن كل واحدة منها تُشغّل معادلة حساب دفع مختلفة. إضافة نموذج جديد تتطلب تعديل كود — ده مقصود حتى لا تتسبب قيمة إعداد خاطئة في حساب دفعة شريك بشكل خاطئ بصمت. تواصل مع فريق الهندسة لإضافة نموذج تسعير جديد."
+  },
+  "notificationsPage": {
+    "title": "الإشعارات",
+    "subtitle": "مدة الاحتفاظ وبريد الملخص الأسبوعي.",
+    "inAppTitle": "الإشعارات داخل التطبيق"
+  },
+  "integrationsPage": {
+    "title": "التكاملات",
+    "subtitle": "الأنظمة الخارجية المتصلة بـ KOPH.",
+    "notionTitle": "Notion",
+    "otherTitle": "تكاملات أخرى",
+    "otherBody": "روابط مهام/توقيع الواتساب تستخدم روابط wa.me المباشرة (بدون مفاتيح API، ولا شيء للإعداد). Resend (البريد الإلكتروني) و Vercel Blob (تخزين الملفات) يُعدَّان عبر متغيرات البيئة فقط، لأنهما يحملان بيانات اعتماد حيّة لا ينبغي أن تكون في جدول قابل للتعديل من التطبيق."
+  },
+  "brandingPage": {
+    "title": "الهوية واللغة",
+    "subtitle": "اللغة الافتراضية للحسابات الجديدة.",
+    "localeTitle": "اللغة",
+    "logoConsentTitle": "الشعار ونص الموافقة",
+    "logoConsentBody": "نص الموافقة الظاهر في شاشات التوقيع مُصنَّف بالفعل بإصدارات في قاعدة البيانات (جدول consent_version) وليس ثابتاً في الكود — اطلب من فريق الهندسة إضافة إصدار جديد عند تغيير النص القانوني. شعار كارا هو أصل للعلامة التجارية وليس إعداداً لكل عميل، لذلك يبقى ملفاً ثابتاً."
+  },
+  "assetRulesPage": {
+    "title": "قواعد الأصول والمخزون",
+    "subtitle": "ما هو قابل للتعديل هنا حالياً، ولماذا بعض الأشياء ليست كذلك.",
+    "elsewhereTitle": "قابل للتعديل بالفعل في مكان آخر",
+    "elsewhereBody": "عدد صور التسليم المطلوبة (إثبات التسليم) موجود تحت <link>إعدادات الطلبات والمهام</link>.",
+    "codeDefinedTitle": "ثابت قصداً في الكود",
+    "codeDefinedBody": "حالات الأصول (متوفر، محجوز، معيّن، تم التسليم، مُرجَع، صيانة، تالف، متقاعد، مباع، مفقود) والانتقالات بينها هي آلة حالات في الكود (<code>lib/domain/asset-status.ts</code>)، وليست قائمة إعدادات. كل إصلاح لسلامة المخزون من المراجعة — سباق الحجز المزدوج، الوحدات \"المعيّنة\" اليتيمة عند الإلغاء — يعتمد على بقاء آلة الحالات هذه كما هي بالضبط في الكود. تحويلها لبيانات قابلة للتعديل سيعيد فتح نفس الأخطاء. لا توجد حالياً ميزة تنبيه انخفاض المخزون لربط عتبة بها — أخبرني لو ده مطلوب وممكن نبنيه مع مستهلك حقيقي، بدلاً من إضافة رقم مفيش حاجة بتقراه لسه."
+  },
+  "settingsIndex": {
+    "title": "الإعدادات",
+    "subtitle": "إعداد الخيارات العامة للمنصة.",
+    "companyLocationsTitle": "مواقع الشركة",
+    "companyLocationsDesc": "المخازن، المكاتب، جهات الاتصال، وروابط الخرائط المستخدمة تلقائياً في مسارات المندوبين.",
+    "messageTemplatesTitle": "قوالب الرسائل",
+    "messageTemplatesDesc": "تخصيص صياغة الواتساب والبريد الإلكتروني بتنسيق احترافي منفصل لكل قناة.",
+    "requestTasksTitle": "إعدادات الطلبات والمهام",
+    "requestTasksDesc": "أنواع الطلبات، أسباب فشل المهام، متطلبات الصور، ومدة صلاحية الروابط — بدون تعديل كود.",
+    "servicesTitle": "كتالوج الخدمات",
+    "servicesDesc": "إدارة قائمة الخدمات التي يمكن تخصيصها لمهام الشركاء.",
+    "pricingPaymentsTitle": "التسعير والمدفوعات",
+    "pricingPaymentsDesc": "قواعد التوقيت الشهري لتجميع دفعات الشركاء.",
+    "sessionSecurityTitle": "سياسة الجلسات والتوكن",
+    "sessionSecurityDesc": "معلومات جلسة الدخول، صلاحية الرابط السحري، وتسجيل الخروج عند الحوادث.",
+    "notificationsTitle": "الإشعارات",
+    "notificationsDesc": "مدة الاحتفاظ وبريد الملخص الأسبوعي للعمليات.",
+    "brandingTitle": "الهوية واللغة",
+    "brandingDesc": "اللغة الافتراضية للحسابات الجديدة.",
+    "assetRulesTitle": "قواعد الأصول والمخزون",
+    "assetRulesDesc": "ما يمكن تعديله مقابل ما هو ثابت قصداً في دورة حياة الأصل.",
+    "warrantyConfigTitle": "إعدادات الضمان",
+    "warrantyConfigDesc": "كتالوج منتجات الضمان ونافذة تنبيه قرب الانتهاء.",
+    "rolesTitle": "الأدوار والصلاحيات",
+    "rolesDesc": "مرجع لما يستطيع كل دور القيام به.",
+    "integrationsTitle": "التكاملات",
+    "integrationsDesc": "إيقاف/استئناف مزامنة Notion وأنظمة أخرى متصلة."
   },
   "toast": {
     "saved": "تم الحفظ",
@@ -860,6 +1015,7 @@
     "variables": "المتغيرات المتاحة",
     "variablesHint": "يستبدل KOPH هذه المتغيرات تلقائياً، ولا يمكن حذف الروابط والمعرّفات الضرورية.",
     "rfqHint": "نص مستقل لواتساب المورد ونص مستقل للإيميل.",
+    "warrantyRequestHint": "بتترسل لما تطلب تفعيل ضمان جهاز واحد أو أكتر من مزوّد الضمان.",
     "whatsappBody": "رسالة واتساب",
     "emailSubject": "عنوان الإيميل",
     "emailBody": "نص الإيميل",
@@ -879,6 +1035,7 @@
     "resetFailed": "تعذرت استعادة القوالب",
     "types": {
       "rfq": "طلب عرض سعر من المورد",
+      "warrantyRequest": "طلب تفعيل ضمان",
       "partnerAssignment": "إرسال مهمة جديدة للشريك",
       "partnerPickup": "استلام من المورد بواسطة الشريك",
       "customerEnRoute": "الشريك في الطريق إلى العميل",
@@ -1006,7 +1163,10 @@
     "addPhotos": "إضافة صور",
     "addMorePhotos": "إضافة المزيد ({count}/{max})",
     "maxPhotos": "الحد الأقصى {max} صور",
-    "dismiss": "إغلاق"
+    "dismiss": "إغلاق",
+    "batchTitle": "توصيل متعدد الطلبات",
+    "batchSubtitle": "هذه الرحلة تغطي {count} طلبات",
+    "batchGroupItems": "{count} أصناف"
   },
   "trust": {
     "secureLink": "رابط آمن",
@@ -1329,7 +1489,9 @@
       "resolveQcIssuesHint": "يوجد جهاز به مشكلة. عالج الاستبدال أو الإرجاع للمورّد قبل بدء التوصيل.",
       "createPartialDeliveryHint": "يوجد جهاز سليم جاهز الآن. أنشئ له مهمة توصيل مستقلة، وعند وصول البديل أنشئ مهمة أخرى.",
       "createDeliveryJobHint": "الأجهزة جاهزة. انتقل مباشرة إلى إنشاء مهمة توصيل لهذا الطلب.",
-      "reviewInventoryHint": "اكتمل الاستلام. راجع الأجهزة التي أصبحت متاحة في المخزون."
+      "reviewInventoryHint": "اكتمل الاستلام. راجع الأجهزة التي أصبحت متاحة في المخزون.",
+      "backToPo": "الرجوع لأمر الشراء",
+      "finishReceiving": "إنهاء الاستلام"
     },
     "remaining": "تم استلام {received} من {ordered}",
     "fullyReceived": "تم الاستلام بالكامل",
@@ -1433,6 +1595,8 @@
   "warranty": {
     "title": "مركز الضمان",
     "subtitle": "التغطية والتفعيل وانتهاء الصلاحية لجميع الأصول",
+    "importExportLink": "استيراد/تصدير",
+    "exportAssignmentsLink": "تصدير التخصيصات",
     "card": "الضمان",
     "noWarranty": "لا يوجد ضمان مُعيّن",
     "assignWarranty": "تعيين ضمان",
@@ -1472,6 +1636,54 @@
       "expiringSoon": "قريب من الانتهاء",
       "expired": "منتهي",
       "certificateMissing": "الشهادة مفقودة"
+    },
+    "supplier": "الجهة المزوّدة للضمان",
+    "noProductsYet": "لسه مفيش منتجات ضمان متسجلة.",
+    "goToSettings": "أضف واحد من إعدادات الضمان",
+    "expiryAlertDays": "مدة التنبيه قبل الانتهاء (أيام)",
+    "expiryAlertDaysHint": "عدد الأيام قبل الانتهاء اللي يظهر فيها الجهاز \"قريب من الانتهاء\"",
+    "saveSettings": "حفظ",
+    "settingsSaved": "تم حفظ الإعدادات",
+    "durationMonths": "المدة (بالأشهر)",
+    "registry": {
+      "title": "سجل الضمانات",
+      "subtitle": "كل جهاز، ضمانه، وإيه الناقص",
+      "viewRegistry": "عرض سجل الضمانات",
+      "backToCenter": "الرجوع لمركز الضمان",
+      "statNone": "بدون ضمان مسجل",
+      "statExpiringSoon": "قارب على الانتهاء",
+      "statExpired": "منتهي",
+      "statActive": "ساري",
+      "filterAll": "الكل",
+      "serial": "السيريال",
+      "device": "الجهاز",
+      "supplier": "المورد",
+      "purchaseDate": "تاريخ الشراء",
+      "warrantyType": "نوع الضمان",
+      "warrantyProvider": "مزوّد الضمان",
+      "expiresOn": "ينتهي",
+      "noAssets": "لا توجد أجهزة",
+      "requestWarranty": "طلب ضمان",
+      "selectedCount": "{count, plural, one {جهاز واحد مُحدد} two {جهازين مُحددين} other {# جهاز مُحدد}}",
+      "requestSent": "تم طلب الضمان لـ {count, plural, one {جهاز واحد} two {جهازين} other {# جهاز}}",
+      "withDeviceHint": "اتطلب قبل كده مع أمر الشراء",
+      "chooseSupplier": "اختار مزوّد الضمان",
+      "reviewMessage": "مراجعة الرسالة",
+      "copyMessage": "نسخ الرسالة",
+      "copyFailed": "تعذّر نسخ الرسالة",
+      "openEmailApp": "فتح تطبيق الإيميل",
+      "openWhatsapp": "فتح واتساب",
+      "done": "تم",
+      "searchPlaceholder": "دور بالسيريال، الجهاز، المورد…",
+      "allBrands": "كل البراندات",
+      "mixedBrandsWarning": "الأجهزة المختارة من أكتر من براند ({brands}) — عادة منتج الضمان الواحد بيبقى لبراند واحد بس.",
+      "statuses": {
+        "none": "بدون ضمان",
+        "pending": "قيد التفعيل",
+        "active": "ساري",
+        "expiring_soon": "قارب على الانتهاء",
+        "expired": "منتهي"
+      }
     }
   },
   "accessories": {
@@ -1578,6 +1790,15 @@
     "subtitle": "طلبات التوريد وطلبات عروض الأسعار وعروض الموردين",
     "newRequest": "طلب توريد جديد",
     "noRequests": "لا توجد طلبات توريد بعد",
+    "unsourced": {
+      "title": "بنود لم تُشترى بعد",
+      "subtitle": "كل بند مفتوح عبر جميع الطلبات — اختر بنود من أي عملاء وأرسل طلب عرض سعر واحد لمورد واحد",
+      "empty": "لا توجد بنود مفتوحة — كل شيء تم شراؤه أو مُرسل بالفعل في طلب عرض سعر",
+      "item": "البند",
+      "quantity": "الكمية",
+      "pickSupplier": "— اختر المورد —",
+      "selectionSummary": "تم اختيار {itemCount, plural, one {# بند} other {# بنود}} من {requestCount, plural, one {# طلب} other {# طلبات}}"
+    },
     "description": "الوصف",
     "sourceType": "المصدر",
     "sourceTypes": {
@@ -1665,7 +1886,7 @@
     },
     "selectItems": "الأصناف المشمولة",
     "selectSuppliers": "الموردون",
-    "rfqHistory": "سجل طلبات التسعير",
+    "rfqHistory": "طلبات التسعير",
     "sendViaWhatsapp": "واتساب",
     "sendViaEmail": "بريد إلكتروني",
     "copyMessage": "نسخ الرسالة",
@@ -1723,10 +1944,19 @@
       "closed": "مغلقة",
       "cancelled": "ملغاة",
       "superseded": "مُستبدلة"
-    }
+    },
+    "nextStepPoTitle": "تم تسليم التوريد — الخطوة التالية: أمر الشراء",
+    "nextStepPoDescription": "أكمل من ملف الشراء: اربط مرجع أمر الشراء من نظام ERP وسيُنشأ أمر الشراء تلقائياً من العرض المعتمد.",
+    "nextStepPoAction": "المتابعة إلى ملف الشراء",
+    "rfqSummary": "{total} طلبات · {responded} رد · {awaiting} بانتظار الرد",
+    "awaitingReply": "بانتظار الرد",
+    "enterQuote": "إدخال العرض",
+    "hideQuoteForm": "إخفاء نموذج العرض",
+    "andMoreItems": "و{count} غيره"
   },
   "procurementCase": {
     "title": "ملف المشتريات",
+    "coversRequests": "يغطي {count, plural, one {# طلب توريد} other {# طلبات توريد}}",
     "sources": {
       "commercial_flow": "من مسار التوريد التجاري",
       "system_manual": "أمر شراء يدوي"
@@ -1895,6 +2125,74 @@
     "serializedTitle": "منتجات مُسريَلة",
     "serializedHint": "وحدات مُباعة تُتابَع فردياً بالسيريال/الوسم",
     "emptySerialized": "لا توجد منتجات مُسريَلة للبيع بعد",
-    "stockTitle": "مخزون بالكمية والكتالوج"
+    "stockTitle": "مخزون بالكمية والكتالوج",
+    "exportData": "تصدير البيانات"
+  },
+  "importExport": {
+    "linkLabel": "استيراد/تصدير",
+    "exportDataLabel": "تصدير البيانات",
+    "pageTitle": "مركز استيراد/تصدير CSV",
+    "pageSubtitle": "صدّر البيانات الحالية، حمّل قالب فارغ، أو استورد بالجملة الأصول، العملاء، الطلبات، الموردين، الشركاء، منتجات الضمان، وحزم الضمان. كل عملية استيراد تُراجَع وتُعرض للمعاينة قبل تنفيذها.",
+    "modules": {
+      "asset": "الأصول",
+      "customer": "العملاء",
+      "order": "الطلبات",
+      "supplier": "الموردون",
+      "partner": "الشركاء",
+      "warrantyProduct": "منتج الضمان",
+      "warrantyBatch": "حزمة الضمان",
+      "request": "المهام",
+      "warrantyAssignment": "تخصيصات الضمان",
+      "productForSale": "منتجات للبيع"
+    },
+    "exportCsv": "تصدير CSV",
+    "downloadTemplate": "تحميل القالب",
+    "uploadCsv": "رفع CSV",
+    "processing": "جارٍ المعالجة…",
+    "importing": "جارٍ الاستيراد…",
+    "confirmImport": "تأكيد الاستيراد ({count} صف)",
+    "exportOnlyNotice": "هذا القسم للتصدير فقط — البيانات حساسة جداً لدورة الحياة للسماح بالاستيراد الجماعي.",
+    "failedToProcessFile": "فشلت معالجة الملف",
+    "commitFailed": "فشل التنفيذ",
+    "importCompleteMessage": "اكتمل الاستيراد: تم تنفيذ {success} من {total} صف.",
+    "importFailedMessage": "فشل الاستيراد، لم يُنفَّذ شيء: {error}",
+    "rowsTotal": "{count} صف إجمالي",
+    "newCount": "{count} جديد",
+    "updateCount": "{count} تحديث",
+    "errorCount": "{count} خطأ",
+    "showingFirstRows": "عرض أول {shown} صف من {total} — كل الصفوف ستُعالَج عند التأكيد.",
+    "newSection": "جديد",
+    "updateSection": "تحديث",
+    "errorsSection": "أخطاء",
+    "errorColumn": "الخطأ",
+    "rowNumberColumn": "#",
+    "exportAssignments": "تصدير التخصيصات"
+  },
+  "followUpDelivery": {
+    "open": "إنشاء توصيل تكميلي",
+    "loadingRemaining": "جارٍ تحميل الكميات المتبقية…",
+    "nothingRemaining": "لا توجد كميات متبقية للتوزيع في هذا الطلب.",
+    "deliveredRemaining": "(تم تسليم {delivered}/{quantity}، متبقٍ {remaining})",
+    "partner": "الشريك",
+    "selectPartner": "— اختر الشريك —",
+    "selectPartnerError": "اختر شريكاً",
+    "qtyError": "أدخل كمية واحدة على الأقل للتوزيع",
+    "created": "تم إنشاء التوصيل التكميلي",
+    "contract": "العقد",
+    "contractHint": "(راجعه قبل التأكيد)",
+    "noContract": "— بدون عقد —",
+    "notes": "ملاحظات",
+    "cancel": "إلغاء",
+    "createTask": "إنشاء المهمة",
+    "resolveTitle": "معالجة التسليم الجزئي",
+    "markRescheduled": "إعادة جدولة",
+    "markCancelled": "إلغاء الطلب",
+    "markFailed": "تحديد كفاشل",
+    "statusUpdated": "تم تحديث حالة الطلب",
+    "acceptPartialLabel": "قبول التسليم الجزئي كنهائي",
+    "acceptPartialHint": "(يتنازل عن الكمية المتبقية — السبب مطلوب)",
+    "reasonPlaceholder": "لماذا يتم التنازل عن الكمية المتبقية؟",
+    "reasonRequired": "السبب مطلوب",
+    "markedCompleted": "تم تحديد الطلب كمكتمل"
   }
 }

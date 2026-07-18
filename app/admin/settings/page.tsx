@@ -1,110 +1,181 @@
 import Link from "next/link"
-import { Settings2, BookOpen, ClipboardList, Coins, KeyRound, Bell, Palette, Package, Shield, Plug, MessagesSquare, Warehouse } from "lucide-react"
+import { getTranslations } from "next-intl/server"
+import { Settings2, BookOpen, ClipboardList, Coins, KeyRound, Bell, Palette, Package, Shield, Plug, MessagesSquare, Warehouse, ShieldCheck, FileSpreadsheet } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
-const SECTIONS = [
+const GROUPS = [
   {
-    href: "/admin/settings/company-locations",
-    icon: Warehouse,
-    title: "Company locations",
-    description: "Warehouses, offices, contacts, and map links used automatically in courier routes.",
+    groupKey: "work",
+    sections: [
+      {
+        href: "/admin/settings/request-tasks",
+        icon: ClipboardList,
+        titleKey: "requestTasksTitle",
+        descKey: "requestTasksDesc",
+      },
+      {
+        href: "/admin/settings/services",
+        icon: BookOpen,
+        titleKey: "servicesTitle",
+        descKey: "servicesDesc",
+      },
+    ],
   },
   {
-    href: "/admin/settings/message-templates",
-    icon: MessagesSquare,
-    title: "Message Templates",
-    description: "Customize WhatsApp and email wording with a separate professional layout for each channel.",
+    groupKey: "devices",
+    sections: [
+      {
+        href: "/admin/settings/asset-rules",
+        icon: Package,
+        titleKey: "assetRulesTitle",
+        descKey: "assetRulesDesc",
+      },
+      {
+        href: "/admin/settings/warranty",
+        icon: ShieldCheck,
+        titleKey: "warrantyConfigTitle",
+        descKey: "warrantyConfigDesc",
+      },
+    ],
   },
   {
-    href: "/admin/settings/request-tasks",
-    icon: ClipboardList,
-    title: "Request & Task Configuration",
-    description: "Request types, task failure reasons, photo requirements, and link expiry — no code change needed.",
+    groupKey: "money",
+    sections: [
+      {
+        href: "/admin/settings/pricing-payments",
+        icon: Coins,
+        titleKey: "pricingPaymentsTitle",
+        descKey: "pricingPaymentsDesc",
+      },
+    ],
   },
   {
-    href: "/admin/settings/services",
-    icon: BookOpen,
-    title: "Services catalog",
-    description: "Manage the checklist services that can be assigned to partner tasks.",
+    groupKey: "people",
+    sections: [
+      {
+        href: "/admin/settings/roles",
+        icon: Shield,
+        titleKey: "rolesTitle",
+        descKey: "rolesDesc",
+      },
+      {
+        href: "/admin/settings/session-security",
+        icon: KeyRound,
+        titleKey: "sessionSecurityTitle",
+        descKey: "sessionSecurityDesc",
+      },
+    ],
   },
   {
-    href: "/admin/settings/pricing-payments",
-    icon: Coins,
-    title: "Pricing & Payments",
-    description: "Business-month timezone rules for partner payment batching.",
-  },
-  {
-    href: "/admin/settings/session-security",
-    icon: KeyRound,
-    title: "Token & Session Policy",
-    description: "Login session info, magic-link expiry, and incident-response sign-out.",
-  },
-  {
-    href: "/admin/settings/notifications",
-    icon: Bell,
-    title: "Notifications",
-    description: "Retention window and the weekly ops digest email.",
-  },
-  {
-    href: "/admin/settings/branding",
-    icon: Palette,
-    title: "Branding & Locale",
-    description: "Default language for new accounts.",
-  },
-  {
-    href: "/admin/settings/asset-rules",
-    icon: Package,
-    title: "Asset & Inventory Rules",
-    description: "What's configurable vs. intentionally fixed in the asset state machine.",
-  },
-  {
-    href: "/admin/settings/roles",
-    icon: Shield,
-    title: "Roles & Permissions",
-    description: "Reference for what each role can do.",
-  },
-  {
-    href: "/admin/settings/integrations",
-    icon: Plug,
-    title: "Integrations",
-    description: "Notion sync pause/resume and other connected systems.",
+    groupKey: "system",
+    sections: [
+      {
+        href: "/admin/settings/company-locations",
+        icon: Warehouse,
+        titleKey: "companyLocationsTitle",
+        descKey: "companyLocationsDesc",
+      },
+      {
+        href: "/admin/settings/message-templates",
+        icon: MessagesSquare,
+        titleKey: "messageTemplatesTitle",
+        descKey: "messageTemplatesDesc",
+      },
+      {
+        href: "/admin/settings/notifications",
+        icon: Bell,
+        titleKey: "notificationsTitle",
+        descKey: "notificationsDesc",
+      },
+      {
+        href: "/admin/settings/branding",
+        icon: Palette,
+        titleKey: "brandingTitle",
+        descKey: "brandingDesc",
+      },
+      {
+        href: "/admin/settings/integrations",
+        icon: Plug,
+        titleKey: "integrationsTitle",
+        descKey: "integrationsDesc",
+      },
+    ],
   },
 ] as const
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const [t, tImportExport, tNav] = await Promise.all([
+    getTranslations("settingsIndex"),
+    getTranslations("importExport"),
+    getTranslations("nav"),
+  ])
+
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Configure platform-wide options.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">{t("subtitle")}</p>
       </div>
 
-      <div className="grid gap-3">
-        {SECTIONS.map(({ href, icon: Icon, title, description }) => (
-          <Card key={href} className="hover:border-ring transition-colors">
-            <CardContent className="p-0">
-              <Link
-                href={href}
-                className={cn(
-                  "flex items-center gap-4 p-5 w-full rounded-xl",
-                  "hover:bg-muted/30 transition-colors"
-                )}
-              >
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted shrink-0">
-                  <Icon className="size-5 text-muted-foreground" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium">{title}</p>
-                  <p className="text-sm text-muted-foreground mt-0.5">{description}</p>
-                </div>
-                <Settings2 className="size-4 text-muted-foreground shrink-0" />
-              </Link>
-            </CardContent>
-          </Card>
-        ))}
+      {GROUPS.map(({ groupKey, sections }) => (
+        <div key={groupKey} className="space-y-3">
+          <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {tNav(`group.${groupKey}`)}
+          </h2>
+          <div className="grid gap-3">
+            {sections.map(({ href, icon: Icon, titleKey, descKey }) => (
+              <Card key={href} className="hover:border-ring transition-colors">
+                <CardContent className="p-0">
+                  <Link
+                    href={href}
+                    className={cn(
+                      "flex items-center gap-4 p-5 w-full rounded-xl",
+                      "hover:bg-muted/30 transition-colors"
+                    )}
+                  >
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted shrink-0">
+                      <Icon className="size-5 text-muted-foreground" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium">{t(titleKey)}</p>
+                      <p className="text-sm text-muted-foreground mt-0.5">{t(descKey)}</p>
+                    </div>
+                    <Settings2 className="size-4 text-muted-foreground shrink-0" />
+                  </Link>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      <div className="space-y-3">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {tImportExport("linkLabel")}
+        </h2>
+        <Card className="hover:border-ring transition-colors">
+          <CardContent className="p-0">
+            <Link
+              href="/admin/settings/import-export"
+              className={cn(
+                "flex items-center gap-4 p-5 w-full rounded-xl",
+                "hover:bg-muted/30 transition-colors"
+              )}
+            >
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted shrink-0">
+                <FileSpreadsheet className="size-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium">{tImportExport("pageTitle")}</p>
+                <p className="text-sm text-muted-foreground mt-0.5">
+                  {tImportExport("pageSubtitle")}
+                </p>
+              </div>
+              <Settings2 className="size-4 text-muted-foreground shrink-0" />
+            </Link>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

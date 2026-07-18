@@ -173,15 +173,9 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
 
       {/* Lines */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm font-medium">{t("lines")}</h3>
-            <p className="text-xs text-muted-foreground">{t("linesHint")}</p>
-          </div>
-          <Button type="button" variant="outline" size="sm" onClick={addLine}>
-            <Plus className="size-3.5" />
-            {t("addLine")}
-          </Button>
+        <div>
+          <h3 className="text-sm font-medium">{t("lines")}</h3>
+          <p className="text-xs text-muted-foreground">{t("linesHint")}</p>
         </div>
 
         {lines.map((line, idx) => (
@@ -235,6 +229,13 @@ export function OrderForm({ customers }: { customers: Customer[] }) {
             </div>
           </div>
         ))}
+
+        {/* Add button below the list: after filling a line, the next one is
+            added right where the cursor already is — no scroll back to a header. */}
+        <Button type="button" variant="outline" size="sm" onClick={addLine} className="w-full">
+          <Plus className="size-3.5" />
+          {t("addLine")}
+        </Button>
       </div>
 
       {error && <p className="text-sm text-destructive">{error}</p>}

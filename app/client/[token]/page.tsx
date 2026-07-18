@@ -5,15 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { formatDate } from "@/lib/utils/format"
 import { CallbackForm } from "./_components/callback-form"
-
-const REQUEST_STATUS_VARIANT: Record<string, "outline" | "info" | "success" | "secondary" | "warning"> = {
-  draft: "outline",
-  confirmed: "info",
-  in_progress: "warning",
-  completed: "success",
-  cancelled: "secondary",
-  on_hold: "secondary",
-}
+import { clientRequestStatusVariant as REQUEST_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function ClientPortalPage({
   params,

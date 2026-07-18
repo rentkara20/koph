@@ -12,27 +12,94 @@ import { auth } from "@/lib/auth/config"
 import { getActivationTokenTtlMs, getDefaultLocale } from "@/lib/actions/settings"
 
 export type ActionResult = { error?: string; id?: string }
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
+
+export type PartnerCoreInput = {
+  name: string
+  contactPerson?: string | null
+  mobile?: string | null
+  email?: string | null
+  city?: string | null
+  status?: "active" | "inactive" | null
+  notes?: string | null
+}
 
 // ─── Partners ────────────────────────────────────────────────────────────────
+
+// Tx-scoped create, reused by the "use server" wrapper below AND the CSV
+// Import/Export Center. Throws on invalid input (mirrors createCustomerCore's
+// throw-in-Core / catch-in-wrapper convention).
+export async function createPartnerCore(
+  tx: Tx,
+  input: PartnerCoreInput,
+  _actorUserId: string | null
+): Promise<{ id: string }> {
+  const name = input.name?.trim()
+  if (!name) throw new Error("Name is required")
+
+  const id = createId()
+  await tx.insert(partners).values({
+    id,
+    name,
+    contactPerson: input.contactPerson || null,
+    mobile: input.mobile || null,
+    email: input.email || null,
+    city: input.city || null,
+    status: input.status || "active",
+    notes: input.notes || null,
+  })
+
+  return { id }
+}
+
+export async function updatePartnerCore(
+  tx: Tx,
+  id: string,
+  input: PartnerCoreInput
+): Promise<{ id: string }> {
+  const name = input.name?.trim()
+  if (!name) throw new Error("Name is required")
+
+  await tx
+    .update(partners)
+    .set({
+      name,
+      contactPerson: input.contactPerson || null,
+      mobile: input.mobile || null,
+      email: input.email || null,
+      city: input.city || null,
+      status: input.status || "active",
+      notes: input.notes || null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(partners.id, id))
+
+  return { id }
+}
 
 export async function createPartner(formData: FormData): Promise<ActionResult> {
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  const name = (formData.get("name") as string)?.trim()
-  if (!name) return { error: "Name is required" }
-
-  const id = createId()
-  await db.insert(partners).values({
-    id,
-    name,
+  const input: PartnerCoreInput = {
+    name: (formData.get("name") as string)?.trim(),
     contactPerson: (formData.get("contactPerson") as string) || null,
     mobile: (formData.get("mobile") as string) || null,
     email: (formData.get("email") as string) || null,
     city: (formData.get("city") as string) || null,
     status: (formData.get("status") as "active" | "inactive") || "active",
     notes: (formData.get("notes") as string) || null,
-  })
+  }
+
+  let id = ""
+  try {
+    await db.transaction(async (tx) => {
+      const result = await createPartnerCore(tx, input, session.user.id)
+      id = result.id
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to create partner" }
+  }
 
   revalidatePath("/admin/partners")
   return { id }
@@ -42,22 +109,23 @@ export async function updatePartner(id: string, formData: FormData): Promise<Act
   const session = await getSessionWithRole("admin")
   if (!session) return { error: "Unauthorized" }
 
-  const name = (formData.get("name") as string)?.trim()
-  if (!name) return { error: "Name is required" }
+  const input: PartnerCoreInput = {
+    name: (formData.get("name") as string)?.trim(),
+    contactPerson: (formData.get("contactPerson") as string) || null,
+    mobile: (formData.get("mobile") as string) || null,
+    email: (formData.get("email") as string) || null,
+    city: (formData.get("city") as string) || null,
+    status: (formData.get("status") as "active" | "inactive") || "active",
+    notes: (formData.get("notes") as string) || null,
+  }
 
-  await db
-    .update(partners)
-    .set({
-      name,
-      contactPerson: (formData.get("contactPerson") as string) || null,
-      mobile: (formData.get("mobile") as string) || null,
-      email: (formData.get("email") as string) || null,
-      city: (formData.get("city") as string) || null,
-      status: (formData.get("status") as "active" | "inactive") || "active",
-      notes: (formData.get("notes") as string) || null,
-      updatedAt: Date.now(),
+  try {
+    await db.transaction(async (tx) => {
+      await updatePartnerCore(tx, id, input)
     })
-    .where(eq(partners.id, id))
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to update partner" }
+  }
 
   revalidatePath("/admin/partners")
   revalidatePath(`/admin/partners/${id}`)

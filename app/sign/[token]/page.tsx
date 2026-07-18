@@ -13,19 +13,7 @@ import { SignHeader } from "./_components/sign-header"
 import { TrustBand } from "./_components/trust-band"
 import { TerminalState, type TerminalKind } from "./_components/terminal-state"
 import { Certificate } from "./_components/certificate"
-
-type StatusVariant = "outline" | "info" | "success" | "secondary"
-
-const STATUS_VARIANT: Record<string, StatusVariant> = {
-  draft: "outline",
-  sent: "info",
-  opened: "info",
-  otp_verified: "info",
-  signed: "success",
-  rejected: "secondary",
-  expired: "secondary",
-  cancelled: "secondary",
-}
+import { signatureStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function SignPage({
   params,

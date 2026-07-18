@@ -60,14 +60,33 @@ export type ActionResult = { error?: string; id?: string; taskToken?: string }
 // Pure derivation lives in lib/domain/request-status.ts (unit-tested); this
 // wrapper handles the DB read/write around it.
 
-async function syncRequestStatus(requestId: string) {
+// Delivery Batching v2: partner_task.requestId is legacy/advisory only (null
+// on tasks that span multiple requests) — delivery_task_item is the source of
+// truth for which requests a task actually touches, so status sync (and any
+// other request-scoped read) derives task membership through it instead of
+// trusting the task's own requestId column.
+export async function syncRequestStatus(requestId: string) {
   const [request] = await db.select().from(requests).where(eq(requests.id, requestId))
   if (!request) return
 
-  const tasks = await db
-    .select()
-    .from(partnerTasks)
-    .where(eq(partnerTasks.requestId, requestId))
+  // Two signals, merged: the legacy requestId column (still the only pointer
+  // for tasks created without going through allocateTaskItem, e.g. older
+  // fixtures/tests) OR delivery_task_item membership (the real source of
+  // truth for batched tasks, where requestId is null). Neither alone is
+  // reliable on its own.
+  const [byColumn, byItems] = await Promise.all([
+    db
+      .select({ id: partnerTasks.id, status: partnerTasks.status })
+      .from(partnerTasks)
+      .where(eq(partnerTasks.requestId, requestId)),
+    db
+      .selectDistinct({ id: partnerTasks.id, status: partnerTasks.status })
+      .from(partnerTasks)
+      .innerJoin(deliveryTaskItems, eq(deliveryTaskItems.partnerTaskId, partnerTasks.id))
+      .innerJoin(requestItems, eq(requestItems.id, deliveryTaskItems.requestItemId))
+      .where(eq(requestItems.requestId, requestId)),
+  ])
+  const tasks = [...new Map([...byColumn, ...byItems].map((t) => [t.id, t])).values()]
 
   const newStatus = deriveRequestStatus(request.status, tasks.map((t) => t.status))
 
@@ -106,6 +125,25 @@ async function syncRequestStatus(requestId: string) {
   }
 }
 
+// Distinct requests a task actually touches — merges delivery_task_item
+// membership (the real source of truth for batched tasks) with the task's own
+// legacy requestId column (still the only pointer for tasks created without
+// going through allocateTaskItem, e.g. older fixtures/tests). The one place
+// every request-status-affecting task transition should read from.
+export async function getAffectedRequestIds(taskId: string): Promise<string[]> {
+  const [byItems, [task]] = await Promise.all([
+    db
+      .selectDistinct({ requestId: requestItems.requestId })
+      .from(deliveryTaskItems)
+      .innerJoin(requestItems, eq(requestItems.id, deliveryTaskItems.requestItemId))
+      .where(eq(deliveryTaskItems.partnerTaskId, taskId)),
+    db.select({ requestId: partnerTasks.requestId }).from(partnerTasks).where(eq(partnerTasks.id, taskId)),
+  ])
+  const ids = new Set(byItems.map((r) => r.requestId))
+  if (task?.requestId) ids.add(task.requestId)
+  return [...ids]
+}
+
 // ─── Delivery-task-item allocation ────────────────────────────────────────────
 // Guarded, atomic per-item allocation (mirrors the pickup_task_line / CAS
 // pattern already used for purchase_order_line quantities). The remaining-
@@ -117,7 +155,7 @@ async function syncRequestStatus(requestId: string) {
 // with no separate release step.
 const OPEN_TASK_STATUSES = sql`('closed','cancelled','rejected','failed')`
 
-async function allocateTaskItem(
+export async function allocateTaskItem(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
   taskId: string,
   requestItemId: string,
@@ -173,7 +211,7 @@ export async function getRemainingQuantitiesForRequest(requestId: string) {
 
 // ─── Admin: create task ───────────────────────────────────────────────────────
 
-type CreateTaskData = {
+export type CreateTaskData = {
   partnerId: string
   contractId?: string
   contactId?: string
@@ -448,7 +486,7 @@ export async function getTasksForRequest(requestId: string) {
   if (!session) return []
 
   return db
-    .select({
+    .selectDistinct({
       id: partnerTasks.id,
       taskToken: partnerTasks.taskToken,
       taskTokenExpiresAt: partnerTasks.taskTokenExpiresAt,
@@ -472,10 +510,16 @@ export async function getTasksForRequest(requestId: string) {
       contactCity: customerContacts.city,
     })
     .from(partnerTasks)
+    // Left joins: a task with no delivery_task_item rows (legacy fixtures, or
+    // any task created without going through allocateTaskItem) must still
+    // surface via its own requestId column below — see syncRequestStatus for
+    // the same two-signal merge.
+    .leftJoin(deliveryTaskItems, eq(deliveryTaskItems.partnerTaskId, partnerTasks.id))
+    .leftJoin(requestItems, eq(requestItems.id, deliveryTaskItems.requestItemId))
     .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
     .leftJoin(partnerContracts, eq(partnerTasks.contractId, partnerContracts.id))
     .leftJoin(customerContacts, eq(partnerTasks.contactId, customerContacts.id))
-    .where(eq(partnerTasks.requestId, requestId))
+    .where(or(eq(partnerTasks.requestId, requestId), eq(requestItems.requestId, requestId)))
     .orderBy(desc(partnerTasks.createdAt))
 }
 
@@ -500,10 +544,20 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
 
   // Supplier-pickup tasks NEVER close through admin sign-off — completion
   // happens only via warehouse receipt (receivePurchaseOrderLineCore).
-  if (task.kind === "supplier_pickup" || !task.requestId) {
+  if (task.kind === "supplier_pickup") {
     return { error: "Pickup tasks are closed by warehouse receipt, not sign-off" }
   }
-  const taskRequestId = task.requestId
+
+  // Delivery Batching v2 P4: every request this task's delivery_task_item rows
+  // touch must independently satisfy the proof/cancellation gates below — a
+  // legacy or single-request-batch task is just the n=1 case of this loop, so
+  // its behavior is unchanged. Payment/close/quantity stay task-scoped (one
+  // trip, one payment) — only the request-facing gates and side effects are
+  // per-request-aware.
+  const affectedRequestIds = await getAffectedRequestIds(taskId)
+  if (affectedRequestIds.length === 0) {
+    return { error: "This task has no linked request items to sign off" }
+  }
 
   // Admins can override a failed task straight to closed (partner actually
   // delivered but marked it failed by mistake) instead of only accepting
@@ -516,11 +570,12 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
   // Never generate payment for work under a cancelled/deleted request. A
   // failed request is allowed through when this is itself the override that
   // rescues the request out of that failed state.
-  const [parentRequest] = await db.select().from(requests).where(eq(requests.id, taskRequestId))
-  if (!parentRequest || parentRequest.deletedAt) return { error: "Request no longer exists" }
-  if (parentRequest.status === "cancelled" || (parentRequest.status === "failed" && !isOverride)) {
-    return { error: "Cannot sign off a task on a cancelled request" }
-  }
+  const parentRequests = await db.select().from(requests).where(inArray(requests.id, affectedRequestIds))
+  if (parentRequests.length !== affectedRequestIds.length) return { error: "Request no longer exists" }
+  const blockedRequest = parentRequests.find(
+    (r) => r.deletedAt || r.status === "cancelled" || (r.status === "failed" && !isOverride)
+  )
+  if (blockedRequest) return { error: "Cannot sign off a task on a cancelled request" }
 
   const contract = task.contractId
     ? (
@@ -549,59 +604,65 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
     return { error: "A reason is required for this payment decision" }
   }
 
-  // Payment gate: "admin-approved proof that the delivery visit occurred".
-  // Outcome-agnostic — partial/refused/unavailable/rescheduled outcomes remain
-  // fully eligible for admin payment review; only accepted-proof presence
-  // (when enforcement is on) is checked here.
+  // Payment gate: "admin-approved proof that the delivery visit occurred",
+  // checked per affected request — a genuine batch must not close until EVERY
+  // request it covers has its own accepted proof (signatures are never merged
+  // across requests, see delivery-batching design). Outcome-agnostic —
+  // partial/refused/unavailable/rescheduled outcomes remain fully eligible for
+  // admin payment review; only accepted-proof presence (when enforcement is
+  // on) is checked here.
   //
   // requiresSignature — only when proof enforcement is enabled AND the resolved
-  // proof config for this request type includes a signature. Enforcement is OFF
-  // by default so operators can author proof config before it blocks.
+  // proof config for that request's type includes a signature. Enforcement is
+  // OFF by default so operators can author proof config before it blocks.
   //
-  // Accepted proof = a "signed" signature request scoped to THIS task (on-site
-  // receiver signature, remote e-signature, or an approved manual upload — all
-  // land as status "signed"). Falls back to a request-scoped lookup only for
-  // legacy signature requests that predate per-task linkage (partnerTaskId
-  // null) — new multi-task requests are never affected by this fallback since
-  // every new signature request is created with partnerTaskId set.
-  let requiresSignature = false
+  // Accepted proof for a request = a "signed" signature request for THAT
+  // request, scoped to this task when set (batched signing always sets both
+  // partnerTaskId and requestId) or unscoped-by-task for legacy signature
+  // requests that predate per-task linkage.
+  const missingProofRequestNumbers: string[] = []
   if (!isOverride && (await isProofEnforcementEnabled())) {
     const systemDefault = await getSystemDefaultProof()
-    const [reqTypeRow] = await db
-      .select({ proofConfig: requestTypes.proofConfig })
+    const typeIds = [...new Set(parentRequests.map((r) => r.typeId))]
+    const typeRows = await db
+      .select({ id: requestTypes.id, proofConfig: requestTypes.proofConfig })
       .from(requestTypes)
-      .where(eq(requestTypes.id, parentRequest.typeId))
-    const proof = resolveProofRequirements(
-      [parseProofConfig(reqTypeRow?.proofConfig)],
-      {},
-      systemDefault
-    )
-    requiresSignature = proof.signature
-  }
+      .where(inArray(requestTypes.id, typeIds))
+    const proofConfigByTypeId = new Map(typeRows.map((t) => [t.id, t.proofConfig]))
 
-  const [proofRow] = await db
-    .select({ outcome: customerSignatures.deliveryOutcome })
-    .from(customerSignatures)
-    .innerJoin(signatureRequests, eq(customerSignatures.signatureRequestId, signatureRequests.id))
-    .where(
-      and(
-        eq(signatureRequests.status, "signed"),
-        or(
-          eq(signatureRequests.partnerTaskId, taskId),
-          and(isNull(signatureRequests.partnerTaskId), eq(signatureRequests.requestId, taskRequestId))
-        )
+    for (const req of parentRequests) {
+      const proof = resolveProofRequirements(
+        [parseProofConfig(proofConfigByTypeId.get(req.typeId))],
+        {},
+        systemDefault
       )
-    )
-    .orderBy(desc(customerSignatures.signedAt))
-    .limit(1)
+      if (!proof.signature) continue
 
-  const gateDecision = canSignOff({
-    isOverride,
-    requiresSignature,
-    hasAcceptedProof: !!proofRow,
-  })
-  if (!gateDecision.ok) {
-    return { error: "A signed customer signature is required before this task can be closed" }
+      const [proofRow] = await db
+        .select({ outcome: customerSignatures.deliveryOutcome })
+        .from(customerSignatures)
+        .innerJoin(signatureRequests, eq(customerSignatures.signatureRequestId, signatureRequests.id))
+        .where(
+          and(
+            eq(signatureRequests.status, "signed"),
+            eq(signatureRequests.requestId, req.id),
+            or(eq(signatureRequests.partnerTaskId, taskId), isNull(signatureRequests.partnerTaskId))
+          )
+        )
+        .orderBy(desc(customerSignatures.signedAt))
+        .limit(1)
+
+      const gateDecision = canSignOff({ isOverride, requiresSignature: true, hasAcceptedProof: !!proofRow })
+      if (!gateDecision.ok) missingProofRequestNumbers.push(req.requestNumber)
+    }
+  }
+  if (missingProofRequestNumbers.length > 0) {
+    return {
+      error:
+        missingProofRequestNumbers.length === affectedRequestIds.length && affectedRequestIds.length === 1
+          ? "A signed customer signature is required before this task can be closed"
+          : `A signed customer signature is required before this task can be closed — missing for: ${missingProofRequestNumbers.join(", ")}`,
+    }
   }
 
   // Task-scoped delivery allocation (new multi-task model). Legacy tasks
@@ -645,7 +706,7 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
         target: partnerPaymentDecisions.partnerTaskId,
         set: { decision: "hold", reason: reason?.trim() || null, updatedAt: Date.now() },
       })
-    revalidatePath(`/admin/requests/${taskRequestId}`)
+    for (const requestId of affectedRequestIds) revalidatePath(`/admin/requests/${requestId}`)
     return { id: taskId }
   }
 
@@ -672,7 +733,7 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
       aggregateType: "task",
       aggregateId: taskId,
       eventType: "TaskClosed",
-      payload: { requestId: taskRequestId, isOverride, quantity: quantity ?? null },
+      payload: { requestIds: affectedRequestIds, isOverride, quantity: quantity ?? null },
       dedupeKey: `task:${taskId}:TaskClosed`,
       actorUserId: session.user.id,
     })
@@ -759,24 +820,43 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
     }
 
     // OI-1: move devices through the asset lifecycle in the SAME transaction as
-    // the task close. Scoped to THIS task's approved serialized allocations
-    // when delivery_task_item rows exist; legacy tasks (no rows) fall back to
-    // the whole-request set, matching pre-existing behavior exactly.
-    const [reqType] = await tx
-      .select({ slug: requestTypes.slug })
+    // the task close, PER affected request — different requests in a batch
+    // can be different request types (e.g. delivery vs collection), so each
+    // gets its own assetAction resolved from its own type. Scoped to THIS
+    // task's approved serialized allocations when delivery_task_item rows
+    // exist (attributed to their owning request); legacy tasks (no rows) fall
+    // back to the whole-request set, matching pre-existing behavior exactly.
+    const typeIds = [...new Set(parentRequests.map((r) => r.typeId))]
+    const typeRows = await tx
+      .select({ id: requestTypes.id, slug: requestTypes.slug })
       .from(requestTypes)
-      .where(eq(requestTypes.id, parentRequest.typeId))
-    const slug = reqType?.slug
-    const assetAction =
-      slug === "collection" ? ("return" as const)
-      : slug === "delivery" || slug === "installation" || slug === "swap" ? ("deliver" as const)
-      : null
+      .where(inArray(requestTypes.id, typeIds))
+    const slugByTypeId = new Map(typeRows.map((t) => [t.id, t.slug]))
 
-    if (assetAction) {
+    let itemIdToRequestId = new Map<string, string>()
+    if (taskItems.length > 0) {
+      const itemRows = await tx
+        .select({ id: requestItems.id, requestId: requestItems.requestId })
+        .from(requestItems)
+        .where(inArray(requestItems.id, taskItems.map((ti) => ti.requestItemId)))
+      itemIdToRequestId = new Map(itemRows.map((i) => [i.id, i.requestId]))
+    }
+
+    for (const req of parentRequests) {
+      const slug = slugByTypeId.get(req.typeId)
+      const assetAction =
+        slug === "collection" ? ("return" as const)
+        : slug === "delivery" || slug === "installation" || slug === "swap" ? ("deliver" as const)
+        : null
+      if (!assetAction) continue
+
       let unitIds: string[] = []
       if (taskItems.length > 0) {
         const approvedSerialized = taskItems.filter(
-          (ti) => ti.verificationStatus === "approved" && ti.qtyDelivered > 0
+          (ti) =>
+            ti.verificationStatus === "approved" &&
+            ti.qtyDelivered > 0 &&
+            itemIdToRequestId.get(ti.requestItemId) === req.id
         )
         if (approvedSerialized.length > 0) {
           const items = await tx
@@ -789,7 +869,7 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
         const pulled = await tx
           .select({ orderUnitId: requestItems.orderUnitId })
           .from(requestItems)
-          .where(and(eq(requestItems.requestId, taskRequestId), isNotNull(requestItems.orderUnitId)))
+          .where(and(eq(requestItems.requestId, req.id), isNotNull(requestItems.orderUnitId)))
         unitIds = pulled.map((r) => r.orderUnitId).filter((v): v is string => Boolean(v))
       }
 
@@ -808,14 +888,14 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
       for (const unitId of unitIds) {
         try {
           await applyAssetTransition(tx, unitId, assetAction, {
-            requestId: taskRequestId,
-            customerId: parentRequest.customerId,
+            requestId: req.id,
+            customerId: req.customerId,
             byUserId: session.user.id,
           })
           if (assetAction === "deliver" && saleUnitIds.has(unitId)) {
             await applyAssetTransition(tx, unitId, "sell", {
-              requestId: taskRequestId,
-              customerId: parentRequest.customerId,
+              requestId: req.id,
+              customerId: req.customerId,
               byUserId: session.user.id,
             })
           }
@@ -835,29 +915,31 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
     throw error
   }
 
-  await logActivity({
-    entityType: "request",
-    entityId: taskRequestId,
-    action: isOverride ? "task_force_completed" : "task_signed_off",
-    i18nKey: isOverride ? "activity.taskForceCompleted" : "activity.taskSignedOff",
-    performedBy: session.user.id,
-  })
-
-  // OI-0: a "none" decision produces no partner payment. Record why, so a
-  // zero-payment close is an explicit, audited decision rather than silent.
-  if (decision === "none") {
+  for (const requestId of affectedRequestIds) {
     await logActivity({
       entityType: "request",
-      entityId: taskRequestId,
-      action: "task_closed_no_payment",
-      i18nKey: "activity.taskClosedNoPayment",
-      i18nData: { reason: reason ?? "no_contract" },
+      entityId: requestId,
+      action: isOverride ? "task_force_completed" : "task_signed_off",
+      i18nKey: isOverride ? "activity.taskForceCompleted" : "activity.taskSignedOff",
       performedBy: session.user.id,
     })
-  }
 
-  await syncRequestStatus(taskRequestId)
-  revalidatePath(`/admin/requests/${taskRequestId}`)
+    // OI-0: a "none" decision produces no partner payment. Record why, so a
+    // zero-payment close is an explicit, audited decision rather than silent.
+    if (decision === "none") {
+      await logActivity({
+        entityType: "request",
+        entityId: requestId,
+        action: "task_closed_no_payment",
+        i18nKey: "activity.taskClosedNoPayment",
+        i18nData: { reason: reason ?? "no_contract" },
+        performedBy: session.user.id,
+      })
+    }
+
+    await syncRequestStatus(requestId)
+    revalidatePath(`/admin/requests/${requestId}`)
+  }
   return { id: taskId }
 }
 
@@ -874,12 +956,15 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
 
   const [task] = await db.select().from(partnerTasks).where(eq(partnerTasks.id, taskId))
   if (!task) return { error: "Task not found" }
-  if (task.kind === "supplier_pickup" || !task.requestId) {
+  if (task.kind === "supplier_pickup") {
     return { error: "Pickup tasks have no sign-off proof to reject" }
   }
-  const taskRequestId = task.requestId
   if (task.status !== "pending_signoff") {
     return { error: "Task is not awaiting sign-off" }
+  }
+  const affectedRequestIds = await getAffectedRequestIds(taskId)
+  if (affectedRequestIds.length === 0) {
+    return { error: "This task has no linked request items to reject" }
   }
 
   // The partner needs a working magic link to redo the proof — extend it if
@@ -905,23 +990,25 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
     rowsChanged = (result as { rowsAffected?: number }).rowsAffected ?? 1
     if (rowsChanged === 0) return
 
-    await logActivity(
-      {
-        entityType: "request",
-        entityId: taskRequestId,
-        action: "task_proof_rejected",
-        i18nKey: "activity.taskProofRejected",
-        i18nData: reason ? { reason } : undefined,
-        performedBy: session.user.id,
-      },
-      tx
-    )
+    for (const requestId of affectedRequestIds) {
+      await logActivity(
+        {
+          entityType: "request",
+          entityId: requestId,
+          action: "task_proof_rejected",
+          i18nKey: "activity.taskProofRejected",
+          i18nData: reason ? { reason } : undefined,
+          performedBy: session.user.id,
+        },
+        tx
+      )
+    }
 
     await emitDomainEvent(tx, {
       aggregateType: "task",
       aggregateId: taskId,
       eventType: "TaskProofRejected",
-      payload: { requestId: taskRequestId, reason: reason ?? null },
+      payload: { requestIds: affectedRequestIds, reason: reason ?? null },
       dedupeKey: `task:${taskId}:TaskProofRejected:${createId()}`,
       actorUserId: session.user.id,
     })
@@ -936,17 +1023,17 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
       .select({ userId: partners.userId })
       .from(partners)
       .where(eq(partners.id, task.partnerId))
-    const [request] = await db
+    const requestRows = await db
       .select({ requestNumber: requests.requestNumber })
       .from(requests)
-      .where(eq(requests.id, taskRequestId))
+      .where(inArray(requests.id, affectedRequestIds))
 
     if (partner?.userId) {
       await notify({
         userId: partner.userId,
         type: "task_proof_rejected",
         i18nKey: "notifications.taskProofRejected",
-        i18nData: { requestNumber: request?.requestNumber ?? "" },
+        i18nData: { requestNumber: requestRows.map((r) => r.requestNumber).join(", ") },
         linkUrl: `/task/${task.taskToken}`,
         entityType: "partner_task",
         entityId: taskId,
@@ -957,8 +1044,10 @@ export async function rejectTaskProof(taskId: string, reason?: string): Promise<
     // Notification failures must not block the rejection itself.
   }
 
-  await syncRequestStatus(taskRequestId)
-  revalidatePath(`/admin/requests/${taskRequestId}`)
+  for (const requestId of affectedRequestIds) {
+    await syncRequestStatus(requestId)
+    revalidatePath(`/admin/requests/${requestId}`)
+  }
   return { id: taskId }
 }
 
@@ -980,22 +1069,39 @@ export async function cancelTask(taskId: string): Promise<ActionResult> {
     return { error: "Cannot cancel a pickup that already collected goods — receive or fail it" }
   }
 
+  const affectedRequestIds = task.kind === "request" ? await getAffectedRequestIds(taskId) : []
+
   await db.transaction(async (tx) => {
     await tx
       .update(partnerTasks)
       .set({ status: "cancelled", taskTokenExpiresAt: Date.now(), updatedAt: Date.now() })
       .where(eq(partnerTasks.id, taskId))
 
-    await logActivity(
-      {
-        entityType: task.requestId ? "request" : "purchase_order",
-        entityId: task.requestId ?? task.purchaseOrderId ?? task.id,
-        action: "task_cancelled",
-        i18nKey: "activity.taskCancelled",
-        performedBy: session.user.id,
-      },
-      tx
-    )
+    if (affectedRequestIds.length > 0) {
+      for (const requestId of affectedRequestIds) {
+        await logActivity(
+          {
+            entityType: "request",
+            entityId: requestId,
+            action: "task_cancelled",
+            i18nKey: "activity.taskCancelled",
+            performedBy: session.user.id,
+          },
+          tx
+        )
+      }
+    } else {
+      await logActivity(
+        {
+          entityType: "purchase_order",
+          entityId: task.purchaseOrderId ?? task.id,
+          action: "task_cancelled",
+          i18nKey: "activity.taskCancelled",
+          performedBy: session.user.id,
+        },
+        tx
+      )
+    }
 
     await emitDomainEvent(tx, {
       aggregateType: "task",
@@ -1007,9 +1113,11 @@ export async function cancelTask(taskId: string): Promise<ActionResult> {
     })
   })
 
-  if (task.requestId) {
-    await syncRequestStatus(task.requestId)
-    revalidatePath(`/admin/requests/${task.requestId}`)
+  if (task.kind === "request") {
+    for (const requestId of affectedRequestIds) {
+      await syncRequestStatus(requestId)
+      revalidatePath(`/admin/requests/${requestId}`)
+    }
   } else if (task.purchaseOrderId) {
     revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
   }
@@ -1033,20 +1141,73 @@ export async function regenerateTaskLink(taskId: string): Promise<ActionResult> 
     .set({ taskToken, taskTokenExpiresAt, updatedAt: Date.now() })
     .where(eq(partnerTasks.id, taskId))
 
-  await logActivity({
-    entityType: task.requestId ? "request" : "purchase_order",
-    entityId: task.requestId ?? task.purchaseOrderId ?? task.id,
-    action: "task_link_regenerated",
-    i18nKey: "activity.taskLinkRegenerated",
-    performedBy: session.user.id,
-  })
-
-  if (task.requestId) revalidatePath(`/admin/requests/${task.requestId}`)
-  else if (task.purchaseOrderId) revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
+  const affectedRequestIds = task.kind === "request" ? await getAffectedRequestIds(taskId) : []
+  if (affectedRequestIds.length > 0) {
+    for (const requestId of affectedRequestIds) {
+      await logActivity({
+        entityType: "request",
+        entityId: requestId,
+        action: "task_link_regenerated",
+        i18nKey: "activity.taskLinkRegenerated",
+        performedBy: session.user.id,
+      })
+      revalidatePath(`/admin/requests/${requestId}`)
+    }
+  } else {
+    await logActivity({
+      entityType: "purchase_order",
+      entityId: task.purchaseOrderId ?? task.id,
+      action: "task_link_regenerated",
+      i18nKey: "activity.taskLinkRegenerated",
+      performedBy: session.user.id,
+    })
+    if (task.purchaseOrderId) revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
+  }
   return { id: taskId, taskToken }
 }
 
 // ─── Public: get task by token ────────────────────────────────────────────────
+
+// One customer request's slice of a batched task — items scoped through
+// delivery_task_item (not every item of the request, only the ones THIS task
+// actually carries), so the courier sees exactly what's on this trip.
+export type TaskBatchGroup = {
+  request: typeof requests.$inferSelect
+  customer: typeof customers.$inferSelect | null
+  items: {
+    id: string
+    description: string
+    brand: string | null
+    model: string | null
+    serialNumber: string | null
+    accessories: string | null
+    quantity: number
+  }[]
+}
+
+export async function loadTaskBatchGroup(taskId: string, requestId: string): Promise<TaskBatchGroup | null> {
+  const [request] = await db.select().from(requests).where(eq(requests.id, requestId))
+  if (!request) return null
+
+  const [items, [customer]] = await Promise.all([
+    db
+      .select({
+        id: requestItems.id,
+        description: requestItems.description,
+        brand: requestItems.brand,
+        model: requestItems.model,
+        serialNumber: requestItems.serialNumber,
+        accessories: requestItems.accessories,
+        quantity: deliveryTaskItems.qtyPlanned,
+      })
+      .from(deliveryTaskItems)
+      .innerJoin(requestItems, eq(requestItems.id, deliveryTaskItems.requestItemId))
+      .where(and(eq(deliveryTaskItems.partnerTaskId, taskId), eq(requestItems.requestId, requestId))),
+    db.select().from(customers).where(eq(customers.id, request.customerId)),
+  ])
+
+  return { request, customer: customer ?? null, items }
+}
 
 export async function getTaskByToken(token: string) {
   const [task] = await db
@@ -1059,8 +1220,42 @@ export async function getTaskByToken(token: string) {
   // Supplier-pickup tasks have no request/customer — the partner page shows
   // supplier pickup info + expected PO lines instead (getPickupTaskByToken in
   // lib/actions/procurement-pickup.ts). Signal the kind so the route branches.
-  if (task.kind === "supplier_pickup" || !task.requestId) {
-    return { task, request: null, partner: null, customer: null, items: [], requestType: null, linkedContact: null, isExpired: task.taskTokenExpiresAt < Date.now() }
+  if (task.kind === "supplier_pickup") {
+    return { task, request: null, partner: null, customer: null, items: [], requestType: null, linkedContact: null, isExpired: task.taskTokenExpiresAt < Date.now(), batchGroups: null }
+  }
+
+  // Delivery Batching v2 P3: a genuine cross-request batch (requestId left
+  // null — see delivery-batching.ts) has no single request/customer context.
+  // Group its items by request instead so the courier can tell what belongs
+  // to which customer. A single-request task (legacy, or a batch that
+  // happens to cover exactly one request) keeps requestId set and falls
+  // through to the unchanged branch below.
+  if (!task.requestId) {
+    const [[partner], affectedRequestIds] = await Promise.all([
+      db.select().from(partners).where(eq(partners.id, task.partnerId)),
+      getAffectedRequestIds(task.id),
+    ])
+    const batchGroups = (
+      await Promise.all(affectedRequestIds.map((requestId) => loadTaskBatchGroup(task.id, requestId)))
+    ).filter((g): g is TaskBatchGroup => g !== null)
+
+    // A request-kind task with no surviving delivery_task_item coverage is
+    // corrupt/orphaned data (every item's request got deleted, or the task
+    // was created without allocation) — never render an empty "0 requests"
+    // batch view, treat it the same as "task not found".
+    if (batchGroups.length === 0) return null
+
+    return {
+      task,
+      request: null,
+      partner: partner ?? null,
+      customer: null,
+      items: [],
+      requestType: null,
+      linkedContact: null,
+      isExpired: task.taskTokenExpiresAt < Date.now(),
+      batchGroups,
+    }
   }
   const taskRequestId = task.requestId
 
@@ -1089,6 +1284,7 @@ export async function getTaskByToken(token: string) {
     requestType: requestType ?? null,
     linkedContact: linkedContact[0] ?? null,
     isExpired: task.taskTokenExpiresAt < Date.now(),
+    batchGroups: null,
   }
 }
 
@@ -1188,6 +1384,7 @@ export async function updateTaskByToken(
 
   // Guard on the status we validated above — a double-tap or two tabs racing
   // the same magic link would otherwise both pass canTransition and both write.
+  const affectedRequestIds = task.kind === "request" ? await getAffectedRequestIds(task.id) : []
   let rowsChanged = 0
   await db.transaction(async (tx) => {
     const updateResult = await tx
@@ -1197,16 +1394,31 @@ export async function updateTaskByToken(
     rowsChanged = (updateResult as { rowsAffected?: number }).rowsAffected ?? 1
     if (rowsChanged === 0) return
 
-    await logActivity(
-      {
-        entityType: task.requestId ? "request" : "purchase_order",
-        entityId: task.requestId ?? task.purchaseOrderId ?? task.id,
-        action: `task_${action}`,
-        i18nKey: `activity.task_${action}`,
-        performedAs: "partner_link",
-      },
-      tx
-    )
+    if (affectedRequestIds.length > 0) {
+      for (const requestId of affectedRequestIds) {
+        await logActivity(
+          {
+            entityType: "request",
+            entityId: requestId,
+            action: `task_${action}`,
+            i18nKey: `activity.task_${action}`,
+            performedAs: "partner_link",
+          },
+          tx
+        )
+      }
+    } else {
+      await logActivity(
+        {
+          entityType: "purchase_order",
+          entityId: task.purchaseOrderId ?? task.id,
+          action: `task_${action}`,
+          i18nKey: `activity.task_${action}`,
+          performedAs: "partner_link",
+        },
+        tx
+      )
+    }
 
     const domainEventType = domainEventTypeForTaskAction(action)
     if (domainEventType) {
@@ -1223,7 +1435,9 @@ export async function updateTaskByToken(
     return { error: "Task status changed. Please refresh and try again." }
   }
 
-  if (task.requestId) await syncRequestStatus(task.requestId)
+  for (const requestId of affectedRequestIds) {
+    await syncRequestStatus(requestId)
+  }
   if (task.purchaseOrderId) revalidatePath(`/admin/procurement/${task.purchaseOrderId}`)
   revalidatePath(`/task/${token}`)
   return { id: task.id }

@@ -3,13 +3,7 @@ import { getMaintenanceOrders } from "@/lib/actions/maintenance"
 import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
 import { MaintenanceRowActions } from "./_components/maintenance-row-actions"
-
-const STATUS_VARIANT: Record<string, "outline" | "info" | "success" | "secondary"> = {
-  open: "outline",
-  in_progress: "info",
-  done: "success",
-  cancelled: "secondary",
-}
+import { maintenanceStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function MaintenancePage() {
   const [t, tCommon, orders] = await Promise.all([

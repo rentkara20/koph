@@ -16,27 +16,9 @@ import { QuotationForm } from "./_components/quotation-form"
 import { AwardPanel } from "./_components/award-panel"
 import { EvaluationApprovalPanel } from "./_components/evaluation-approval-panel"
 import { procurementCaseHref } from "@/lib/domain/procurement-case-navigation"
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  draft: "secondary",
-  rfq_sent: "default",
-  quotes_received: "default",
-  under_evaluation: "warning",
-  approved: "success",
-  handed_off: "success",
-  rejected: "destructive",
-  cancelled: "destructive",
-  closed: "secondary",
-}
-
-const ITEM_STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  pending: "secondary",
-  rfq_sent: "default",
-  quoted: "warning",
-  selected: "success",
-  not_sourced: "destructive",
-  cancelled: "destructive",
-}
+import { WorkflowContinuationCard } from "@/components/workflow-continuation-card"
+import { cn } from "@/lib/utils"
+import { sourcingStatusVariant as STATUS_VARIANT, sourcingItemStatusVariant as ITEM_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function SourcingRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -80,6 +62,17 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
         </Badge>
       </div>
 
+      {/* Workflow continuation: once sourcing is handed off, the remaining work
+          lives on the procurement case — walk the user straight there. */}
+      {request.status === "handed_off" && procurementCases.length > 0 && (
+        <WorkflowContinuationCard
+          title={t("nextStepPoTitle")}
+          description={t("nextStepPoDescription")}
+          actionLabel={t("nextStepPoAction")}
+          href={procurementCaseHref(procurementCases[0].id)}
+        />
+      )}
+
       {items.length > 0 && (
         <div className="space-y-2">
           <p className="text-sm font-medium">{t("items")}</p>
@@ -122,8 +115,18 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
 
       {rfqs.length > 0 && (
         <div className="space-y-3">
-          <p className="text-sm font-medium">{t("rfqHistory")}</p>
+          <div>
+            <p className="text-sm font-medium">{t("rfqHistory")}</p>
+            <p className="text-xs text-muted-foreground">
+              {t("rfqSummary", {
+                total: rfqs.length,
+                responded: rfqs.filter((r) => r.status === "responded").length,
+                awaiting: rfqs.filter((r) => r.status === "sent").length,
+              })}
+            </p>
+          </div>
           {rfqs.map((rfq) => {
+            const isAwaiting = rfq.status === "sent"
             const rfqItems = (rfqItemIds[rfq.id] ?? [])
               .map((itemId) => itemById.get(itemId))
               .filter((item) => item != null)
@@ -137,7 +140,15 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
               messageTemplates
             )
             return (
-              <div key={rfq.id} className="space-y-2 rounded-lg border p-3">
+              <div
+                key={rfq.id}
+                className={cn(
+                  "space-y-2 rounded-lg border p-3",
+                  // The supplier we're still waiting on is what needs attention;
+                  // answered RFQs recede.
+                  isAwaiting && "border-amber-500/40 bg-amber-500/5",
+                )}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div>
                     <p className="text-sm">{rfq.supplierName}</p>
@@ -145,19 +156,15 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
                       {format.dateTime(new Date(rfq.sentAt), { dateStyle: "medium", timeStyle: "short" })}
                     </p>
                   </div>
-                  <Badge variant={rfq.status === "responded" ? "success" : "secondary"}>
-                    {t(`rfqStatuses.${rfq.status}` as never)}
+                  <Badge variant={rfq.status === "responded" ? "success" : isAwaiting ? "warning" : "secondary"}>
+                    {isAwaiting ? t("awaitingReply") : t(`rfqStatuses.${rfq.status}` as never)}
                   </Badge>
                 </div>
                 {rfqItems.length > 0 && (
-                  <ul className="space-y-0.5 text-xs text-muted-foreground">
-                    {rfqItems.map((item) => (
-                      <li key={item.id}>
-                        {item.quantity}× {item.supplierDescription}
-                        {item.partNumber && <span dir="ltr"> · {item.partNumber}</span>}
-                      </li>
-                    ))}
-                  </ul>
+                  <p className="text-xs text-muted-foreground">
+                    {rfqItems[0].quantity}× {rfqItems[0].supplierDescription}
+                    {rfqItems.length > 1 && <span> · {t("andMoreItems", { count: rfqItems.length - 1 })}</span>}
+                  </p>
                 )}
                 {rfq.status === "sent" && rfqItems.length > 0 && (
                   <RfqMessageActions
@@ -187,7 +194,7 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
         </div>
       )}
 
-      {canAward && <AwardPanel sourcingRequestId={id} matrix={matrix} />}
+      {canAward && <AwardPanel matrix={matrix} />}
 
       {awards && awards.lines.length > 0 && (
         <div className="space-y-2">
@@ -229,7 +236,6 @@ export default async function SourcingRequestDetailPage({ params }: { params: Pr
       )}
 
       <EvaluationApprovalPanel
-        sourcingRequestId={id}
         status={request.status}
         quotationOptions={quotationOptions}
         latestEvaluationId={evaluation?.id ?? null}

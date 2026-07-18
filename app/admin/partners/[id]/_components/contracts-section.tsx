@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Plus, ChevronUp } from "lucide-react"
 import { addContract, updateContractStatus } from "@/lib/actions/partners"
@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { contractStatusVariant as CONTRACT_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 type ContractRow = {
   id: string
@@ -30,12 +31,6 @@ type ContractRow = {
 }
 
 const PRICING_MODELS = ["per_order", "per_item", "per_day", "per_hour", "fixed"] as const
-const CONTRACT_STATUS_VARIANT: Record<string, "success" | "secondary" | "destructive"> = {
-  active: "success",
-  expired: "secondary",
-  cancelled: "destructive",
-}
-
 export function ContractsSection({
   partnerId,
   contracts,
@@ -46,6 +41,7 @@ export function ContractsSection({
   requestTypes: RequestType[]
 }) {
   const t = useTranslations("partners")
+  const locale = useLocale()
   const tCommon = useTranslations("common")
   const tToast = useTranslations("toast")
   const router = useRouter()
@@ -155,7 +151,7 @@ export function ContractsSection({
               <Select name="serviceTypeId">
                 <option value="">— Any —</option>
                 {requestTypes.map((rt) => (
-                  <option key={rt.id} value={rt.id}>{rt.nameEn}</option>
+                  <option key={rt.id} value={rt.id}>{locale === "ar" ? rt.nameAr : rt.nameEn}</option>
                 ))}
               </Select>
             </div>

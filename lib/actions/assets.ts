@@ -327,6 +327,40 @@ export async function updateAssetDetails(
   return { id }
 }
 
+// CSV Import/Export Center: tx-scoped update for an existing asset matched by
+// assetTag. Mirrors updateAssetDetails's non-lifecycle fields only — status is
+// intentionally NOT settable here. Asset status is a chokepoint-guarded state
+// machine (see applyAssetTransition / OI-1); letting a CSV row jump status
+// directly would bypass asset_event history and the current-request/customer
+// linkage invariants. Callers must validate `status` against the current row
+// and error out before calling this if the CSV requests a status change.
+export async function updateAssetImportCore(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  id: string,
+  input: {
+    serialNumber?: string
+    location?: string
+    purchaseCost?: number
+    purchaseDate?: number
+    warrantyEnd?: number
+    notes?: string
+  }
+): Promise<{ assetId: string }> {
+  await tx
+    .update(orderUnits)
+    .set({
+      serialNumber: input.serialNumber || null,
+      location: input.location || "main_warehouse",
+      purchaseCost: input.purchaseCost ?? null,
+      purchaseDate: input.purchaseDate ?? null,
+      warrantyEnd: input.warrantyEnd ?? null,
+      notes: input.notes || null,
+      updatedAt: Date.now(),
+    })
+    .where(eq(orderUnits.id, id))
+  return { assetId: id }
+}
+
 // Search source order lines for the minimal-entry creation form.
 export async function searchOrderLinesForAssetCreation(query: string) {
   const session = await getStaffSession()
@@ -371,10 +405,23 @@ const createAssetSchema = z
     supplierId: z.string().trim().max(60).optional(),
     purchaseCost: z.number().min(0).max(100_000_000).optional(),
     notes: z.string().trim().max(1000).optional(),
+    // CSV Import/Export Center only: a standalone asset has no client-order or
+    // PO origin at all (e.g. a legacy device being back-filled into the
+    // system). Every existing caller omits this (defaults false), so the
+    // original "exactly one origin" rule is unchanged for them.
+    standalone: z.boolean().optional(),
+    // Optional extra fields the CSV importer may supply; every existing
+    // caller omits these, so behavior for them is unchanged.
+    location: z.string().trim().max(120).optional(),
+    purchaseDate: z.number().optional(),
+    warrantyEnd: z.number().optional(),
   })
-  .refine((d) => Boolean(d.orderLineId) !== Boolean(d.purchaseOrderLineId), {
-    message: "Exactly one source (order line or purchase order line) is required",
-  })
+  .refine(
+    (d) => (d.standalone ? !d.orderLineId && !d.purchaseOrderLineId : Boolean(d.orderLineId) !== Boolean(d.purchaseOrderLineId)),
+    {
+      message: "Exactly one source (order line or purchase order line) is required",
+    }
+  )
 
 // Exported separately from the session-gated wrapper below so integration
 // tests can exercise the atomic creation path directly (the wrapper depends
@@ -408,7 +455,10 @@ export async function createAssetCore(
   // the rental pool — the order line's type is authoritative here.
   let effectiveKind: "rental" | "sale" = kind
 
-  if (d.orderLineId) {
+  if (d.standalone) {
+    // No origin at all — used only by the CSV importer for back-filling
+    // pre-existing devices that never had a client order or PO line.
+  } else if (d.orderLineId) {
     const [line] = await tx
       .select({ id: orderLines.id, orderId: orderLines.orderId, type: orderLines.type })
       .from(orderLines)
@@ -464,6 +514,9 @@ export async function createAssetCore(
     assetTag,
     status: initialStatus,
     kind: effectiveKind,
+    location: d.location || "main_warehouse",
+    purchaseDate: d.purchaseDate ?? null,
+    warrantyEnd: d.warrantyEnd ?? null,
   })
 
   await tx.insert(assetEvents).values({

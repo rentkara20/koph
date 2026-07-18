@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { updateBrandingSettings, type BrandingSettings } from "@/lib/actions/settings"
+import type { EnglishFontFamily } from "@/lib/domain/fonts"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
@@ -54,6 +55,27 @@ export function BrandingSettingsForm({ initial }: { initial: BrandingSettings })
         <p className="text-xs text-muted-foreground">
           Applied when a new staff or partner account is created and hasn&apos;t picked a language yet.
           Existing sessions keep whatever they last selected.
+        </p>
+      </div>
+
+      <div className="max-w-xs space-y-1.5">
+        <Label htmlFor="englishFontFamily" className="text-xs">
+          English interface font
+        </Label>
+        <Select
+          id="englishFontFamily"
+          value={values.englishFontFamily}
+          onChange={(e) =>
+            setValues((v) => ({ ...v, englishFontFamily: e.target.value as EnglishFontFamily }))
+          }
+        >
+          <option value="geist">Geist Sans (default)</option>
+          <option value="poppins">Poppins</option>
+          <option value="outfit">Outfit</option>
+          <option value="plusJakartaSans">Plus Jakarta Sans</option>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Applies to the English UI platform-wide. Arabic keeps the Cairo typeface.
         </p>
       </div>
 

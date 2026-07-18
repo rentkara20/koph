@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getAllRequestTypes, createRequestType, updateRequestType, toggleRequestType, moveRequestType } from "@/lib/actions/request-types"
 import { SYSTEM_REQUEST_TYPE_SLUGS } from "@/lib/domain/request-types"
@@ -11,10 +12,11 @@ import { GeneralSettingsForm } from "@/components/settings/general-settings-form
 import { cn } from "@/lib/utils"
 
 export default async function RequestTaskSettingsPage() {
-  const [requestTypes, failureReasons, generalSettings] = await Promise.all([
+  const [requestTypes, failureReasons, generalSettings, t] = await Promise.all([
     getAllRequestTypes(),
     getFailureReasons(),
     readRequestTaskSettingsForAdmin(),
+    getTranslations("requestTasksPage"),
   ])
 
   return (
@@ -27,17 +29,17 @@ export default async function RequestTaskSettingsPage() {
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Request & Task Configuration</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Request types, task failure reasons, and workflow rules — no code change needed.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("subtitle")}</p>
         </div>
       </div>
 
       {generalSettings && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-medium text-muted-foreground">General</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              {t("generalTitle")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <GeneralSettingsForm initial={generalSettings} />
@@ -48,7 +50,7 @@ export default async function RequestTaskSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Request types
+            {t("requestTypesTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -60,8 +62,8 @@ export default async function RequestTaskSettingsPage() {
               toggle: toggleRequestType,
               move: moveRequestType,
             }}
-            emptyLabel="No request types yet."
-            addLabel="Add request type"
+            emptyLabel={t("requestTypesEmpty")}
+            addLabel={t("requestTypesAdd")}
             lockedSlugs={SYSTEM_REQUEST_TYPE_SLUGS}
           />
         </CardContent>
@@ -70,7 +72,7 @@ export default async function RequestTaskSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Task failure reasons
+            {t("failureReasonsTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -82,8 +84,8 @@ export default async function RequestTaskSettingsPage() {
               toggle: toggleFailureReason,
               move: moveFailureReason,
             }}
-            emptyLabel="No failure reasons yet."
-            addLabel="Add failure reason"
+            emptyLabel={t("failureReasonsEmpty")}
+            addLabel={t("failureReasonsAdd")}
           />
         </CardContent>
       </Card>

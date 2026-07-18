@@ -1,0 +1,1 @@
+ALTER TABLE `warranty_product` ADD `is_active` integer DEFAULT true NOT NULL;

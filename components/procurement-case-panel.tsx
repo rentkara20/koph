@@ -16,22 +16,16 @@ import { linkExternalPo, supersedeProcurementCase } from "@/lib/actions/procurem
 import { createPurchaseOrderFromCase } from "@/lib/actions/procurement"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import type { ProcurementCase } from "@/lib/db/schema"
-
-const CASE_STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  open: "default",
-  handed_off: "default",
-  po_linked: "success",
-  closed: "secondary",
-  cancelled: "destructive",
-  superseded: "destructive",
-}
+import { procurementCaseStatusVariant as CASE_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export function ProcurementCasePanel({
   procurementCase,
   linkedPurchaseOrders,
+  sourceRequests,
 }: {
   procurementCase: ProcurementCase
   linkedPurchaseOrders?: { id: string; poNumber: string; status: string }[]
+  sourceRequests?: { id: string; externalRef: string | null; title: string | null }[]
 }) {
   const t = useTranslations("procurementCase")
   const router = useRouter()
@@ -116,6 +110,23 @@ export function ProcurementCasePanel({
         </Badge>
       </div>
       <p className="text-xs text-muted-foreground">{t(`sources.${procurementCase.source}` as never)}</p>
+
+      {sourceRequests && sourceRequests.length > 0 && (
+        <div className="rounded-lg bg-muted/50 p-3 text-xs">
+          <p className="mb-1 font-medium text-muted-foreground">
+            {t("coversRequests", { count: sourceRequests.length })}
+          </p>
+          <ul className="flex flex-wrap gap-x-3 gap-y-1">
+            {sourceRequests.map((r) => (
+              <li key={r.id}>
+                <Link href={`/admin/sourcing/${r.id}`} className="text-kara-purple hover:underline">
+                  {r.externalRef ?? r.title ?? r.id}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {isLinked ? (
         <div className="rounded-lg bg-muted/50 p-3 text-sm">

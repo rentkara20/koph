@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getSessionWithRole } from "@/lib/auth/session"
 import { getActiveSessionCount } from "@/lib/actions/session-security"
@@ -9,7 +10,10 @@ import { cn } from "@/lib/utils"
 
 export default async function SessionSecurityPage() {
   const session = await getSessionWithRole("admin")
-  const activeSessionCount = session ? await getActiveSessionCount() : 0
+  const [activeSessionCount, t] = await Promise.all([
+    session ? getActiveSessionCount() : Promise.resolve(0),
+    getTranslations("sessionSecurityPage"),
+  ])
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
@@ -21,43 +25,45 @@ export default async function SessionSecurityPage() {
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Token & Session Policy</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            Login sessions and magic-link expiry.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">{t("subtitle")}</p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Current policy (code-defined)
+            {t("currentPolicyTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <p><span className="text-muted-foreground">Login session length:</span> 7 days, refreshed every 24h of activity</p>
-          <p><span className="text-muted-foreground">Minimum password length:</span> 10 characters</p>
-          <p className="text-xs text-muted-foreground pt-2">
-            These stay in code rather than Settings: better-auth builds this config once when the
-            server starts, so a bad value here could silently weaken login security until the next
-            deploy catches it. Contact engineering to change these.
+          <p>
+            <span className="text-muted-foreground">{t("sessionLengthLabel")}</span>{" "}
+            {t("sessionLengthValue")}
           </p>
+          <p>
+            <span className="text-muted-foreground">{t("minPasswordLabel")}</span>{" "}
+            {t("minPasswordValue")}
+          </p>
+          <p className="text-xs text-muted-foreground pt-2">{t("policyNote")}</p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Magic-link expiry
+            {t("magicLinkTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Task and partner-activation link expiry are configurable under{" "}
-            <Link href="/admin/settings/request-tasks" className="underline">
-              Request & Task Configuration
-            </Link>
-            .
+            {t.rich("magicLinkBody", {
+              link: (chunks) => (
+                <Link href="/admin/settings/request-tasks" className="underline">
+                  {chunks}
+                </Link>
+              ),
+            })}
           </p>
         </CardContent>
       </Card>
@@ -66,7 +72,7 @@ export default async function SessionSecurityPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Security incident response
+              {t("incidentResponseTitle")}
             </CardTitle>
           </CardHeader>
           <CardContent>

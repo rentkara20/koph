@@ -322,21 +322,40 @@ export async function getSourcingRequest(id: string) {
     .where(eq(sourcingRequestItems.sourcingRequestId, id))
     .orderBy(sourcingRequestItems.createdAt)
 
-  const rfqs = await db
-    .select({
-      id: supplierRfqs.id,
-      supplierId: supplierRfqs.supplierId,
-      supplierName: suppliers.name,
-      supplierContactPerson: suppliers.contactPerson,
-      supplierMobile: suppliers.mobile,
-      supplierEmail: suppliers.email,
-      status: supplierRfqs.status,
-      sentAt: supplierRfqs.sentAt,
-    })
-    .from(supplierRfqs)
-    .innerJoin(suppliers, eq(supplierRfqs.supplierId, suppliers.id))
-    .where(and(eq(supplierRfqs.sourcingRequestId, id)))
-    .orderBy(desc(supplierRfqs.sentAt))
+  // Sourcing V3: an RFQ carrying this request's items is found by item
+  // membership, not by the RFQ's own (now-nullable, absent on consolidated
+  // RFQs) sourcingRequestId — otherwise a consolidated RFQ sent from the
+  // Unsourced-items view would be invisible on this request's page.
+  const itemIds = items.map((i) => i.id)
+  const rfqIdsForItems = itemIds.length
+    ? [
+        ...new Set(
+          (
+            await db
+              .select({ rfqId: supplierRfqItems.rfqId })
+              .from(supplierRfqItems)
+              .where(inArray(supplierRfqItems.sourcingRequestItemId, itemIds))
+          ).map((r) => r.rfqId)
+        ),
+      ]
+    : []
+  const rfqs = rfqIdsForItems.length
+    ? await db
+        .select({
+          id: supplierRfqs.id,
+          supplierId: supplierRfqs.supplierId,
+          supplierName: suppliers.name,
+          supplierContactPerson: suppliers.contactPerson,
+          supplierMobile: suppliers.mobile,
+          supplierEmail: suppliers.email,
+          status: supplierRfqs.status,
+          sentAt: supplierRfqs.sentAt,
+        })
+        .from(supplierRfqs)
+        .innerJoin(suppliers, eq(supplierRfqs.supplierId, suppliers.id))
+        .where(inArray(supplierRfqs.id, rfqIdsForItems))
+        .orderBy(desc(supplierRfqs.sentAt))
+    : []
 
   const rfqItemRows = rfqs.length
     ? await db

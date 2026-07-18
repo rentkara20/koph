@@ -279,6 +279,9 @@ export function SignaturesSection({
                       href={whatsappUrl}
                       target="_blank"
                       rel="noopener noreferrer"
+                      // Sending via WhatsApp IS the send — activate a draft link
+                      // automatically so the recipient never lands on a dead page.
+                      onClick={() => { if (sig.status === "draft") void handleMarkSent(sig.id) }}
                       className="inline-flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 transition-colors"
                     >
                       <MessageCircle className="size-3" />

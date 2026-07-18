@@ -29,25 +29,7 @@ import { isQcClear, isQcFailedStatus, summarizeQcAssets } from "@/lib/domain/qc-
 import { WorkflowContinuationCard } from "@/components/workflow-continuation-card"
 import { getSupplierReturnsForPurchaseOrder } from "@/lib/actions/supplier-returns"
 import { hasUnresolvedSupplierReturns } from "@/lib/domain/supplier-return"
-
-const PO_STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  draft: "secondary",
-  ordered: "default",
-  partially_received: "warning",
-  received: "success",
-  cancelled: "destructive",
-}
-
-const TASK_STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  pending: "secondary",
-  accepted: "default",
-  arrived: "default",
-  picked_up: "warning",
-  closed: "success",
-  rejected: "destructive",
-  failed: "destructive",
-  cancelled: "destructive",
-}
+import { poStatusVariant as PO_STATUS_VARIANT, pickupTaskStatusVariant as TASK_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function PurchaseOrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -218,6 +200,7 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
         <ProcurementCasePanel
           procurementCase={procurementCaseData.procurementCase}
           linkedPurchaseOrders={procurementCaseData.linkedPurchaseOrders}
+          sourceRequests={procurementCaseData.sourceRequests}
         />
       )}
 

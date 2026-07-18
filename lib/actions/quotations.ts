@@ -94,6 +94,7 @@ export async function submitSupplierQuotation(
   const seenItemIds = new Set(d.lines.map((l) => l.sourcingRequestItemId))
 
   const quotationId = createId()
+  let affectedRequestIds = new Set<string>()
   await db.transaction(async (tx) => {
     await tx.insert(supplierQuotations).values({
       id: quotationId,
@@ -137,18 +138,30 @@ export async function submitSupplierQuotation(
         )
       )
 
-    // First quotation in moves the request out of "waiting on suppliers" and
-    // into "ready to evaluate" — without this the evaluation step never
-    // unlocks even after every RFQ has responded.
-    const [request] = await tx
-      .select({ status: sourcingRequests.status })
-      .from(sourcingRequests)
-      .where(eq(sourcingRequests.id, rfq.sourcingRequestId))
-    if (request?.status === "draft" || request?.status === "rfq_sent") {
+    // First quotation in moves each affected request out of "waiting on
+    // suppliers" and into "ready to evaluate" — without this the evaluation
+    // step never unlocks even after every RFQ has responded. Sourcing V3: an
+    // RFQ can carry items from more than one request, so this is derived from
+    // the RFQ's items, not the RFQ's own (now-legacy) sourcingRequestId.
+    affectedRequestIds = new Set(
+      (
+        await tx
+          .select({ requestId: sourcingRequestItems.sourcingRequestId })
+          .from(sourcingRequestItems)
+          .innerJoin(supplierRfqItems, eq(supplierRfqItems.sourcingRequestItemId, sourcingRequestItems.id))
+          .where(eq(supplierRfqItems.rfqId, d.rfqId))
+      ).map((r) => r.requestId)
+    )
+    if (affectedRequestIds.size > 0) {
       await tx
         .update(sourcingRequests)
         .set({ status: "quotes_received", updatedAt: Date.now() })
-        .where(eq(sourcingRequests.id, rfq.sourcingRequestId))
+        .where(
+          and(
+            inArray(sourcingRequests.id, [...affectedRequestIds]),
+            inArray(sourcingRequests.status, ["draft", "rfq_sent"])
+          )
+        )
     }
 
     await emitDomainEvent(tx, {
@@ -161,7 +174,9 @@ export async function submitSupplierQuotation(
     })
   })
 
-  revalidatePath(`/admin/sourcing/${rfq.sourcingRequestId}`)
+  for (const requestId of affectedRequestIds) {
+    revalidatePath(`/admin/sourcing/${requestId}`)
+  }
   return { id: quotationId }
 }
 
@@ -252,11 +267,28 @@ export async function getSourcingComparisonMatrix(sourcingRequestId: string): Pr
     .orderBy(sourcingRequestItems.createdAt)
   if (items.length === 0) return []
 
-  const rfqs = await db
-    .select({ id: supplierRfqs.id, supplierId: supplierRfqs.supplierId, supplierName: suppliers.name })
-    .from(supplierRfqs)
-    .innerJoin(suppliers, eq(supplierRfqs.supplierId, suppliers.id))
-    .where(eq(supplierRfqs.sourcingRequestId, sourcingRequestId))
+  // Sourcing V3: an RFQ carrying this request's items is found by item
+  // membership (supplier_rfq_item), not by the RFQ's own (now-nullable, and
+  // absent on consolidated RFQs) sourcingRequestId — otherwise quotes coming
+  // back on a consolidated RFQ would be invisible on this request's page.
+  const itemIds = items.map((i) => i.id)
+  const rfqIds = [
+    ...new Set(
+      (
+        await db
+          .select({ rfqId: supplierRfqItems.rfqId })
+          .from(supplierRfqItems)
+          .where(inArray(supplierRfqItems.sourcingRequestItemId, itemIds))
+      ).map((r) => r.rfqId)
+    ),
+  ]
+  const rfqs = rfqIds.length
+    ? await db
+        .select({ id: supplierRfqs.id, supplierId: supplierRfqs.supplierId, supplierName: suppliers.name })
+        .from(supplierRfqs)
+        .innerJoin(suppliers, eq(supplierRfqs.supplierId, suppliers.id))
+        .where(inArray(supplierRfqs.id, rfqIds))
+    : []
   if (rfqs.length === 0) return items.map((item) => ({ item, candidates: [] }))
 
   const quotations = await db

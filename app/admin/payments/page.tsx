@@ -4,13 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
 import { GenerateBatchForm } from "./_components/generate-batch-form"
-
-const STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success"> = {
-  draft: "outline",
-  approved: "info",
-  sent_to_finance: "warning",
-  paid: "success",
-}
+import { paymentBatchStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",

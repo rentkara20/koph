@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getServices } from "@/lib/actions/services"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -7,7 +8,7 @@ import { ServicesManager } from "./_components/services-manager"
 import { cn } from "@/lib/utils"
 
 export default async function ServicesPage() {
-  const services = await getServices()
+  const [services, t] = await Promise.all([getServices(), getTranslations("servicesPage")])
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -19,9 +20,11 @@ export default async function ServicesPage() {
           <ArrowLeft className="size-4 rtl:rotate-180" />
         </Link>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Services catalog</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {services.length} service{services.length !== 1 ? "s" : ""}
+            {t(services.length === 1 ? "serviceCount" : "serviceCountPlural", {
+              count: services.length,
+            })}
           </p>
         </div>
       </div>
@@ -29,7 +32,7 @@ export default async function ServicesPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            All services
+            {t("allServicesTitle")}
           </CardTitle>
         </CardHeader>
         <CardContent>

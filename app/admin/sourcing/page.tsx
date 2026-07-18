@@ -4,18 +4,7 @@ import { getSourcingRequests } from "@/lib/actions/sourcing"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "success" | "warning" | "destructive"> = {
-  draft: "secondary",
-  rfq_sent: "default",
-  quotes_received: "default",
-  under_evaluation: "warning",
-  approved: "success",
-  handed_off: "success",
-  rejected: "destructive",
-  cancelled: "destructive",
-  closed: "secondary",
-}
+import { sourcingStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function SourcingPage() {
   const [t, requests] = await Promise.all([getTranslations("sourcing"), getSourcingRequests()])
@@ -27,9 +16,17 @@ export default async function SourcingPage() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
           <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
         </div>
-        <Link href="/admin/sourcing/new" className={cn(buttonVariants(), "gap-1.5")}>
-          {t("newRequest")}
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href="/admin/sourcing/unsourced"
+            className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}
+          >
+            {t("unsourced.title")}
+          </Link>
+          <Link href="/admin/sourcing/new" className={cn(buttonVariants(), "gap-1.5")}>
+            {t("newRequest")}
+          </Link>
+        </div>
       </div>
 
       {requests.length === 0 ? (

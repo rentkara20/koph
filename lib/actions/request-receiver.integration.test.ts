@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { createClient } from "@libsql/client"
 import { drizzle } from "drizzle-orm/libsql"
-import { migrate } from "drizzle-orm/libsql/migrator"
+import { migrate } from "@/lib/db/test-migrate"
 import { eq } from "drizzle-orm"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -17,7 +17,7 @@ beforeAll(async () => {
   dir = mkdtempSync(join(tmpdir(), "request-receiver-"))
   const client = createClient({ url: `file:${join(dir, "test.db")}` })
   db = drizzle(client, { schema })
-  await migrate(db, { migrationsFolder: "./lib/db/migrations" })
+  await migrate(client, { migrationsFolder: "./lib/db/migrations" })
 })
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }))

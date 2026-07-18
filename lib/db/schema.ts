@@ -348,8 +348,14 @@ export const partnerContracts = sqliteTable("partner_contract", {
 
 export const partnerTasks = sqliteTable("partner_task", {
   id: text("id").primaryKey(),
-  // Task origin: exactly one of requestId (customer request) or
-  // purchaseOrderId (supplier pickup) — enforced by partner_task_single_origin_chk.
+  // Task origin, gated by `kind` (partner_task_single_origin_chk):
+  // kind="request" -> purchaseOrderId must be null (requestId itself is
+  // legacy/advisory only — Delivery Batching v2 lets a request-kind task span
+  // multiple requests via its delivery_task_item rows instead, so requestId
+  // may be null on batched tasks; affected requests are then derived from
+  // delivery_task_item -> requestItems.requestId, same pattern as sourcing_v3's
+  // affectedRequestIds derivation in commercial-approval.ts).
+  // kind="supplier_pickup" -> purchaseOrderId required, requestId must be null.
   requestId: text("request_id").references(() => requests.id),
   // Supplier-pickup origin (kind = "supplier_pickup"). procurementCaseId is
   // denormalized from the PO for direct case-level queries; always set together.
@@ -433,7 +439,7 @@ export const partnerTasks = sqliteTable("partner_task", {
   index("partner_task_case_idx").on(t.procurementCaseId),
   check(
     "partner_task_single_origin_chk",
-    sql`(${t.requestId} IS NOT NULL AND ${t.purchaseOrderId} IS NULL) OR (${t.requestId} IS NULL AND ${t.purchaseOrderId} IS NOT NULL)`
+    sql`(${t.kind} = 'request' AND ${t.purchaseOrderId} IS NULL) OR (${t.kind} = 'supplier_pickup' AND ${t.purchaseOrderId} IS NOT NULL AND ${t.requestId} IS NULL)`
   ),
 ])
 
@@ -1115,9 +1121,11 @@ export const orderUnits = sqliteTable(
       .where(sql`${t.serialNumber} IS NOT NULL AND trim(${t.serialNumber}) <> ''`),
     index("order_unit_current_customer_idx").on(t.currentCustomerId),
     uniqueIndex("order_unit_asset_tag_idx").on(t.assetTag),
+    // At most one origin (an asset may have neither — a standalone/back-filled
+    // unit created via CSV import — but never both at once).
     check(
       "order_unit_single_origin_chk",
-      sql`(${t.orderLineId} IS NOT NULL AND ${t.purchaseOrderLineId} IS NULL) OR (${t.orderLineId} IS NULL AND ${t.purchaseOrderLineId} IS NOT NULL)`
+      sql`NOT (${t.orderLineId} IS NOT NULL AND ${t.purchaseOrderLineId} IS NOT NULL)`
     ),
   ]
 )
@@ -1390,9 +1398,11 @@ export const supplierRfqs = sqliteTable(
   "supplier_rfq",
   {
     id: text("id").primaryKey(),
-    sourcingRequestId: text("sourcing_request_id")
-      .notNull()
-      .references(() => sourcingRequests.id),
+    // Sourcing V3: nullable — an RFQ is no longer hard-scoped to one request.
+    // Kept for legacy/back-compat display only; the true per-item origin is
+    // supplier_rfq_item -> sourcing_request_item -> sourcingRequestId. A
+    // consolidated RFQ (items from multiple requests) leaves this null.
+    sourcingRequestId: text("sourcing_request_id").references(() => sourcingRequests.id),
     supplierId: text("supplier_id")
       .notNull()
       .references(() => suppliers.id),
@@ -1496,9 +1506,11 @@ export const commercialEvaluations = sqliteTable(
   "commercial_evaluation",
   {
     id: text("id").primaryKey(),
-    sourcingRequestId: text("sourcing_request_id")
-      .notNull()
-      .references(() => sourcingRequests.id),
+    // Sourcing V3: nullable — an evaluation can now award items spanning more
+    // than one request. Kept for legacy/back-compat display when every
+    // awarded item happens to share one request; the real per-item origin is
+    // commercial_evaluation_line -> sourcing_request_item -> sourcingRequestId.
+    sourcingRequestId: text("sourcing_request_id").references(() => sourcingRequests.id),
     chosenQuotationId: text("chosen_quotation_id").references(() => supplierQuotations.id),
     status: text("status", { enum: ["active", "superseded", "cancelled"] })
       .notNull()
@@ -1630,6 +1642,7 @@ export const warrantyProducts = sqliteTable("warranty_product", {
   nameEn: text("name_en").notNull(),
   durationMonths: integer("duration_months").notNull(),
   providerName: text("provider_name"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   createdAt: integer("created_at").notNull().$defaultFn(now),
 })
 
@@ -1646,12 +1659,19 @@ export const warrantyBatches = sqliteTable(
     purchaseOrderId: text("purchase_order_id").references(() => purchaseOrders.id, {
       onDelete: "set null",
     }),
+    // The entity that actually honors the warranty (Apple, Lenovo, etc.) —
+    // distinct from the device supplier, since a "separate"/"other_supplier"
+    // warranty batch is often bought from someone else entirely.
+    supplierId: text("supplier_id").references(() => suppliers.id, { onDelete: "set null" }),
     invoiceRef: text("invoice_ref"),
     unitsCovered: integer("units_covered").notNull().default(1),
     unitsAssigned: integer("units_assigned").notNull().default(0),
     createdAt: integer("created_at").notNull().$defaultFn(now),
   },
-  (t) => [index("warranty_batch_product_idx").on(t.warrantyProductId)]
+  (t) => [
+    index("warranty_batch_product_idx").on(t.warrantyProductId),
+    index("warranty_batch_supplier_idx").on(t.supplierId),
+  ]
 )
 
 export const warrantyAssignments = sqliteTable(
@@ -1875,6 +1895,68 @@ export type DomainEvent = typeof domainEvents.$inferSelect
 export type NewDomainEvent = typeof domainEvents.$inferInsert
 export type EventDelivery = typeof eventDeliveries.$inferSelect
 export type NewEventDelivery = typeof eventDeliveries.$inferInsert
+
+// ─── CSV Import/Export Center (Assets / Customers / Orders) ─────────────────
+// One row per uploaded CSV. Preview validates + stages rows (status "pending"),
+// commit replays every valid row through the same *Core business-logic
+// function the UI uses, then flips status to "committed" (or "failed" if the
+// whole transaction was aborted). validRowsJson stores the already-parsed,
+// already-validated rows (as JSON) so commit never re-parses the original
+// upload — simpler than a separate staging table, and batches are small/short
+// lived (single admin workflow, not a queryable ledger).
+
+export const csvImportBatch = sqliteTable(
+  "csv_import_batch",
+  {
+    id: text("id").primaryKey(),
+    module: text("module", {
+      enum: [
+        "asset",
+        "customer",
+        "order",
+        "supplier",
+        "partner",
+        "warrantyProduct",
+        "warrantyBatch",
+        "request",
+        "warrantyAssignment",
+        "productForSale",
+      ],
+    }).notNull(),
+    status: text("status", { enum: ["pending", "committed", "failed"] })
+      .notNull()
+      .default("pending"),
+    totalRows: integer("total_rows").notNull().default(0),
+    successRows: integer("success_rows").notNull().default(0),
+    errorRows: integer("error_rows").notNull().default(0),
+    // Parsed + validated rows awaiting commit, as JSON: { new: T[]; update: T[] }.
+    validRowsJson: text("valid_rows_json"),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+    committedAt: integer("committed_at"),
+  },
+  (t) => [index("csv_import_batch_module_idx").on(t.module)]
+)
+
+export const csvImportRowError = sqliteTable(
+  "csv_import_row_error",
+  {
+    id: text("id").primaryKey(),
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => csvImportBatch.id, { onDelete: "cascade" }),
+    rowNumber: integer("row_number").notNull(),
+    rawRowJson: text("raw_row_json").notNull(),
+    errorMessage: text("error_message").notNull(),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("csv_import_row_error_batch_idx").on(t.batchId)]
+)
+
+export type CsvImportBatch = typeof csvImportBatch.$inferSelect
+export type NewCsvImportBatch = typeof csvImportBatch.$inferInsert
+export type CsvImportRowError = typeof csvImportRowError.$inferSelect
+export type NewCsvImportRowError = typeof csvImportRowError.$inferInsert
 
 export type Supplier = typeof suppliers.$inferSelect
 export type NewSupplier = typeof suppliers.$inferInsert
