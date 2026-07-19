@@ -44,15 +44,18 @@ function exportTrimmed(canvas: HTMLCanvasElement): string {
   }
   if (maxX < 0) return "" // no ink
 
-  const cropX = Math.max(0, minX - TRIM_PADDING)
-  const cropY = Math.max(0, minY - TRIM_PADDING)
-  const cropW = Math.min(width, maxX + TRIM_PADDING) - cropX + 1
-  const cropH = Math.min(height, maxY + TRIM_PADDING) - cropY + 1
+  const inkW = maxX - minX + 1
+  const inkH = maxY - minY + 1
 
+  // Output is the ink plus even padding on every side, with the ink copied into
+  // the centre. Padding is guaranteed symmetric regardless of where on the pad
+  // the user signed — even if the strokes ran right up to an edge.
   const out = document.createElement("canvas")
-  out.width = cropW
-  out.height = cropH
-  out.getContext("2d")?.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
+  out.width = inkW + TRIM_PADDING * 2
+  out.height = inkH + TRIM_PADDING * 2
+  out
+    .getContext("2d")
+    ?.drawImage(canvas, minX, minY, inkW, inkH, TRIM_PADDING, TRIM_PADDING, inkW, inkH)
   return out.toDataURL("image/png")
 }
 
