@@ -262,7 +262,7 @@ const DN_STYLES = `
 .dn-sfl-ar{color:#838383;font-size:10px;text-align:right;direction:rtl;}
 .dn-sfv{font-weight:600;font-size:11px;color:#1A1A1A;text-align:center;}
 .dn-sig-img-wrap{margin-top:8px;padding-top:6px;border-top:1px solid #e0dcea;text-align:center;}
-.dn-sig-img{display:inline-block;width:auto;height:auto;max-height:70px;}
+.dn-sig-img{display:inline-block;width:auto;height:auto;max-width:100%;max-height:70px;object-fit:contain;}
 .dn-sig-pending{margin-top:8px;padding:14px 0;text-align:center;color:#b45309;font-size:10px;font-weight:700;border-top:1px dashed #e0dcea;direction:rtl;}
 .dn-footer{text-align:center;padding:10px 16px 12px;border-top:2px solid #60B5D1;font-size:10px;color:#512B83;font-weight:700;line-height:1.8;}
 @media print{@page{margin:8mm;size:A4;}.dn-root{width:100%;}}
