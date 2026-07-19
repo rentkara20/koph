@@ -225,24 +225,24 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
 const DN_STYLES = `
 .dn-root{width:210mm;margin:0 auto;background:#fff;color:#1A1A1A;font-family:'Cairo','Bahij','Geeza Pro',Arial,sans-serif;font-size:11px;direction:ltr;}
 .dn-rtl{direction:rtl;}
-.dn-hdr{position:relative;background:#d4d0d0;overflow:hidden;display:flex;align-items:center;padding:14px 22px;min-height:78px;}
+.dn-hdr{position:relative;background:#d4d0d0;overflow:hidden;display:flex;align-items:center;padding:9px 22px;min-height:60px;}
 .dn-hdr-logo{z-index:2;position:relative;flex-shrink:0;}
 .dn-hdr-purple{position:absolute;right:-18px;top:-8px;bottom:-8px;width:200px;background:#512B83;transform:skewX(-12deg);z-index:1;}
 .dn-hdr-purple2{position:absolute;right:44px;top:-8px;bottom:-8px;width:40px;background:#6a3fa0;transform:skewX(-12deg);z-index:1;opacity:.5;}
-.dn-body{padding:16px 24px 18px;}
-.dn-title-row{display:flex;justify-content:center;align-items:center;gap:18px;margin-bottom:14px;}
+.dn-body{padding:10px 24px 18px;}
+.dn-title-row{display:flex;justify-content:center;align-items:center;gap:18px;margin-bottom:8px;}
 .dn-title{font-size:20px;font-weight:700;color:#512B83;}
 .dn-title-divider{width:1px;height:20px;background:#512B83;opacity:.35;}
-.dn-info-wrap{display:flex;justify-content:center;margin-bottom:12px;}
+.dn-info-wrap{display:flex;justify-content:center;margin-bottom:8px;}
 .dn-info-tbl{width:82%;border-collapse:collapse;font-size:11px;}
-.dn-info-tbl td{padding:6px 14px;border:none;vertical-align:middle;}
+.dn-info-tbl td{padding:3px 14px;border:none;vertical-align:middle;}
 .dn-sec-hdr td{background:#e8e4f0;color:#512B83;font-weight:700;text-align:center;font-size:11px;}
 .dn-en-lbl{color:#555;text-align:left;width:30%;}
 .dn-val{color:#1A1A1A;text-align:center;font-weight:500;width:40%;}
 .dn-fw{font-weight:700;color:#512B83;}
 .dn-ar-lbl{color:#555;text-align:right;direction:rtl;width:30%;}
 .dn-info-tbl tr:last-child td{border-bottom:1.5px solid #1A1A1A;}
-.dn-dev-band{background:#60B5D1;color:#fff;text-align:center;padding:7px 12px;font-weight:700;font-size:12px;}
+.dn-dev-band{background:#60B5D1;color:#fff;text-align:center;padding:5px 12px;font-weight:700;font-size:12px;}
 .dn-dev-tbl{width:100%;border-collapse:collapse;font-size:10px;margin-bottom:12px;table-layout:fixed;}
 .dn-dev-tbl th{background:#512B83;color:#fff;padding:6px;border:1px solid #3d1f63;text-align:center;font-weight:600;}
 .dn-th-ar{display:block;font-size:8px;font-weight:400;opacity:.85;margin-top:2px;direction:rtl;}
