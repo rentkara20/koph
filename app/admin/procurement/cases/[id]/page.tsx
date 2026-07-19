@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { getProcurementCase } from "@/lib/actions/procurement-case"
+import { getProcurementCase, getProcurementCaseLineItems } from "@/lib/actions/procurement-case"
 import { ProcurementCasePanel } from "@/components/procurement-case-panel"
 
 export default async function ProcurementCasePage({
@@ -10,6 +10,7 @@ export default async function ProcurementCasePage({
   const { id } = await params
   const data = await getProcurementCase(id)
   if (!data) notFound()
+  const lineItems = await getProcurementCaseLineItems(id)
 
   return (
     <div className="max-w-3xl">
@@ -17,6 +18,7 @@ export default async function ProcurementCasePage({
         procurementCase={data.procurementCase}
         linkedPurchaseOrders={data.linkedPurchaseOrders}
         sourceRequests={data.sourceRequests}
+        lineItems={lineItems}
       />
     </div>
   )

@@ -16,16 +16,19 @@ import { linkExternalPo, supersedeProcurementCase } from "@/lib/actions/procurem
 import { createPurchaseOrderFromCase } from "@/lib/actions/procurement"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import type { ProcurementCase } from "@/lib/db/schema"
+import type { ProcurementCaseLineItem } from "@/lib/actions/procurement-case"
 import { procurementCaseStatusVariant as CASE_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export function ProcurementCasePanel({
   procurementCase,
   linkedPurchaseOrders,
   sourceRequests,
+  lineItems,
 }: {
   procurementCase: ProcurementCase
   linkedPurchaseOrders?: { id: string; poNumber: string; status: string }[]
   sourceRequests?: { id: string; externalRef: string | null; title: string | null }[]
+  lineItems?: ProcurementCaseLineItem[]
 }) {
   const t = useTranslations("procurementCase")
   const router = useRouter()
@@ -125,6 +128,59 @@ export function ProcurementCasePanel({
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {!isSuperseded && (
+        <div className="space-y-2 rounded-lg border p-3">
+          <p className="text-xs font-medium">{t("lineItemsTitle")}</p>
+          <p className="text-xs text-muted-foreground">{t("lineItemsHint")}</p>
+          {sourceRequests && sourceRequests.length > 0 && (
+            <p className="text-sm">
+              {t("referenceNumber")}:{" "}
+              <span className="font-mono font-medium" dir="ltr">
+                {sourceRequests.map((r) => r.externalRef ?? r.title ?? r.id).join(", ")}
+              </span>
+            </p>
+          )}
+          {!lineItems || lineItems.length === 0 ? (
+            <p className="text-xs text-muted-foreground">{t("noLineItems")}</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[520px] text-sm">
+                <thead>
+                  <tr className="text-start text-xs text-muted-foreground">
+                    <th className="p-1 text-start">{t("item")}</th>
+                    <th className="p-1 text-start">{t("partNumber")}</th>
+                    <th className="p-1 text-start">{t("supplier")}</th>
+                    <th className="p-1 text-start">{t("quantity")}</th>
+                    <th className="p-1 text-start">{t("unitPrice")}</th>
+                    <th className="p-1 text-start">{t("tax")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {lineItems.map((item) => (
+                    <tr key={item.id} className="border-t">
+                      <td className="p-1">{item.itemDescription}</td>
+                      <td className="p-1 font-mono" dir="ltr">
+                        {item.partNumber ?? "—"}
+                      </td>
+                      <td className="p-1">{item.supplierName ?? "—"}</td>
+                      <td className="p-1" dir="ltr">
+                        {item.quantity}
+                      </td>
+                      <td className="p-1" dir="ltr">
+                        {item.unitPrice != null ? `${item.unitPrice} ${item.currency}` : "—"}
+                      </td>
+                      <td className="p-1" dir="ltr">
+                        {item.taxRate != null ? `${item.taxRate}%` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 

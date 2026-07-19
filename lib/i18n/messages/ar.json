@@ -1863,6 +1863,7 @@
     "handedOff": "تم التسليم إلى ملف المشتريات",
     "externalRef": "رقم الطلب المرجعي",
     "externalRefPlaceholder": "مثال: رقم طلب Notion",
+    "orderNumberNotFound": "لا يوجد طلب برقم {orderNumber}",
     "requestTitle": "العنوان",
     "requestNotes": "ملاحظات",
     "items": "الأصناف",
@@ -1984,7 +1985,17 @@
     "poNumber": "رقم أمر الشراء",
     "nextStep": "الخطوة التالية",
     "createPoAutomaticallyHint": "سيستخدم KOPH مرجع ERP كرقم أمر الشراء وينسخ المورد والأصناف المعتمدة تلقائياً.",
-    "continueToPurchaseOrder": "إنشاء أمر الشراء والمتابعة"
+    "continueToPurchaseOrder": "إنشاء أمر الشراء والمتابعة",
+    "lineItemsTitle": "بيانات أمر الشراء (للنسخ في زوهو)",
+    "lineItemsHint": "انسخ القيم دي وحطها في فورم أمر الشراء بزوهو.",
+    "referenceNumber": "الرقم المرجعي",
+    "supplier": "المورد",
+    "item": "الصنف",
+    "partNumber": "رقم القطعة",
+    "quantity": "الكمية",
+    "unitPrice": "السعر",
+    "tax": "الضريبة",
+    "noLineItems": "لا توجد أصناف معتمدة لهذا الملف بعد."
   },
   "workspace": {
     "journey": {
@@ -2060,6 +2071,8 @@
     "lineFulfillment": "تم توصيل {delivered} · في المخزون {stocked} / المطلوب {requested}",
     "buying": {
       "sourcing": "طلبات التسعير",
+      "newSourcing": "طلب توريد جديد",
+      "newSourcingHint": "وريّد الأصناف المتبقية حتى لو اختفت خطوة التوريد التلقائية.",
       "noSourcing": "لم يبدأ التسعير لهذا الطلب بعد.",
       "sourcingRequest": "طلب تسعير",
       "sourcingCounts": "{items} صنف · {rfqs} طلب عرض سعر · {quotes} عرض سعر",

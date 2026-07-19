@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { Plus } from "lucide-react"
 import { getTranslations } from "next-intl/server"
 import type { RequestWorkspace } from "@/lib/actions/request-workspace"
 import { Badge } from "@/components/ui/badge"
@@ -26,7 +27,19 @@ export async function BuyingTab({ workspace }: { workspace: RequestWorkspace }) 
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t("buying.sourcing")}</CardTitle>
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="min-w-0">
+              <CardTitle className="text-base">{t("buying.sourcing")}</CardTitle>
+              <p className="text-sm text-muted-foreground">{t("buying.newSourcingHint")}</p>
+            </div>
+            <Link
+              href={`/admin/sourcing/new?orderId=${encodeURIComponent(workspace.order.id)}`}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted"
+            >
+              <Plus className="h-4 w-4" />
+              {t("buying.newSourcing")}
+            </Link>
+          </div>
         </CardHeader>
         <CardContent>
           {workspace.sourcing.length === 0 ? (

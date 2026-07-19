@@ -15,6 +15,7 @@ import { createSourcingRequest } from "@/lib/actions/sourcing"
 import { searchCustomers, type CustomerOption } from "@/lib/actions/customers"
 import {
   searchCustomerOrders,
+  getOrderByNumber,
   getOrderLineDraftsForSourcing,
   type CustomerOrderOption,
   type SourcingItemDraft,
@@ -99,6 +100,7 @@ export function CreateSourcingRequestForm({
     initialItems.length ? initialItems.map(draftToItem) : [{ ...EMPTY_ITEM }]
   )
   const [loadingItems, setLoadingItems] = useState(false)
+  const [lookingUp, setLookingUp] = useState(false)
   const [error, setError] = useState("")
   const [pending, startTransition] = useTransition()
 
@@ -124,12 +126,9 @@ export function CreateSourcingRequestForm({
     setOrderLabel("")
   }
 
-  function handleOrderChange(nextId: string, option: SearchableSelectOption) {
-    setOrderId(nextId)
-    setOrderLabel(option.label)
-    setExternalRef(option.label)
-    // Pull the order's lines into the item rows so the user does not retype
-    // what the customer order already captured. Rows stay fully editable.
+  // Pull the order's lines into the item rows so the user does not retype what
+  // the customer order already captured. Rows stay fully editable.
+  function prefillItemsFromOrder(nextId: string) {
     setLoadingItems(true)
     startTransition(async () => {
       try {
@@ -140,6 +139,38 @@ export function CreateSourcingRequestForm({
         }
       } finally {
         setLoadingItems(false)
+      }
+    })
+  }
+
+  function handleOrderChange(nextId: string, option: SearchableSelectOption) {
+    setOrderId(nextId)
+    setOrderLabel(option.label)
+    setExternalRef(option.label)
+    prefillItemsFromOrder(nextId)
+  }
+
+  // Resolve the whole customer+order pair from the reference number the user
+  // typed, then prefill items — no need to pick customer and order by hand.
+  function handleRefLookup() {
+    const ref = externalRef.trim()
+    if (!isCustomerOrder || !ref || ref === orderLabel || lookingUp) return
+    setLookingUp(true)
+    startTransition(async () => {
+      try {
+        const match = await getOrderByNumber(ref)
+        if (!match) {
+          toast.info(t("orderNumberNotFound", { orderNumber: ref }))
+          return
+        }
+        setCustomerId(match.customerId)
+        setCustomerLabel(match.customerName)
+        setOrderId(match.id)
+        setOrderLabel(match.orderNumber)
+        setExternalRef(match.orderNumber)
+        prefillItemsFromOrder(match.id)
+      } finally {
+        setLookingUp(false)
       }
     })
   }
@@ -206,10 +237,20 @@ export function CreateSourcingRequestForm({
     <div className="space-y-5 rounded-lg border bg-card p-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <Label>{t("externalRef")}</Label>
+          <Label className="flex items-center gap-2">
+            {t("externalRef")}
+            {lookingUp && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+          </Label>
           <Input
             value={externalRef}
             onChange={(e) => setExternalRef(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault()
+                handleRefLookup()
+              }
+            }}
+            onBlur={handleRefLookup}
             dir="ltr"
             placeholder={t("externalRefPlaceholder")}
           />

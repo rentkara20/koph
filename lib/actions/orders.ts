@@ -583,6 +583,39 @@ export async function getOrderById(id: string): Promise<CustomerOrderOption | nu
   return getOrderByIdCore(db, id)
 }
 
+// Exact-match lookup by order number, carrying the customer name so the sourcing
+// form can resolve the whole customer+order pair from a single typed reference.
+export type OrderByNumberMatch = CustomerOrderOption & { customerName: string }
+
+export async function getOrderByNumberCore(
+  database: Database,
+  orderNumber: string
+): Promise<OrderByNumberMatch | null> {
+  const trimmed = orderNumber.trim()
+  if (!trimmed) return null
+
+  const [order] = await database
+    .select({
+      id: orders.id,
+      orderNumber: orders.orderNumber,
+      customerId: orders.customerId,
+      customerName: customers.name,
+    })
+    .from(orders)
+    .leftJoin(customers, eq(orders.customerId, customers.id))
+    .where(and(eq(orders.orderNumber, trimmed), isNull(orders.deletedAt)))
+    .limit(1)
+
+  if (!order) return null
+  return { ...order, customerName: order.customerName ?? "" }
+}
+
+export async function getOrderByNumber(orderNumber: string): Promise<OrderByNumberMatch | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+  return getOrderByNumberCore(db, orderNumber)
+}
+
 // Prefill payload for the sourcing form: one draft per order line so the user
 // does not retype what the customer order already captured. Kept intentionally
 // lean — the form fills its remaining fields (supplier spec, "same as") itself.

@@ -1863,6 +1863,7 @@
     "handedOff": "Handed off to procurement case",
     "externalRef": "Request ref",
     "externalRefPlaceholder": "e.g. Notion request number",
+    "orderNumberNotFound": "No order found with number {orderNumber}",
     "requestTitle": "Title",
     "requestNotes": "Notes",
     "items": "Items",
@@ -1984,7 +1985,17 @@
     "poNumber": "PO number",
     "nextStep": "Next step",
     "createPoAutomaticallyHint": "KOPH will use the ERP reference as the PO number and copy the approved supplier and items automatically.",
-    "continueToPurchaseOrder": "Create PO and continue"
+    "continueToPurchaseOrder": "Create PO and continue",
+    "lineItemsTitle": "PO data (copy into Zoho)",
+    "lineItemsHint": "Copy these values into the Zoho purchase order form.",
+    "referenceNumber": "Reference number",
+    "supplier": "Supplier",
+    "item": "Item",
+    "partNumber": "Part number",
+    "quantity": "Quantity",
+    "unitPrice": "Unit price",
+    "tax": "Tax",
+    "noLineItems": "No awarded items for this case yet."
   },
   "workspace": {
     "journey": {
@@ -2060,6 +2071,8 @@
     "lineFulfillment": "{delivered} delivered · {stocked} in stock / {requested} requested",
     "buying": {
       "sourcing": "Sourcing requests",
+      "newSourcing": "New sourcing request",
+      "newSourcingHint": "Source the remaining items even when the auto step is hidden.",
       "noSourcing": "No sourcing started for this request.",
       "sourcingRequest": "Sourcing request",
       "sourcingCounts": "{items} items · {rfqs} RFQs · {quotes} quotations",

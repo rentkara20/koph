@@ -22,6 +22,7 @@ import {
   purchaseOrders,
   sourcingRequestItems,
   sourcingRequests,
+  supplierQuotationLines,
   suppliers,
 } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
@@ -301,6 +302,69 @@ export async function getProcurementCase(id: string) {
   const sourceRequests = await getProcurementCaseSourceRequests(id)
 
   return { procurementCase, sourcingRequest, approval, linkedPurchaseOrders, sourceRequests }
+}
+
+// Awarded line items for this case — the exact item/qty/rate/vendor data
+// needed to hand-enter a PO in an external ERP (Zoho/Odoo) before the direct
+// API integration exists. Sourced from the evaluation chain (which item won,
+// at what price, from which quotation), not from the PO itself — a case can
+// reach this stage before any purchase_order row exists.
+export type ProcurementCaseLineItem = {
+  id: string
+  itemDescription: string
+  partNumber: string | null
+  quantity: number
+  unitPrice: number | null
+  currency: string
+  taxRate: number | null
+  supplierName: string | null
+}
+
+export async function getProcurementCaseLineItems(
+  procurementCaseId: string
+): Promise<ProcurementCaseLineItem[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  const [procurementCase] = await db
+    .select({ commercialApprovalId: procurementCases.commercialApprovalId, supplierId: procurementCases.supplierId })
+    .from(procurementCases)
+    .where(eq(procurementCases.id, procurementCaseId))
+  if (!procurementCase || !procurementCase.commercialApprovalId) return []
+
+  const [approval] = await db
+    .select({ evaluationId: commercialApprovals.evaluationId })
+    .from(commercialApprovals)
+    .where(eq(commercialApprovals.id, procurementCase.commercialApprovalId))
+  if (!approval) return []
+
+  const [supplier] = procurementCase.supplierId
+    ? await db.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, procurementCase.supplierId))
+    : [null]
+
+  const rows = await db
+    .select({
+      id: commercialEvaluationLines.id,
+      itemDescription: sourcingRequestItems.customerDescription,
+      partNumber: sourcingRequestItems.partNumber,
+      quantity: sourcingRequestItems.quantity,
+      unitPrice: supplierQuotationLines.unitPrice,
+      currency: supplierQuotationLines.currency,
+      taxRate: supplierQuotationLines.taxRate,
+    })
+    .from(commercialEvaluationLines)
+    .innerJoin(sourcingRequestItems, eq(sourcingRequestItems.id, commercialEvaluationLines.sourcingRequestItemId))
+    .innerJoin(
+      supplierQuotationLines,
+      eq(supplierQuotationLines.id, commercialEvaluationLines.chosenQuotationLineId)
+    )
+    .where(eq(commercialEvaluationLines.evaluationId, approval.evaluationId))
+
+  return rows.map((row) => ({
+    ...row,
+    currency: row.currency ?? "SAR",
+    supplierName: supplier?.name ?? null,
+  }))
 }
 
 // Latest non-superseded case for a sourcing request (a supersede copies
