@@ -296,47 +296,109 @@ export async function assignWarranty(input: z.infer<typeof assignSchema>): Promi
 
 // ─── Activation ───────────────────────────────────────────────────────────────
 
-export async function activateWarranty(assignmentId: string, startAtInput?: string): Promise<ActionResult> {
-  const session = await getSessionWithRole("admin", "finance")
-  if (!session) return { error: "Unauthorized" }
-
-  const [assignment] = await db
+// Tx-scoped activation, reused by the single-asset action below AND the
+// bulk registry action. Throws on invalid state — caller decides how to
+// surface that (single: return error; bulk: skip and keep going).
+async function activateWarrantyAssignmentCore(
+  tx: Tx,
+  assignmentId: string,
+  startAtInput: string | undefined,
+  actorUserId: string
+): Promise<{ assetId: string; startAt: number; endAt: number }> {
+  const [assignment] = await tx
     .select()
     .from(warrantyAssignments)
     .where(eq(warrantyAssignments.id, assignmentId))
-  if (!assignment) return { error: "Warranty assignment not found" }
+  if (!assignment) throw new Error("Warranty assignment not found")
   if (!["assigned_not_activated", "activation_pending"].includes(assignment.status)) {
-    return { error: "Invalid action for current warranty status" }
+    throw new Error("Invalid action for current warranty status")
   }
 
-  const [batch] = await db
+  const [batch] = await tx
     .select({ durationMonths: warrantyProducts.durationMonths })
     .from(warrantyBatches)
     .innerJoin(warrantyProducts, eq(warrantyBatches.warrantyProductId, warrantyProducts.id))
     .where(eq(warrantyBatches.id, assignment.warrantyBatchId))
 
   const startAt = startAtInput ? new Date(startAtInput).getTime() : Date.now()
-  if (Number.isNaN(startAt)) return { error: "Invalid start date" }
+  if (Number.isNaN(startAt)) throw new Error("Invalid start date")
   const endAt = startAt + (batch?.durationMonths ?? 12) * 30 * 24 * 60 * 60 * 1000
 
-  await db.transaction(async (tx) => {
-    await tx
-      .update(warrantyAssignments)
-      .set({ status: "active", startAt, endAt, updatedAt: Date.now() })
-      .where(eq(warrantyAssignments.id, assignmentId))
-    await emitDomainEvent(tx, {
-      aggregateType: "asset",
-      aggregateId: assignment.assetId,
-      eventType: "WarrantyActivated",
-      payload: { warrantyAssignmentId: assignmentId, startAt, endAt },
-      dedupeKey: `warranty_assignment:${assignmentId}:WarrantyActivated`,
-      actorUserId: session.user.id,
-    })
+  await tx
+    .update(warrantyAssignments)
+    .set({ status: "active", startAt, endAt, updatedAt: Date.now() })
+    .where(eq(warrantyAssignments.id, assignmentId))
+  await emitDomainEvent(tx, {
+    aggregateType: "asset",
+    aggregateId: assignment.assetId,
+    eventType: "WarrantyActivated",
+    payload: { warrantyAssignmentId: assignmentId, startAt, endAt },
+    dedupeKey: `warranty_assignment:${assignmentId}:WarrantyActivated`,
+    actorUserId,
   })
 
-  revalidatePath(`/admin/assets/${assignment.assetId}`)
+  return { assetId: assignment.assetId, startAt, endAt }
+}
+
+export async function activateWarranty(assignmentId: string, startAtInput?: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  let assetId = ""
+  try {
+    await db.transaction(async (tx) => {
+      const result = await activateWarrantyAssignmentCore(tx, assignmentId, startAtInput, session.user.id)
+      assetId = result.assetId
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to activate warranty" }
+  }
+
+  revalidatePath(`/admin/assets/${assetId}`)
   revalidatePath("/admin/warranty")
   return { id: assignmentId }
+}
+
+// Bulk activation: one start date applied to N pending assignments, each in
+// its own sub-transaction so one bad assignment (wrong status, already
+// activated by someone else) doesn't roll back the rest of the batch.
+const activateBulkSchema = z.object({
+  assignmentIds: z.array(z.string().trim().min(1)).min(1).max(500),
+  startAtInput: z.string().optional(),
+})
+
+export async function activateWarrantyForAssignments(
+  input: z.infer<typeof activateBulkSchema>
+): Promise<{ activated: number; failed: { assignmentId: string; error: string }[] }> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { activated: 0, failed: [{ assignmentId: "", error: "Unauthorized" }] }
+  const parsed = activateBulkSchema.safeParse(input)
+  if (!parsed.success) return { activated: 0, failed: [{ assignmentId: "", error: "Invalid input" }] }
+
+  const assignmentIds = [...new Set(parsed.data.assignmentIds)]
+  const failed: { assignmentId: string; error: string }[] = []
+  const assetIds: string[] = []
+
+  for (const assignmentId of assignmentIds) {
+    try {
+      await db.transaction(async (tx) => {
+        const result = await activateWarrantyAssignmentCore(
+          tx,
+          assignmentId,
+          parsed.data.startAtInput,
+          session.user.id
+        )
+        assetIds.push(result.assetId)
+      })
+    } catch (error) {
+      failed.push({ assignmentId, error: error instanceof Error ? error.message : "Failed to activate" })
+    }
+  }
+
+  for (const assetId of assetIds) revalidatePath(`/admin/assets/${assetId}`)
+  revalidatePath("/admin/warranty")
+  revalidatePath("/admin/warranty/registry")
+  return { activated: assetIds.length, failed }
 }
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
@@ -569,6 +631,7 @@ export type WarrantyRegistryStatus = "none" | "pending" | "active" | "expiring_s
 
 export type WarrantyRegistryRow = {
   assetId: string
+  assignmentId: string | null
   serialNumber: string | null
   assetTag: string | null
   brand: string | null
@@ -615,6 +678,7 @@ export async function getWarrantyRegistry(): Promise<WarrantyRegistryRow[]> {
 
   const warranties = await db
     .select({
+      assignmentId: warrantyAssignments.id,
       assetId: warrantyAssignments.assetId,
       status: warrantyAssignments.status,
       startAt: warrantyAssignments.startAt,
@@ -643,6 +707,7 @@ export async function getWarrantyRegistry(): Promise<WarrantyRegistryRow[]> {
     if (!w) {
       return {
         ...asset,
+        assignmentId: null,
         warrantyStatus: "none" as const,
         warrantyType: null,
         warrantyProvider: null,
@@ -658,6 +723,7 @@ export async function getWarrantyRegistry(): Promise<WarrantyRegistryRow[]> {
 
     return {
       ...asset,
+      assignmentId: w.assignmentId,
       warrantyStatus,
       warrantyType: w.productNameEn,
       warrantyProvider: w.batchSupplierName ?? w.providerName,

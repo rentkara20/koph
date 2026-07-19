@@ -1683,7 +1683,12 @@
         "active": "ساري",
         "expiring_soon": "قارب على الانتهاء",
         "expired": "منتهي"
-      }
+      },
+      "activateWarranty": "تفعيل الضمان",
+      "startDate": "تاريخ البداية",
+      "activatedCount": "{count, plural, one {تم تفعيل ضمان واحد} two {تم تفعيل ضمانين} other {تم تفعيل # ضمان}}",
+      "activateFailedCount": "{count, plural, one {فشل تفعيل ضمان واحد} two {فشل تفعيل ضمانين} other {فشل تفعيل # ضمان}}",
+      "mixedSelectionWarning": "اختار أجهزة بنفس حالة الضمان بس — كلها بدون ضمان (لطلب ضمان) أو كلها قيد التفعيل (للتفعيل)."
     }
   },
   "accessories": {

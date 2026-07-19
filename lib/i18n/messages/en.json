@@ -1683,7 +1683,12 @@
         "active": "Active",
         "expiring_soon": "Expiring soon",
         "expired": "Expired"
-      }
+      },
+      "activateWarranty": "Activate warranty",
+      "startDate": "Start date",
+      "activatedCount": "{count, plural, one {# warranty activated} other {# warranties activated}}",
+      "activateFailedCount": "{count, plural, one {# warranty failed to activate} other {# warranties failed to activate}}",
+      "mixedSelectionWarning": "Select devices with the same warranty status only — either all unrequested (to request warranty) or all pending (to activate)."
     }
   },
   "accessories": {

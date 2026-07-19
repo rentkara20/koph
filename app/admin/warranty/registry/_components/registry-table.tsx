@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Sheet } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
-import { requestWarrantyForAssets } from "@/lib/actions/warranty"
+import { activateWarrantyForAssignments, requestWarrantyForAssets } from "@/lib/actions/warranty"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { warrantyRegistryStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 import { buildWarrantyRequestMessages } from "@/lib/domain/warranty-request-message"
@@ -45,6 +45,8 @@ export function RegistryTable({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
+  const [activateStartAt, setActivateStartAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [activatePending, startActivateTransition] = useTransition()
 
   const [productId, setProductId] = useState(products[0]?.id ?? "")
   const [source, setSource] = useState<SourceOption>("bulk")
@@ -82,12 +84,44 @@ export function RegistryTable({
   )
 
   const selectableIds = useMemo(
-    () => visibleRows.filter((r) => r.warrantyStatus === "none").map((r) => r.assetId),
+    () => visibleRows.filter((r) => r.warrantyStatus === "none" || r.warrantyStatus === "pending").map((r) => r.assetId),
     [visibleRows]
   )
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selected.has(id))
   const supplier = suppliers.find((s) => s.id === supplierId)
   const requiresSupplier = source !== "with_device"
+
+  const selectedRows = useMemo(() => rows.filter((r) => selected.has(r.assetId)), [rows, selected])
+  const selectedStatuses = useMemo(
+    () => new Set(selectedRows.map((r) => r.warrantyStatus)),
+    [selectedRows]
+  )
+  // A selection must be all "none" (request warranty) or all "pending"
+  // (activate) — the two actions need different inputs and mean different
+  // things, so mixing them is treated as a mistake rather than guessed at.
+  const isMixedSelection = selectedStatuses.size > 1
+  const isActivateSelection = selectedStatuses.has("pending") && !isMixedSelection
+  const activateAssignmentIds = selectedRows
+    .map((r) => r.assignmentId)
+    .filter((id): id is string => !!id)
+
+  function handleActivate() {
+    if (activateAssignmentIds.length === 0) return
+    startActivateTransition(async () => {
+      const result = await activateWarrantyForAssignments({
+        assignmentIds: activateAssignmentIds,
+        startAtInput: activateStartAt,
+      })
+      if (result.failed.length > 0) {
+        toast.error(t("activateFailedCount", { count: result.failed.length }))
+      }
+      if (result.activated > 0) {
+        toast.success(t("activatedCount", { count: result.activated }))
+      }
+      setSelected(new Set())
+      router.refresh()
+    })
+  }
 
   function toggle(assetId: string) {
     setSelected((prev) => {
@@ -195,12 +229,37 @@ export function RegistryTable({
         </Select>
       </div>
 
-      {selected.size > 0 && (
+      {selected.size > 0 && isMixedSelection && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-500/5 p-3 text-sm">
+          {t("mixedSelectionWarning")}
+        </div>
+      )}
+
+      {selected.size > 0 && !isMixedSelection && !isActivateSelection && (
         <div className="flex items-center justify-between gap-3 rounded-xl border bg-card p-3">
           <p className="text-sm font-medium">{t("selectedCount", { count: selected.size })}</p>
           <Button size="sm" onClick={() => setOpen(true)} disabled={products.length === 0}>
             {t("requestWarranty")}
           </Button>
+        </div>
+      )}
+
+      {selected.size > 0 && isActivateSelection && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card p-3">
+          <p className="text-sm font-medium">{t("selectedCount", { count: selected.size })}</p>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs">{t("startDate")}</Label>
+            <Input
+              type="date"
+              value={activateStartAt}
+              onChange={(e) => setActivateStartAt(e.target.value)}
+              className="w-auto"
+            />
+            <Button size="sm" onClick={handleActivate} disabled={activatePending}>
+              {activatePending && <Loader2 className="me-1.5 size-3.5 animate-spin" />}
+              {t("activateWarranty")}
+            </Button>
+          </div>
         </div>
       )}
 
@@ -227,7 +286,7 @@ export function RegistryTable({
             {visibleRows.map((row) => (
               <tr key={row.assetId} className="border-b last:border-0 align-top">
                 <td className="p-3">
-                  {row.warrantyStatus === "none" && (
+                  {(row.warrantyStatus === "none" || row.warrantyStatus === "pending") && (
                     <input
                       type="checkbox"
                       checked={selected.has(row.assetId)}
