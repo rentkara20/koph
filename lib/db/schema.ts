@@ -361,11 +361,20 @@ export const partnerTasks = sqliteTable("partner_task", {
   // denormalized from the PO for direct case-level queries; always set together.
   procurementCaseId: text("procurement_case_id").references(() => procurementCases.id),
   purchaseOrderId: text("purchase_order_id").references(() => purchaseOrders.id),
-  kind: text("kind", { enum: ["request", "supplier_pickup"] })
+  // kind="ad_hoc" -> operational trip with no request/PO/case anchor (all null).
+  // Reuses the request lifecycle + token link + photo proof + sign-off/payment,
+  // fully isolated from procurement/request/financial state.
+  kind: text("kind", { enum: ["request", "supplier_pickup", "ad_hoc"] })
     .notNull()
     .default("request"),
   // Where the pickup is delivered to (free text until a warehouse module exists).
   destinationLocation: text("destination_location"),
+  // Ad-hoc origin (kind = "ad_hoc"). Free-text title + a coarse reason so the
+  // partner and Ops know what the trip is; never anchors procurement/request state.
+  adHocTitle: text("ad_hoc_title"),
+  adHocReason: text("ad_hoc_reason", {
+    enum: ["manual_pickup", "internal_delivery", "supplier_visit", "asset_transfer", "other"],
+  }),
   partnerId: text("partner_id")
     .notNull()
     .references(() => partners.id),
@@ -439,7 +448,7 @@ export const partnerTasks = sqliteTable("partner_task", {
   index("partner_task_case_idx").on(t.procurementCaseId),
   check(
     "partner_task_single_origin_chk",
-    sql`(${t.kind} = 'request' AND ${t.purchaseOrderId} IS NULL) OR (${t.kind} = 'supplier_pickup' AND ${t.purchaseOrderId} IS NOT NULL AND ${t.requestId} IS NULL)`
+    sql`(${t.kind} = 'request' AND ${t.purchaseOrderId} IS NULL) OR (${t.kind} = 'supplier_pickup' AND ${t.purchaseOrderId} IS NOT NULL AND ${t.requestId} IS NULL) OR (${t.kind} = 'ad_hoc' AND ${t.requestId} IS NULL AND ${t.purchaseOrderId} IS NULL AND ${t.procurementCaseId} IS NULL)`
   ),
 ])
 

@@ -82,7 +82,10 @@
     "moveDown": "Move down",
     "systemManaged": "System-managed",
     "saving": "Saving…",
-    "adding": "Adding…"
+    "adding": "Adding…",
+    "none": "None",
+    "select": "Select",
+    "done": "Done"
   },
   "auth": {
     "login": "Log in",
@@ -339,7 +342,26 @@
       "poNumber": "PO number",
       "planned": "Planned",
       "openMap": "Location"
-    }
+    },
+    "adHocReason": {
+      "manual_pickup": "Manual pickup",
+      "internal_delivery": "Internal delivery",
+      "supplier_visit": "Supplier visit",
+      "asset_transfer": "Asset transfer",
+      "other": "Other"
+    },
+    "adHocNewButton": "Ad-hoc task",
+    "adHocNewTitle": "New ad-hoc partner task",
+    "adHocNewSubtitle": "An operational trip not tied to a customer request or purchase order",
+    "adHocTaskLabel": "Ad-hoc task",
+    "adHocReasonLabel": "Reason",
+    "adHocTitleLabel": "Task title",
+    "adHocDestination": "Destination",
+    "adHocPhotoRequired": "Require proof photo",
+    "adHocCreated": "Task created",
+    "adHocTaskLink": "Partner task link",
+    "adHocLinkHint": "Send this link to the partner to run the task.",
+    "adHocCreateAnother": "Create another"
   },
   "customers": {
     "title": "Customers",
@@ -1166,7 +1188,8 @@
     "dismiss": "Dismiss",
     "batchTitle": "Multi-stop delivery",
     "batchSubtitle": "This trip covers {count} requests",
-    "batchGroupItems": "{count} items"
+    "batchGroupItems": "{count} items",
+    "destination": "Destination"
   },
   "trust": {
     "secureLink": "Secure link",
@@ -1205,7 +1228,8 @@
     "pickupTaskAssigned": "New pickup task for PO {poNumber}",
     "pickupInTransit": "Pickup in transit: {quantity} unit(s)",
     "pickupReceived": "Pickup fully received at warehouse",
-    "procurementCaseClosed": "Procurement case closed"
+    "procurementCaseClosed": "Procurement case closed",
+    "adHocTaskAssigned": "New ad-hoc task: {title}"
   },
   "suppliers": {
     "title": "Suppliers",
@@ -2135,7 +2159,8 @@
     "deliveryOtpGenerated": "Delivery code generated",
     "manualSignatureUploaded": "Signed file uploaded: {fileName}",
     "manualSignatureApproved": "Manually signed receipt approved",
-    "manualSignatureRejected": "Signed file rejected: {reason}"
+    "manualSignatureRejected": "Signed file rejected: {reason}",
+    "adHocTaskCreated": "Ad-hoc task created"
   },
   "products": {
     "title": "Products for Sale",

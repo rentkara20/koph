@@ -1,10 +1,12 @@
 // Pure partner-task state machine, extracted from tasks.ts for unit testing.
-// Two task kinds share the table but have distinct partner flows:
+// Three task kinds share the table but have distinct partner flows:
 //   request:          pending → accepted → in_progress → pending_signoff → closed (admin sign-off)
 //   supplier_pickup:  pending → accepted → arrived → picked_up → closed (warehouse receipt only —
 //                     "picked_up" means in transit; the partner can never close a pickup).
+//   ad_hoc:           same lifecycle as request (pending → accepted → in_progress →
+//                     pending_signoff → closed), but anchored to no request/PO/case.
 
-export type TaskKind = "request" | "supplier_pickup"
+export type TaskKind = "request" | "supplier_pickup" | "ad_hoc"
 
 export type PartnerAction =
   | "accept"
@@ -41,6 +43,7 @@ export const PICKUP_ALLOWED_TRANSITIONS: Record<string, string[]> = {
 }
 
 export function transitionsForKind(kind: TaskKind): Record<string, string[]> {
+  // ad_hoc reuses the request machine (ALLOWED_TRANSITIONS); only pickup differs.
   return kind === "supplier_pickup" ? PICKUP_ALLOWED_TRANSITIONS : ALLOWED_TRANSITIONS
 }
 

@@ -1,16 +1,17 @@
 import Link from "next/link"
 import { getTranslations } from "next-intl/server"
-import { FileSpreadsheet, Plus } from "lucide-react"
+import { ClipboardList, FileSpreadsheet, Plus } from "lucide-react"
 import { getPartners } from "@/lib/actions/partners"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 export default async function PartnersPage() {
-  const [t, tCommon, tImportExport, partnerList] = await Promise.all([
+  const [t, tCommon, tImportExport, tTasks, partnerList] = await Promise.all([
     getTranslations("partners"),
     getTranslations("common"),
     getTranslations("importExport"),
+    getTranslations("tasks"),
     getPartners(),
   ])
 
@@ -25,6 +26,13 @@ export default async function PartnersPage() {
           >
             <FileSpreadsheet className="size-4" />
             {tImportExport("linkLabel")}
+          </Link>
+          <Link
+            href="/admin/partners/tasks/new"
+            className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}
+          >
+            <ClipboardList className="size-4" />
+            {tTasks("adHocNewButton")}
           </Link>
           <Link href="/admin/partners/new" className={cn(buttonVariants(), "gap-1.5")}>
             <Plus className="size-4" />

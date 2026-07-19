@@ -82,7 +82,10 @@
     "moveDown": "تحريك لأسفل",
     "systemManaged": "مُدار من النظام",
     "saving": "جارٍ الحفظ…",
-    "adding": "جارٍ الإضافة…"
+    "adding": "جارٍ الإضافة…",
+    "none": "بدون",
+    "select": "اختر",
+    "done": "تم"
   },
   "auth": {
     "login": "تسجيل الدخول",
@@ -339,7 +342,26 @@
       "poNumber": "رقم أمر الشراء",
       "planned": "المخطّطة",
       "openMap": "الموقع"
-    }
+    },
+    "adHocReason": {
+      "manual_pickup": "استلام يدوي",
+      "internal_delivery": "توصيل داخلي",
+      "supplier_visit": "زيارة مورد",
+      "asset_transfer": "نقل أصل",
+      "other": "أخرى"
+    },
+    "adHocNewButton": "مهمة عامة",
+    "adHocNewTitle": "مهمة شريك عامة جديدة",
+    "adHocNewSubtitle": "مهمة تشغيلية غير مرتبطة بطلب عميل أو أمر شراء",
+    "adHocTaskLabel": "مهمة عامة",
+    "adHocReasonLabel": "السبب",
+    "adHocTitleLabel": "عنوان المهمة",
+    "adHocDestination": "جهة الوصول",
+    "adHocPhotoRequired": "طلب صورة إثبات",
+    "adHocCreated": "تم إنشاء المهمة",
+    "adHocTaskLink": "رابط المهمة للشريك",
+    "adHocLinkHint": "أرسل هذا الرابط للشريك عشان يستلم المهمة.",
+    "adHocCreateAnother": "إنشاء أخرى"
   },
   "customers": {
     "title": "العملاء",
@@ -1166,7 +1188,8 @@
     "dismiss": "إغلاق",
     "batchTitle": "توصيل متعدد الطلبات",
     "batchSubtitle": "هذه الرحلة تغطي {count} طلبات",
-    "batchGroupItems": "{count} أصناف"
+    "batchGroupItems": "{count} أصناف",
+    "destination": "جهة الوصول"
   },
   "trust": {
     "secureLink": "رابط آمن",
@@ -1205,7 +1228,8 @@
     "pickupTaskAssigned": "مهمة استلام جديدة لأمر الشراء {poNumber}",
     "pickupInTransit": "استلام قيد النقل: {quantity} قطعة",
     "pickupReceived": "تم استلام مهمة الاستلام بالكامل في المستودع",
-    "procurementCaseClosed": "تم إغلاق حالة الشراء"
+    "procurementCaseClosed": "تم إغلاق حالة الشراء",
+    "adHocTaskAssigned": "مهمة عامة جديدة: {title}"
   },
   "suppliers": {
     "title": "التجار",
@@ -2135,7 +2159,8 @@
     "deliveryOtpGenerated": "تم إنشاء رمز التسليم",
     "manualSignatureUploaded": "تم رفع الملف الموقّع: {fileName}",
     "manualSignatureApproved": "تمت الموافقة على السند الموقّع يدوياً",
-    "manualSignatureRejected": "تم رفض الملف الموقّع: {reason}"
+    "manualSignatureRejected": "تم رفض الملف الموقّع: {reason}",
+    "adHocTaskCreated": "تم إنشاء مهمة عامة"
   },
   "products": {
     "title": "منتجات للبيع",

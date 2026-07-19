@@ -37,11 +37,16 @@ export async function getMyTasks() {
   const rows = await db
     .select({
       id: partnerTasks.id,
+      kind: partnerTasks.kind,
       status: partnerTasks.status,
       taskToken: partnerTasks.taskToken,
       taskTokenExpiresAt: partnerTasks.taskTokenExpiresAt,
       createdAt: partnerTasks.createdAt,
       notes: partnerTasks.notes,
+      // ad_hoc display context (null for request/pickup kinds).
+      adHocTitle: partnerTasks.adHocTitle,
+      adHocReason: partnerTasks.adHocReason,
+      destinationLocation: partnerTasks.destinationLocation,
       requestNumber: requests.requestNumber,
       customerName: customers.name,
       deliveryDate: requests.deliveryDate,

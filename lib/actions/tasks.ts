@@ -553,6 +553,180 @@ export type SignOffInput = {
   reason?: string
 }
 
+// Ad-hoc sign-off: same admin-controlled payment decision + close as a delivery
+// task, but with NO request context. Deliberately skips the request-scoped
+// machinery in signOffTask (affected-request derivation, proof/serial gates,
+// asset-lifecycle transitions, delivered-quantity increments, request status
+// sync). Payment still flows ONLY through this admin sign-off: full/partial +
+// a contract create a partner_payment row; "none" never does. TaskClosed is
+// emitted with requestIds: [] (the notification consumer has no TaskClosed
+// template, so an empty list is a no-op — never a crash).
+async function signOffAdHocTask(
+  task: typeof partnerTasks.$inferSelect,
+  input: SignOffInput,
+  actorUserId: string
+): Promise<ActionResult> {
+  const { decision, quantity, approvedAmount, reason } = input
+
+  // Admins may override a mistakenly-failed task straight to closed.
+  const isOverride = task.status === "failed"
+  if (task.status !== "pending_signoff" && !isOverride) {
+    return { error: "Task is not awaiting sign-off" }
+  }
+
+  const contract = task.contractId
+    ? (await db.select().from(partnerContracts).where(eq(partnerContracts.id, task.contractId)))[0]
+    : null
+
+  if (
+    decision !== "hold" &&
+    contract &&
+    requiresQuantity(contract.pricingModel as PricingModel) &&
+    !quantity
+  ) {
+    return { error: "Quantity is required for this contract's pricing model" }
+  }
+  if (decision === "partial" && (!approvedAmount || approvedAmount <= 0)) {
+    return { error: "Approved amount is required for a partial payment decision" }
+  }
+  if ((decision === "partial" || decision === "none") && !reason?.trim()) {
+    return { error: "A reason is required for this payment decision" }
+  }
+
+  if (decision === "hold") {
+    await db
+      .insert(partnerPaymentDecisions)
+      .values({
+        id: createId(),
+        partnerTaskId: task.id,
+        decision: "hold",
+        reason: reason?.trim() || null,
+        decidedBy: actorUserId,
+        decidedAt: Date.now(),
+        updatedAt: Date.now(),
+      })
+      .onConflictDoUpdate({
+        target: partnerPaymentDecisions.partnerTaskId,
+        set: { decision: "hold", reason: reason?.trim() || null, updatedAt: Date.now() },
+      })
+    revalidatePath("/admin/partners/tasks")
+    return { id: task.id }
+  }
+
+  try {
+    await db.transaction(async (tx) => {
+      // CAS on the status we validated — a concurrent sign-off must not both
+      // pass validation against a stale read and both insert a payment record.
+      const result = await tx
+        .update(partnerTasks)
+        .set({
+          status: "closed",
+          signoffQuantity: quantity ?? null,
+          closedBy: actorUserId,
+          closedAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .where(and(eq(partnerTasks.id, task.id), eq(partnerTasks.status, task.status)))
+      const changed = (result as { rowsAffected?: number }).rowsAffected ?? 1
+      if (changed === 0) throw new Error("TASK_STATUS_CHANGED")
+
+      await emitDomainEvent(tx, {
+        aggregateType: "task",
+        aggregateId: task.id,
+        eventType: "TaskClosed",
+        payload: { requestIds: [], isOverride, quantity: quantity ?? null },
+        dedupeKey: `task:${task.id}:TaskClosed`,
+        actorUserId,
+      })
+
+      const finalAmount =
+        decision === "full"
+          ? contract
+            ? computePayment(contract.pricingModel as PricingModel, contract.unitPrice, quantity).totalAmount
+            : 0
+          : decision === "partial"
+            ? (approvedAmount as number)
+            : null
+
+      await tx
+        .insert(partnerPaymentDecisions)
+        .values({
+          id: createId(),
+          partnerTaskId: task.id,
+          decision,
+          approvedAmount: finalAmount,
+          reason: reason?.trim() || null,
+          decidedBy: actorUserId,
+          decidedAt: Date.now(),
+          updatedAt: Date.now(),
+        })
+        .onConflictDoUpdate({
+          target: partnerPaymentDecisions.partnerTaskId,
+          set: {
+            decision,
+            approvedAmount: finalAmount,
+            reason: reason?.trim() || null,
+            decidedBy: actorUserId,
+            decidedAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        })
+
+      if ((decision === "full" || decision === "partial") && contract) {
+        const { quantity: finalQty } = computePayment(
+          contract.pricingModel as PricingModel,
+          contract.unitPrice,
+          quantity
+        )
+        const paymentId = createId()
+        await tx.insert(partnerPayments).values({
+          id: paymentId,
+          partnerId: task.partnerId,
+          partnerTaskId: task.id,
+          pricingModel: contract.pricingModel,
+          quantity: finalQty,
+          unitPrice: contract.unitPrice,
+          totalAmount: finalAmount as number,
+          status: "pending",
+        })
+        await emitDomainEvent(tx, {
+          aggregateType: "partner_payment",
+          aggregateId: paymentId,
+          eventType: "PartnerPaymentCreated",
+          payload: { partnerId: task.partnerId, partnerTaskId: task.id, totalAmount: finalAmount },
+          dedupeKey: `partner_payment:${paymentId}:PartnerPaymentCreated`,
+          actorUserId,
+        })
+      }
+    })
+  } catch (error) {
+    if (error instanceof Error && error.message === "TASK_STATUS_CHANGED") {
+      return { error: "Task status changed since you loaded this page. Please refresh and retry." }
+    }
+    throw error
+  }
+
+  await logActivity({
+    entityType: "partner_task",
+    entityId: task.id,
+    action: isOverride ? "task_force_completed" : "task_signed_off",
+    i18nKey: isOverride ? "activity.taskForceCompleted" : "activity.taskSignedOff",
+    performedBy: actorUserId,
+  })
+  if (decision === "none") {
+    await logActivity({
+      entityType: "partner_task",
+      entityId: task.id,
+      action: "task_closed_no_payment",
+      i18nKey: "activity.taskClosedNoPayment",
+      i18nData: { reason: reason ?? "no_contract" },
+      performedBy: actorUserId,
+    })
+  }
+  revalidatePath("/admin/partners/tasks")
+  return { id: task.id }
+}
+
 export async function signOffTask(taskId: string, input: SignOffInput): Promise<ActionResult> {
   const session = await getSessionWithRole("admin", "finance")
   if (!session) return { error: "Unauthorized" }
@@ -565,6 +739,13 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
   // happens only via warehouse receipt (receivePurchaseOrderLineCore).
   if (task.kind === "supplier_pickup") {
     return { error: "Pickup tasks are closed by warehouse receipt, not sign-off" }
+  }
+
+  // Ad-hoc tasks close through admin sign-off like a delivery, but have no
+  // request context — a dedicated path handles payment + close while skipping
+  // every request-scoped gate/side effect below.
+  if (task.kind === "ad_hoc") {
+    return signOffAdHocTask(task, input, session.user.id)
   }
 
   // Delivery Batching v2 P4: every request this task's delivery_task_item rows
@@ -1243,6 +1424,15 @@ export async function getTaskByToken(token: string) {
     return { task, request: null, partner: null, customer: null, items: [], requestType: null, linkedContact: null, isExpired: task.taskTokenExpiresAt < Date.now(), batchGroups: null }
   }
 
+  // Ad-hoc tasks have no request/customer/PO — the partner page shows the
+  // ad-hoc title/reason/destination instead. Must return BEFORE the null-
+  // requestId batch branch below (which would otherwise treat it as an
+  // orphaned batch and return null).
+  if (task.kind === "ad_hoc") {
+    const [partner] = await db.select().from(partners).where(eq(partners.id, task.partnerId))
+    return { task, request: null, partner: partner ?? null, customer: null, items: [], requestType: null, linkedContact: null, isExpired: task.taskTokenExpiresAt < Date.now(), batchGroups: null }
+  }
+
   // Delivery Batching v2 P3: a genuine cross-request batch (requestId left
   // null — see delivery-batching.ts) has no single request/customer context.
   // Group its items by request instead so the courier can tell what belongs
@@ -1426,11 +1616,23 @@ export async function updateTaskByToken(
           tx
         )
       }
-    } else {
+    } else if (task.kind === "supplier_pickup") {
       await logActivity(
         {
           entityType: "purchase_order",
           entityId: task.purchaseOrderId ?? task.id,
+          action: `task_${action}`,
+          i18nKey: `activity.task_${action}`,
+          performedAs: "partner_link",
+        },
+        tx
+      )
+    } else {
+      // ad_hoc: no request/PO anchor — audit against the task itself.
+      await logActivity(
+        {
+          entityType: "partner_task",
+          entityId: task.id,
           action: `task_${action}`,
           i18nKey: `activity.task_${action}`,
           performedAs: "partner_link",

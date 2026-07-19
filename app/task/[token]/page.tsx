@@ -20,6 +20,7 @@ import { TaskChecklist } from "./_components/task-checklist"
 import { SignatureStatus } from "./_components/signature-status"
 import { OnSiteSigningFlow } from "./_components/on-site-signing"
 import { PickupTaskView } from "./_components/pickup-task-view"
+import { AdHocTaskView } from "./_components/ad-hoc-task-view"
 import { BatchTaskView } from "./_components/batch-task-view"
 import { ArrowDown, Phone, MapPin, Mail, MessageCircle, Warehouse } from "lucide-react"
 import { getDefaultCompanyLocation } from "@/lib/actions/company-locations"
@@ -94,6 +95,13 @@ export default async function TaskPage({
   // per-line collect quantities). Never falls through to the request layout.
   if (data.task.kind === "supplier_pickup") {
     return <PickupTaskView token={token} />
+  }
+
+  // Ad-hoc tasks have no request/customer/PO — dedicated view shows the
+  // title/reason/destination and drives the request-style lifecycle with
+  // photo-only proof.
+  if (data.task.kind === "ad_hoc") {
+    return <AdHocTaskView token={token} />
   }
 
   // Genuine cross-request batch (Delivery Batching v2 P3) — no single request
