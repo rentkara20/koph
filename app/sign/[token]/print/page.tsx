@@ -63,7 +63,7 @@ export default async function PrintPage({
         }
       `}</style>
 
-      <PrintActions />
+      <PrintActions documentName={data.sig.documentName} />
       <DeliveryNoteView data={data} />
     </>
   )
