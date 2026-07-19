@@ -1,5 +1,6 @@
 import type { DeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { formatDate } from "@/lib/utils/format"
+import { extractDeliveryLocationLabel } from "@/lib/utils/city-iata"
 
 function fmt(ts: number | null | undefined): string {
   return ts ? formatDate(ts) : "—"
@@ -94,9 +95,12 @@ function SignatureBox({
 }
 
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
-  const { request, customer, items, signature, authorized, requiresAuthorized, authorizedName } = data
+  const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName } = data
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
   const signDate = fmt(signature?.signedAt ?? request?.deliveryDate ?? null)
+  // Print the delivery location ("<IATA>, P<n>") taken from the document name,
+  // falling back to the customer's registered city for legacy notes.
+  const deliveryLocation = extractDeliveryLocationLabel(sig?.documentName) ?? customer?.city ?? "—"
 
   return (
     <div className="dn-root" id="delivery-note-root">
@@ -129,7 +133,7 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
               <tr><td className="dn-en-lbl">Point of Contact</td><td className="dn-val">{customer?.contactPerson ?? "—"}</td><td className="dn-ar-lbl">مسؤول التواصل</td></tr>
               <tr><td className="dn-en-lbl">Phone Number</td><td className="dn-val">{customer?.mobile ?? "—"}</td><td className="dn-ar-lbl">رقم الجوال</td></tr>
               <tr><td className="dn-en-lbl">E-mail</td><td className="dn-val">{customer?.email ?? "—"}</td><td className="dn-ar-lbl">البريد الإلكتروني</td></tr>
-              <tr><td className="dn-en-lbl">City</td><td className="dn-val">{customer?.city ?? "—"}</td><td className="dn-ar-lbl">المدينة</td></tr>
+              <tr><td className="dn-en-lbl">City</td><td className="dn-val">{deliveryLocation}</td><td className="dn-ar-lbl">المدينة</td></tr>
             </tbody>
           </table>
         </div>

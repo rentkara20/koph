@@ -118,3 +118,22 @@ export function buildDeliveryNoteName({
   const part = Math.max(1, deliveryPartNumber ?? 1)
   return loc ? `${base}, ${loc}, P${part}` : `${base}, P${part}`
 }
+
+/**
+ * Extracts the delivery-location label ("<LOC>, P<n>") from a delivery-note
+ * document name produced by buildDeliveryNoteName. Returns just "P<n>" when the
+ * name has no location slot, or null when no trailing patch marker is present.
+ * Used to print the delivery location (not the customer's registered city) in
+ * the Delivery Note "City" field.
+ */
+export function extractDeliveryLocationLabel(documentName?: string | null): string | null {
+  if (!documentName) return null
+  const parts = documentName.split(/,\s*/)
+  const last = parts[parts.length - 1]?.trim() ?? ""
+  if (!/^P\d+$/.test(last)) return null
+  if (parts.length >= 3) {
+    const loc = parts[parts.length - 2]?.trim()
+    return loc ? `${loc}, ${last}` : last
+  }
+  return last
+}

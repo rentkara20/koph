@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { buildDeliveryNoteName } from "./city-iata"
+import { buildDeliveryNoteName, extractDeliveryLocationLabel } from "./city-iata"
 
 describe("buildDeliveryNoteName", () => {
   it("uses the delivery part number assigned to the customer order", () => {
@@ -26,5 +26,26 @@ describe("buildDeliveryNoteName", () => {
       city: "الرياض",
       deliveryPartNumber: 1,
     })).toBe("Delivery Note #10101 Al Rajhi Bank - IT Dept, RUH, P1")
+  })
+})
+
+describe("extractDeliveryLocationLabel", () => {
+  it("extracts location and patch from a full document name", () => {
+    expect(
+      extractDeliveryLocationLabel("Delivery Note #10681 شركة إمدادات المركبة للتجارة, RUH, P1")
+    ).toBe("RUH, P1")
+  })
+
+  it("returns just the patch when the name has no location slot", () => {
+    expect(extractDeliveryLocationLabel("Delivery Note #10681 Al Rajhi Bank, P2")).toBe("P2")
+  })
+
+  it("returns null for names without a trailing patch marker", () => {
+    expect(extractDeliveryLocationLabel("Delivery Note #10681 Al Rajhi Bank")).toBeNull()
+  })
+
+  it("returns null for empty input", () => {
+    expect(extractDeliveryLocationLabel(null)).toBeNull()
+    expect(extractDeliveryLocationLabel(undefined)).toBeNull()
   })
 })

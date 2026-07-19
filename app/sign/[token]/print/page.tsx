@@ -1,10 +1,21 @@
 import { notFound } from "next/navigation"
+import type { Metadata } from "next"
 import { getDeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { getSignatureByToken } from "@/lib/actions/signatures"
 import { DeliveryNoteView } from "../_components/delivery-note-view"
 import { PrintActions } from "./_components/print-actions"
 
 const BLOCKED_STATUSES = new Set(["draft", "rejected", "cancelled", "expired"])
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ token: string }>
+}): Promise<Metadata> {
+  const { token } = await params
+  const data = await getDeliveryNoteData(token)
+  return { title: data?.sig.documentName ?? "Delivery Note" }
+}
 
 export default async function PrintPage({
   params,
