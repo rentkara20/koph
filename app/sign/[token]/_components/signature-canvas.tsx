@@ -12,6 +12,50 @@ export interface SignatureCanvasHandle {
 
 const INK = "#1e2730"
 
+// Uniform breathing room (in source-canvas pixels) added around the trimmed
+// ink so the signature never sits jammed against an edge on the delivery note.
+const TRIM_PADDING = 24
+
+/**
+ * Exports the drawn signature cropped to its ink bounding box with even padding
+ * on all sides. This keeps every stored signature tight and centered regardless
+ * of where on the pad the user signed — no large empty margins, no stroke
+ * jammed against an edge. Returns "" when the canvas has no ink.
+ */
+function exportTrimmed(canvas: HTMLCanvasElement): string {
+  const ctx = canvas.getContext("2d")
+  if (!ctx) return ""
+  const { width, height } = canvas
+  const data = ctx.getImageData(0, 0, width, height).data
+
+  let minX = width
+  let minY = height
+  let maxX = -1
+  let maxY = -1
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      if (data[(y * width + x) * 4 + 3] > 10) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  if (maxX < 0) return "" // no ink
+
+  const cropX = Math.max(0, minX - TRIM_PADDING)
+  const cropY = Math.max(0, minY - TRIM_PADDING)
+  const cropW = Math.min(width, maxX + TRIM_PADDING) - cropX + 1
+  const cropH = Math.min(height, maxY + TRIM_PADDING) - cropY + 1
+
+  const out = document.createElement("canvas")
+  out.width = cropW
+  out.height = cropH
+  out.getContext("2d")?.drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH)
+  return out.toDataURL("image/png")
+}
+
 /**
  * Large, clearly bordered signature pad. Works with mouse, pen and touch via
  * pointer events, plus a keyboard-accessible typed-name fallback for users
@@ -30,7 +74,7 @@ export const SignatureCanvas = forwardRef<SignatureCanvasHandle, { invalid?: boo
 
     useImperativeHandle(ref, () => ({
       isEmpty: () => isEmptyRef.current,
-      toDataURL: () => canvasRef.current?.toDataURL("image/png") ?? "",
+      toDataURL: () => (canvasRef.current ? exportTrimmed(canvasRef.current) : ""),
       clear: handleClear,
     }))
 
