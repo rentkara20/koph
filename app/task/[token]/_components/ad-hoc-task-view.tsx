@@ -6,7 +6,7 @@ import { getTaskByToken, getTaskPhotosByToken } from "@/lib/actions/tasks"
 import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { PhotoUpload } from "./photo-upload"
-import { TaskActions } from "./task-actions"
+import { AdHocActions } from "./ad-hoc-actions"
 
 // Ad-hoc partner view. An operational trip with no request/PO context — shows
 // the free-text title, reason, and destination, and drives the request-style
@@ -129,7 +129,7 @@ export async function AdHocTaskView({ token }: { token: string }) {
       {canAct && (
         <div className="sticky bottom-0 z-10 border-t border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
           <div className="mx-auto max-w-md px-4 py-3" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}>
-            <TaskActions
+            <AdHocActions
               token={token}
               status={task.status}
               failureReasons={failureReasons.map((r) => ({

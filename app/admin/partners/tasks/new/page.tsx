@@ -33,6 +33,7 @@ export default async function NewAdHocTaskPage() {
             partners={partners.map((p) => ({
               id: p.id,
               name: p.name,
+              mobile: p.mobile,
               contracts: p.contracts.map((c) => ({ id: c.contractId as string, name: c.contractName as string })),
             }))}
           />

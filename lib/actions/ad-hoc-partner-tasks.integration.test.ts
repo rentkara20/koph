@@ -86,8 +86,10 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }))
 describe("createAdHocPartnerTask", () => {
   test("creates an ad_hoc task with no request / PO / case anchor", async () => {
     const partnerId = await seedPartner()
+    const contractId = await seedContract(partnerId)
     const res = await createAdHocPartnerTask({
       partnerId,
+      contractId,
       adHocTitle: "Drop laptop at Riyadh office",
       adHocReason: "internal_delivery",
       destinationLocation: "Riyadh HQ",
@@ -108,11 +110,23 @@ describe("createAdHocPartnerTask", () => {
 
   test("rejects a missing title", async () => {
     const partnerId = await seedPartner()
+    const contractId = await seedContract(partnerId)
     const res = await createAdHocPartnerTask({
       partnerId,
+      contractId,
       adHocTitle: "",
       adHocReason: "other",
     })
+    expect(res.error).toBe("Invalid input")
+  })
+
+  test("rejects a missing contract (a trip is always contract-priced)", async () => {
+    const partnerId = await seedPartner()
+    const res = await createAdHocPartnerTask({
+      partnerId,
+      adHocTitle: "Trip with no contract",
+      adHocReason: "other",
+    } as Parameters<typeof createAdHocPartnerTask>[0])
     expect(res.error).toBe("Invalid input")
   })
 
@@ -150,12 +164,13 @@ describe("DB single-origin constraint", () => {
 describe("partner magic-link lifecycle (photo-only, no signature/OTP)", () => {
   test("getTaskByToken returns ad_hoc context, and the partner can run pending → closed", async () => {
     const partnerId = await seedPartner()
-    // photoRequired: false keeps this test focused on the transition machine.
+    const contractId = await seedContract(partnerId)
+    // photoRequired defaults to false; keeps this test on the transition machine.
     const created = await createAdHocPartnerTask({
       partnerId,
+      contractId,
       adHocTitle: "Collect device from supplier branch",
       adHocReason: "manual_pickup",
-      photoRequired: false,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
@@ -166,7 +181,8 @@ describe("partner magic-link lifecycle (photo-only, no signature/OTP)", () => {
     expect(view!.request).toBeNull()
     expect(view!.task.adHocTitle).toBe("Collect device from supplier branch")
 
-    expect((await updateTaskByToken(token, "accept")).error).toBeUndefined()
+    // accept+start merged: partner starts straight from pending.
+    expect((await updateTaskByToken(token, "accept")).error).toBe("Invalid action for current task status")
     expect((await updateTaskByToken(token, "start")).error).toBeUndefined()
     expect((await updateTaskByToken(token, "mark_done")).error).toBeUndefined()
 
@@ -176,16 +192,17 @@ describe("partner magic-link lifecycle (photo-only, no signature/OTP)", () => {
 
   test("mark_done is blocked until a photo exists when photoRequired", async () => {
     const partnerId = await seedPartner()
+    const contractId = await seedContract(partnerId)
     const created = await createAdHocPartnerTask({
       partnerId,
+      contractId,
       adHocTitle: "Photo-gated trip",
       adHocReason: "other",
-      // photoRequired defaults to true
+      photoRequired: true,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
 
-    await updateTaskByToken(token, "accept")
     await updateTaskByToken(token, "start")
     const blocked = await updateTaskByToken(token, "mark_done")
     expect(blocked.error).toBe("PHOTO_REQUIRED")
@@ -216,12 +233,10 @@ describe("admin sign-off (no request context)", () => {
       adHocTitle: "Paid trip",
       adHocReason: "supplier_visit",
       contractId,
-      photoRequired: false,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
 
-    await updateTaskByToken(token, "accept")
     await updateTaskByToken(token, "start")
     await updateTaskByToken(token, "mark_done")
 
@@ -262,11 +277,9 @@ describe("admin sign-off (no request context)", () => {
       adHocTitle: "Unpaid trip",
       adHocReason: "other",
       contractId,
-      photoRequired: false,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
-    await updateTaskByToken(token, "accept")
     await updateTaskByToken(token, "start")
     await updateTaskByToken(token, "mark_done")
 
@@ -293,8 +306,10 @@ describe("partner portal listing", () => {
       role: "partner",
     })
     const partnerId = await seedPartner({ userId })
+    const contractId = await seedContract(partnerId)
     await createAdHocPartnerTask({
       partnerId,
+      contractId,
       adHocTitle: "Listed trip",
       adHocReason: "asset_transfer",
     })

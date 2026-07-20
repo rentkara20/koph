@@ -362,7 +362,18 @@
     "adHocTaskLink": "رابط المهمة للشريك",
     "adHocLinkHint": "أرسل هذا الرابط للشريك عشان يستلم المهمة.",
     "adHocCreateAnother": "إنشاء أخرى",
-    "adHocListTitle": "المهام العامة"
+    "adHocListTitle": "المهام العامة",
+    "adHocWhatsappHint": "افتح الرابط لتنفيذ المشوار:",
+    "adHocSendWhatsapp": "إرسال للشريك على واتساب",
+    "adHocNoMobile": "الشريك مالوش رقم موبايل — انسخ الرابط وابعته يدوي.",
+    "adHocNoContract": "الشريك ده مالوش عقد فعّال.",
+    "adHocCreateContract": "اعمل عقد",
+    "adHocConfirmPay": "تأكيد وصرف {amount}",
+    "adHocStart": "ابدأ المشوار",
+    "adHocDone": "تم",
+    "photoRequiredError": "ارفع صورة إثبات الأول.",
+    "selectFailureReason": "اختر السبب",
+    "markFailedShort": "تعذّر"
   },
   "customers": {
     "title": "العملاء",
@@ -876,7 +887,8 @@
     "noMobile": "لا يوجد رقم جوال مسجّل لهذا المستلم",
     "whatsappOpened": "جاري فتح واتساب…",
     "conditionsSaved": "تم تسجيل حالة الأصناف",
-    "taskReturned": "تم إرجاع المهمة للمنفّذ"
+    "taskReturned": "تم إرجاع المهمة للمنفّذ",
+    "taskUpdated": "تم تحديث المهمة"
   },
   "delete": {
     "confirm": "هل أنت متأكد؟",

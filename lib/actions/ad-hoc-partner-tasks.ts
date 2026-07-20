@@ -31,7 +31,9 @@ const createAdHocSchema = z.object({
     "asset_transfer",
     "other",
   ]),
-  contractId: z.string().trim().min(1).optional(),
+  // Required: an ad-hoc trip is always priced by a partner contract, so admin
+  // sign-off can pay the contract amount with no per-task payment decision.
+  contractId: z.string().trim().min(1),
   destinationLocation: z.string().trim().max(200).optional(),
   photoRequired: z.boolean().optional(),
   notes: z.string().trim().max(2000).optional(),
@@ -76,8 +78,9 @@ export async function createAdHocPartnerTaskCore(
     adHocReason: d.adHocReason,
     destinationLocation: d.destinationLocation || null,
     partnerId: d.partnerId,
-    contractId: d.contractId || null,
-    photoRequired: d.photoRequired ?? true,
+    contractId: d.contractId,
+    // Photo is optional for ad-hoc trips; admin opts in per task at creation.
+    photoRequired: d.photoRequired ?? false,
     taskToken,
     taskTokenExpiresAt,
     status: "pending",

@@ -1647,7 +1647,7 @@ export async function updateTaskByToken(
         aggregateType: "task",
         aggregateId: task.id,
         eventType: domainEventType,
-        payload: { fromStatus: task.status, toStatus: newStatus },
+        payload: { fromStatus: task.status, toStatus: newStatus, kind: task.kind },
         dedupeKey: `task:${task.id}:${domainEventType}:${createId()}`,
       })
     }
@@ -1674,6 +1674,7 @@ export async function getPartnersWithContracts() {
     .select({
       partnerId: partners.id,
       partnerName: partners.name,
+      partnerMobile: partners.mobile,
       contractId: partnerContracts.id,
       contractName: partnerContracts.name,
       pricingModel: partnerContracts.pricingModel,
@@ -1694,10 +1695,10 @@ export async function getPartnersWithContracts() {
     .orderBy(partners.name)
 
   // Group contracts by partner
-  const map = new Map<string, { id: string; name: string; contracts: typeof rows }>()
+  const map = new Map<string, { id: string; name: string; mobile: string | null; contracts: typeof rows }>()
   for (const row of rows) {
     if (!map.has(row.partnerId)) {
-      map.set(row.partnerId, { id: row.partnerId, name: row.partnerName, contracts: [] })
+      map.set(row.partnerId, { id: row.partnerId, name: row.partnerName, mobile: row.partnerMobile, contracts: [] })
     }
     if (row.contractId) {
       map.get(row.partnerId)!.contracts.push(row)

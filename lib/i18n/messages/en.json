@@ -362,7 +362,18 @@
     "adHocTaskLink": "Partner task link",
     "adHocLinkHint": "Send this link to the partner to run the task.",
     "adHocCreateAnother": "Create another",
-    "adHocListTitle": "Ad-hoc tasks"
+    "adHocListTitle": "Ad-hoc tasks",
+    "adHocWhatsappHint": "Please open the link to run this trip:",
+    "adHocSendWhatsapp": "Send to partner on WhatsApp",
+    "adHocNoMobile": "Partner has no mobile number — copy the link and send it manually.",
+    "adHocNoContract": "This partner has no active contract.",
+    "adHocCreateContract": "Create a contract",
+    "adHocConfirmPay": "Confirm & pay {amount}",
+    "adHocStart": "Start trip",
+    "adHocDone": "Done",
+    "photoRequiredError": "Please upload a proof photo first.",
+    "selectFailureReason": "Select a reason",
+    "markFailedShort": "Couldn’t do it"
   },
   "customers": {
     "title": "Customers",
@@ -876,7 +887,8 @@
     "noMobile": "No mobile number on file for this contact",
     "whatsappOpened": "Opening WhatsApp…",
     "conditionsSaved": "Item conditions recorded",
-    "taskReturned": "Task returned to partner"
+    "taskReturned": "Task returned to partner",
+    "taskUpdated": "Task updated"
   },
   "delete": {
     "confirm": "Are you sure?",

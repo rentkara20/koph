@@ -4,8 +4,9 @@ import { useMemo, useState } from "react"
 import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Copy, ExternalLink } from "lucide-react"
+import { Copy, ExternalLink, MessageCircle, AlertTriangle } from "lucide-react"
 import { createAdHocPartnerTask } from "@/lib/actions/ad-hoc-partner-tasks"
+import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -14,7 +15,12 @@ import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
 
-type PartnerOption = { id: string; name: string; contracts: { id: string; name: string }[] }
+type PartnerOption = {
+  id: string
+  name: string
+  mobile: string | null
+  contracts: { id: string; name: string }[]
+}
 
 const REASONS = ["manual_pickup", "internal_delivery", "supplier_visit", "asset_transfer", "other"] as const
 
@@ -29,16 +35,15 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
   const [adHocTitle, setAdHocTitle] = useState("")
   const [destinationLocation, setDestinationLocation] = useState("")
   const [notes, setNotes] = useState("")
-  const [photoRequired, setPhotoRequired] = useState(true)
+  const [photoRequired, setPhotoRequired] = useState(false)
 
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const [createdLink, setCreatedLink] = useState<string | null>(null)
+  const [created, setCreated] = useState<{ link: string; waUrl: string | null } | null>(null)
 
-  const contracts = useMemo(
-    () => partners.find((p) => p.id === partnerId)?.contracts ?? [],
-    [partners, partnerId]
-  )
+  const selectedPartner = useMemo(() => partners.find((p) => p.id === partnerId), [partners, partnerId])
+  const contracts = selectedPartner?.contracts ?? []
+  const hasNoContract = !!selectedPartner && contracts.length === 0
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -49,7 +54,7 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
         partnerId,
         adHocTitle: adHocTitle.trim(),
         adHocReason,
-        contractId: contractId || undefined,
+        contractId,
         destinationLocation: destinationLocation.trim() || undefined,
         notes: notes.trim() || undefined,
         photoRequired,
@@ -60,7 +65,11 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
         return
       }
       const link = `${window.location.origin}/task/${result.taskToken}`
-      setCreatedLink(link)
+      const waUrl = buildWhatsappUrl(
+        selectedPartner?.mobile,
+        `${adHocTitle.trim()}\n${t("adHocWhatsappHint")}\n${link}`
+      )
+      setCreated({ link, waUrl })
       toast.success(t("adHocCreated"))
     } catch {
       setError("An unexpected error occurred")
@@ -68,29 +77,46 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
     }
   }
 
-  if (createdLink) {
+  if (created) {
     return (
       <div className="space-y-4">
         <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           ✓ {t("adHocCreated")}
         </div>
+
+        {created.waUrl ? (
+          <Link
+            href={created.waUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(buttonVariants(), "w-full gap-2 bg-green-600 hover:bg-green-700")}
+          >
+            <MessageCircle className="size-4" />
+            {t("adHocSendWhatsapp")}
+          </Link>
+        ) : (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+            {t("adHocNoMobile")}
+          </p>
+        )}
+
         <div className="space-y-1.5">
           <Label>{t("adHocTaskLink")}</Label>
           <div className="flex items-center gap-2">
-            <Input readOnly value={createdLink} className="font-mono text-xs" dir="ltr" />
+            <Input readOnly value={created.link} className="font-mono text-xs" dir="ltr" />
             <Button
               type="button"
               variant="outline"
               size="icon"
               onClick={() => {
-                navigator.clipboard.writeText(createdLink)
+                navigator.clipboard.writeText(created.link)
                 toast.success(tCommon("copied"))
               }}
             >
               <Copy className="size-4" />
             </Button>
             <Link
-              href={createdLink}
+              href={created.link}
               target="_blank"
               rel="noopener noreferrer"
               className={cn(buttonVariants({ variant: "outline", size: "icon" }))}
@@ -98,16 +124,16 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
               <ExternalLink className="size-4" />
             </Link>
           </div>
-          <p className="text-xs text-muted-foreground">{t("adHocLinkHint")}</p>
         </div>
+
         <div className="flex justify-end gap-3">
-          <Link href="/admin/partners" className={cn(buttonVariants({ variant: "outline" }))}>
+          <Link href="/admin/partners/tasks" className={cn(buttonVariants({ variant: "outline" }))}>
             {tCommon("done")}
           </Link>
           <Button
             type="button"
             onClick={() => {
-              setCreatedLink(null)
+              setCreated(null)
               setAdHocTitle("")
               setDestinationLocation("")
               setNotes("")
@@ -148,21 +174,31 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
 
         <div className="space-y-1.5">
           <Label htmlFor="contractId">
-            {t("contract")} <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
+            {t("contract")} <span className="text-destructive">*</span>
           </Label>
           <Select
             id="contractId"
             value={contractId}
             onChange={(e) => setContractId(e.target.value)}
-            disabled={contracts.length === 0}
+            disabled={hasNoContract}
+            required
           >
-            <option value="">{tCommon("none")}</option>
+            <option value="">{tCommon("select")}</option>
             {contracts.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </Select>
+          {hasNoContract && (
+            <p className="flex items-center gap-1.5 text-xs text-amber-700">
+              <AlertTriangle className="size-3.5 shrink-0" />
+              {t("adHocNoContract")}{" "}
+              <Link href={`/admin/partners/${partnerId}`} className="font-medium text-primary hover:underline">
+                {t("adHocCreateContract")}
+              </Link>
+            </p>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -228,10 +264,10 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="flex justify-end gap-3">
-        <Link href="/admin/partners" className={cn(buttonVariants({ variant: "outline" }))}>
+        <Link href="/admin/partners/tasks" className={cn(buttonVariants({ variant: "outline" }))}>
           {tCommon("cancel")}
         </Link>
-        <Button type="submit" disabled={loading || !partnerId || !adHocTitle.trim()}>
+        <Button type="submit" disabled={loading || !partnerId || !contractId || !adHocTitle.trim()}>
           {loading ? tCommon("loading") : tCommon("create")}
         </Button>
       </div>
