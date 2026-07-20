@@ -39,6 +39,7 @@ export type SignatureSnapshot = {
   items: SnapshotItem[]
   deliveryOutcome: DeliveryOutcome | null
   remarks: string | null
+  deliveryNoteNotes: string | null
   signer: {
     fullName: string
     position: string | null
@@ -54,6 +55,7 @@ export type BuildSnapshotInput = {
   items: SnapshotItem[]
   deliveryOutcome: DeliveryOutcome | null
   remarks: string | null
+  deliveryNoteNotes?: string | null
   signer: SignatureSnapshot["signer"]
   signedAt: number
 }
@@ -77,6 +79,7 @@ export function buildSignatureSnapshot(input: BuildSnapshotInput): SignatureSnap
     })),
     deliveryOutcome: input.deliveryOutcome,
     remarks: input.remarks,
+    deliveryNoteNotes: input.deliveryNoteNotes?.trim() || null,
     signer: input.signer,
     signedAt: input.signedAt,
   }

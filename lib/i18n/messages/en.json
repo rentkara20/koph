@@ -361,7 +361,8 @@
     "adHocCreated": "Task created",
     "adHocTaskLink": "Partner task link",
     "adHocLinkHint": "Send this link to the partner to run the task.",
-    "adHocCreateAnother": "Create another"
+    "adHocCreateAnother": "Create another",
+    "adHocListTitle": "Ad-hoc tasks"
   },
   "customers": {
     "title": "Customers",

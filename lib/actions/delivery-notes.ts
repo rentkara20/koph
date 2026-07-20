@@ -18,6 +18,7 @@ type SignatureParty = {
   nationalId: string | null
   signatureData: string
   signedAt: number
+  remarks: string | null
   ipAddress: string | null
   userAgent: string | null
   auditDataHash: string | null
@@ -35,6 +36,7 @@ export type DeliveryNoteData = {
     requestNumber: string
     quoteNumber: string | null
     deliveryDate: number | null
+    notes: string | null
   } | null
   // Top block = the customer/company on record (NOT the receiver).
   customer: {
@@ -76,6 +78,7 @@ async function loadSignatureParty(signatureRequestId: string): Promise<Signature
       nationalId: customerSignatures.nationalId,
       signatureData: customerSignatures.signatureData,
       signedAt: customerSignatures.signedAt,
+      remarks: customerSignatures.remarks,
       ipAddress: customerSignatures.ipAddress,
     })
     .from(customerSignatures)
@@ -152,6 +155,7 @@ export async function getDeliveryNoteData(
         requestNumber: requests.requestNumber,
         quoteNumber: requests.quoteNumber,
         deliveryDate: requests.deliveryDate,
+        notes: requests.notes,
       })
       .from(requests)
       .where(eq(requests.id, receiverSig.requestId))
@@ -229,7 +233,12 @@ export async function getDeliveryNoteData(
       customerRow.city = snapshot.customer.city ?? customerRow.city
     }
     if (requestRow && snapshot.requestNumber) {
-      requestRow = { ...requestRow, requestNumber: snapshot.requestNumber, quoteNumber: snapshot.quoteNumber }
+      requestRow = {
+        ...requestRow,
+        requestNumber: snapshot.requestNumber,
+        quoteNumber: snapshot.quoteNumber,
+        notes: snapshot.deliveryNoteNotes ?? requestRow.notes,
+      }
     }
   }
 

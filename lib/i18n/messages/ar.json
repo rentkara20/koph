@@ -361,7 +361,8 @@
     "adHocCreated": "تم إنشاء المهمة",
     "adHocTaskLink": "رابط المهمة للشريك",
     "adHocLinkHint": "أرسل هذا الرابط للشريك عشان يستلم المهمة.",
-    "adHocCreateAnother": "إنشاء أخرى"
+    "adHocCreateAnother": "إنشاء أخرى",
+    "adHocListTitle": "المهام العامة"
   },
   "customers": {
     "title": "العملاء",

@@ -7,7 +7,7 @@
 // reuses the request partner lifecycle (pending → accepted → in_progress →
 // pending_signoff → closed), the magic-link token, photo proof, notifications,
 // and admin sign-off/payment (see signOffAdHocTask in tasks.ts).
-import { eq } from "drizzle-orm"
+import { desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
@@ -15,7 +15,7 @@ import { partnerContracts, partners, partnerTasks } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
 import { notify } from "@/lib/utils/notify"
-import { getSessionWithRole } from "@/lib/auth/session"
+import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { getTaskTokenTtlMs } from "@/lib/actions/settings"
 
 type ActionResult = { error?: string; id?: string; taskToken?: string }
@@ -144,4 +144,30 @@ export async function createAdHocPartnerTask(
 
   revalidatePath("/admin/partners/tasks")
   return { id: taskId, taskToken }
+}
+
+// ─── Admin: list ad-hoc tasks (with partner + contract pricing for sign-off) ──
+
+export async function getAdHocTasks() {
+  const session = await getStaffSession()
+  if (!session) return []
+  return db
+    .select({
+      id: partnerTasks.id,
+      status: partnerTasks.status,
+      adHocTitle: partnerTasks.adHocTitle,
+      adHocReason: partnerTasks.adHocReason,
+      destinationLocation: partnerTasks.destinationLocation,
+      taskToken: partnerTasks.taskToken,
+      createdAt: partnerTasks.createdAt,
+      partnerName: partners.name,
+      contractId: partnerTasks.contractId,
+      pricingModel: partnerContracts.pricingModel,
+      unitPrice: partnerContracts.unitPrice,
+    })
+    .from(partnerTasks)
+    .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
+    .leftJoin(partnerContracts, eq(partnerTasks.contractId, partnerContracts.id))
+    .where(eq(partnerTasks.kind, "ad_hoc"))
+    .orderBy(desc(partnerTasks.createdAt))
 }

@@ -28,11 +28,11 @@ export default async function PartnersPage() {
             {tImportExport("linkLabel")}
           </Link>
           <Link
-            href="/admin/partners/tasks/new"
+            href="/admin/partners/tasks"
             className={cn(buttonVariants({ variant: "outline" }), "gap-1.5")}
           >
             <ClipboardList className="size-4" />
-            {tTasks("adHocNewButton")}
+            {tTasks("adHocListTitle")}
           </Link>
           <Link href="/admin/partners/new" className={cn(buttonVariants(), "gap-1.5")}>
             <Plus className="size-4" />

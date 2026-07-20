@@ -6,6 +6,11 @@ function fmt(ts: number | null | undefined): string {
   return ts ? formatDate(ts) : "—"
 }
 
+function cleanNote(value: string | null | undefined): string | null {
+  const note = value?.trim()
+  return note ? note : null
+}
+
 const RentKaraLogo = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -98,6 +103,9 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
   const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName } = data
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
   const signDate = fmt(signature?.signedAt ?? request?.deliveryDate ?? null)
+  const deliveryNoteNotes = cleanNote(request?.notes)
+  const receiverRemarks = cleanNote(signature?.remarks)
+  const hasNotes = Boolean(deliveryNoteNotes || receiverRemarks)
   // Print the delivery location ("<IATA>, P<n>") taken from the document name,
   // falling back to the customer's registered city for legacy notes.
   const deliveryLocation = extractDeliveryLocationLabel(sig?.documentName) ?? customer?.city ?? "—"
@@ -183,6 +191,31 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
           </tbody>
         </table>
 
+        {hasNotes && (
+          <div className="dn-note-box">
+            <div className="dn-note-hdr">
+              <span>Notes</span>
+              <span className="dn-note-hdr-ar">ملاحظات</span>
+            </div>
+            <div className="dn-note-body">
+              {deliveryNoteNotes && (
+                <div className="dn-note-row">
+                  <span className="dn-note-label">Delivery note</span>
+                  <span className="dn-note-text">{deliveryNoteNotes}</span>
+                  <span className="dn-note-label dn-note-label-ar">ملاحظة السند</span>
+                </div>
+              )}
+              {receiverRemarks && (
+                <div className="dn-note-row">
+                  <span className="dn-note-label">Receiver remarks</span>
+                  <span className="dn-note-text">{receiverRemarks}</span>
+                  <span className="dn-note-label dn-note-label-ar">ملاحظات المستلم</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Disclaimer */}
         <div className="dn-disclaimer">
           I confirm that I have inspected the devices and items, verified the quantities, and received them in good condition.
@@ -249,6 +282,15 @@ const DN_STYLES = `
 .dn-thw{text-align:left;padding-left:8px;}
 .dn-dev-tbl td{padding:5px 6px;border:1px solid #e0dcea;text-align:center;vertical-align:middle;word-break:break-word;}
 .dn-tot-row td{background:#512B83;color:#fff;font-weight:700;}
+.dn-note-box{border:1px dashed #9c83c4;border-radius:6px;margin:0 0 12px;overflow:hidden;}
+.dn-note-hdr{background:#e8e4f0;color:#512B83;padding:6px 12px;font-weight:700;font-size:10.5px;display:flex;justify-content:space-between;align-items:center;}
+.dn-note-hdr-ar{direction:rtl;}
+.dn-note-body{padding:8px 12px;}
+.dn-note-row{display:grid;grid-template-columns:1fr 3fr 1fr;gap:10px;align-items:start;padding:5px 0;border-bottom:1px dotted #e8e4f0;}
+.dn-note-row:last-child{border-bottom:none;}
+.dn-note-label{color:#666;font-size:9.5px;font-weight:700;}
+.dn-note-label-ar{text-align:right;direction:rtl;}
+.dn-note-text{font-size:10.5px;font-weight:600;line-height:1.7;text-align:center;white-space:pre-wrap;word-break:break-word;}
 .dn-disclaimer{font-size:10px;color:#512B83;text-align:center;margin:12px 0 14px;line-height:1.8;font-style:italic;}
 .dn-disclaimer-ar{display:block;direction:rtl;margin-top:4px;}
 .dn-sig-wrap{display:flex;gap:14px;margin-bottom:14px;}

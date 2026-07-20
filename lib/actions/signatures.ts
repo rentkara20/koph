@@ -108,6 +108,11 @@ async function buildSnapshotJson(input: {
     .from(customers)
     .where(eq(customers.id, input.customerId))
 
+  const [request] = await db
+    .select({ notes: requests.notes })
+    .from(requests)
+    .where(eq(requests.id, input.requestId))
+
   const itemFilter = input.onlyItemIds
     ? and(eq(requestItems.requestId, input.requestId), inArray(requestItems.id, input.onlyItemIds))
     : eq(requestItems.requestId, input.requestId)
@@ -144,6 +149,7 @@ async function buildSnapshotJson(input: {
     items,
     deliveryOutcome: input.deliveryOutcome,
     remarks: input.remarks,
+    deliveryNoteNotes: request?.notes ?? null,
     signer: input.signer,
     signedAt: input.signedAt,
   })
