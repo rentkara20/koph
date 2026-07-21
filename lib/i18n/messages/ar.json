@@ -490,6 +490,15 @@
     "creating": "جارٍ الإنشاء…",
     "unexpectedError": "حدث خطأ غير متوقع.",
     "documentNamePlaceholder": "مثال: سند تسليم #10101، RUH، P1",
+    "deposit": {
+      "enable": "إضافة ملاحظة أسعار / مبلغ تأمين",
+      "title": "عنوان القسم",
+      "note": "ملاحظة",
+      "notePlaceholder": "ملاحظة اختيارية تظهر أسفل جدول التأمين",
+      "total": "إجمالي التأمين",
+      "showRefundTerms": "إظهار سطر شرط الاسترداد",
+      "noItems": "لا توجد أجهزة لتسعيرها في هذا الطلب."
+    },
     "proof": {
       "generateOtp": "إنشاء رمز التسليم",
       "regenerateOtp": "إنشاء رمز جديد",

@@ -12,6 +12,7 @@ import {
   signatureItemConditions,
 } from "@/lib/db/schema"
 import { parseSignatureSnapshot } from "@/lib/domain/signature-snapshot"
+import { parseDepositNote, type DepositNote } from "@/lib/domain/deposit-note"
 
 type SignatureParty = {
   fullName: string
@@ -67,6 +68,9 @@ export type DeliveryNoteData = {
   requiresAuthorized: boolean
   // Name of the flagged authorised signatory (for the pending box label).
   authorizedName: string | null
+  // Optional per-device deposit block. Prefers the frozen snapshot value over
+  // the live signature-request column. Null when off / not opted in.
+  depositNote: DepositNote | null
 }
 
 async function loadSignatureParty(signatureRequestId: string): Promise<SignatureParty> {
@@ -206,8 +210,13 @@ export async function getDeliveryNoteData(
     .select({ snapshot: customerSignatures.snapshot })
     .from(customerSignatures)
     .where(eq(customerSignatures.signatureRequestId, receiverSig.id))
+  // Deposit note: live column by default; the frozen snapshot value wins when a
+  // snapshot exists (same override pattern as items/customer below).
+  let depositNote = parseDepositNote(receiverSig.depositNote)
+
   const snapshot = parseSignatureSnapshot(snapRow?.snapshot)
   if (snapshot) {
+    if (snapshot.depositNote) depositNote = snapshot.depositNote
     if (snapshot.items.length > 0) {
       items = snapshot.items.map((i) => ({
         id: i.id,
@@ -250,5 +259,6 @@ export async function getDeliveryNoteData(
     authorizedVerificationId: authorizedSig?.verificationId ?? null,
     requiresAuthorized: !!authorizedSig,
     authorizedName,
+    depositNote,
   }
 }

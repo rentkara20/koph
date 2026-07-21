@@ -16,6 +16,7 @@ import {
   partnerTasks,
   requests,
   requestItems,
+  orderUnits,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { publicUrl } from "@/lib/utils/public-url"
@@ -24,6 +25,11 @@ import {
   type DeliveryOutcome,
   type SnapshotItem,
 } from "@/lib/domain/signature-snapshot"
+import {
+  depositNoteSchema,
+  parseDepositNote,
+  type DepositNote,
+} from "@/lib/domain/deposit-note"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { logActivity } from "@/lib/utils/activity"
 import { sendEmail } from "@/lib/email/resend"
@@ -87,6 +93,9 @@ async function buildSnapshotJson(input: {
   itemConditions?: { requestItemId: string; condition: "good" | "damaged" | "missing"; receivedQuantity?: number }[]
   deliveryOutcome: DeliveryOutcome | null
   remarks: string | null
+  // Optional per-device deposit block frozen at signing time (parsed from the
+  // signature request's deposit_note column by the caller). Null when off.
+  depositNote?: DepositNote | null
   signer: { fullName: string; position: string | null; nationalId: string | null }
   signedAt: number
   // Delivery Batching v2 P4: when this signature covers only ONE request
@@ -144,6 +153,7 @@ async function buildSnapshotJson(input: {
     items,
     deliveryOutcome: input.deliveryOutcome,
     remarks: input.remarks,
+    depositNote: input.depositNote ?? null,
     signer: input.signer,
     signedAt: input.signedAt,
   })
@@ -157,6 +167,7 @@ export async function createSignatureRequest(
   data: {
     documentName: string
     requireNationalId?: boolean
+    depositNote?: DepositNote
   }
 ): Promise<SignatureActionResult> {
   const session = await getSessionWithRole("admin")
@@ -164,6 +175,18 @@ export async function createSignatureRequest(
 
   const parsed = createSignatureRequestSchema.safeParse(data)
   if (!parsed.success) return { error: firstError(parsed.error) }
+
+  // Optional per-device deposit block. Validate when present; only persist when
+  // enabled and it actually has content (otherwise store null so nothing renders).
+  let depositNoteJson: string | null = null
+  if (data.depositNote) {
+    const depositParsed = depositNoteSchema.safeParse(data.depositNote)
+    if (!depositParsed.success) return { error: firstError(depositParsed.error) }
+    const dn = depositParsed.data
+    if (dn.enabled && (dn.lines.length > 0 || dn.note)) {
+      depositNoteJson = JSON.stringify(dn)
+    }
+  }
 
   const [req] = await db.select().from(requests).where(eq(requests.id, requestId))
   if (!req) return { error: "Request not found" }
@@ -190,6 +213,7 @@ export async function createSignatureRequest(
     secureToken,
     verificationId,
     requireNationalId: data.requireNationalId ?? false,
+    depositNote: depositNoteJson,
     status: "draft",
   })
 
@@ -204,6 +228,57 @@ export async function createSignatureRequest(
 
   revalidatePath(`/admin/requests/${requestId}`)
   return { id, token: secureToken }
+}
+
+// ─── Admin: deposit-note line defaults for a request ─────────────────────────
+// Prefills the opt-in deposit block: one row per request item, amount defaulted
+// to the matching order-unit purchase cost (by serial), 0 when no match. Label
+// is a readable device string. Pure read; safe for a Server Component page.
+
+export type DepositDefaultLine = { itemId: string; label: string; amount: number }
+
+export async function getDepositDefaultsForRequest(
+  requestId: string
+): Promise<DepositDefaultLine[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  const items = await db
+    .select({
+      id: requestItems.id,
+      description: requestItems.description,
+      brand: requestItems.brand,
+      model: requestItems.model,
+      serialNumber: requestItems.serialNumber,
+    })
+    .from(requestItems)
+    .where(eq(requestItems.requestId, requestId))
+
+  const serials = [...new Set(items.map((i) => i.serialNumber).filter((s): s is string => !!s))]
+  const costBySerial = new Map<string, number>()
+  if (serials.length > 0) {
+    const units = await db
+      .select({ serialNumber: orderUnits.serialNumber, purchaseCost: orderUnits.purchaseCost })
+      .from(orderUnits)
+      .where(inArray(orderUnits.serialNumber, serials))
+    for (const u of units) {
+      if (u.serialNumber && u.purchaseCost != null && !costBySerial.has(u.serialNumber)) {
+        costBySerial.set(u.serialNumber, u.purchaseCost)
+      }
+    }
+  }
+
+  return items.map((i) => {
+    const specs = [i.brand, i.model].filter(Boolean).join(" ")
+    const label = [i.description, specs || null, i.serialNumber || null]
+      .filter(Boolean)
+      .join(" · ")
+    return {
+      itemId: i.id,
+      label,
+      amount: (i.serialNumber && costBySerial.get(i.serialNumber)) || 0,
+    }
+  })
 }
 
 // ─── Admin: get signature requests for a request ──────────────────────────────
@@ -526,6 +601,7 @@ export async function submitSignature(
     itemConditions: data.itemConditions,
     deliveryOutcome: data.deliveryOutcome ?? null,
     remarks: data.remarks ?? null,
+    depositNote: parseDepositNote(sig.depositNote),
     signer: { fullName, position: data.position ?? null, nationalId },
     signedAt: now,
   })
@@ -912,6 +988,7 @@ export async function signOnSiteByTaskToken(
     itemConditions: data.itemConditions,
     deliveryOutcome: data.deliveryOutcome ?? null,
     remarks: data.remarks ?? null,
+    depositNote: parseDepositNote(sigReq.depositNote),
     signer: { fullName, position: data.position ?? null, nationalId },
     signedAt: now,
   })
@@ -1208,6 +1285,7 @@ export async function signOnSiteForRequestGroup(
     itemConditions: data.itemConditions,
     deliveryOutcome: data.deliveryOutcome ?? null,
     remarks: data.remarks ?? null,
+    depositNote: parseDepositNote(sigReq.depositNote),
     signer: { fullName, position: data.position ?? null, nationalId },
     signedAt: now,
     onlyItemIds: groupItemIds,
@@ -1458,6 +1536,7 @@ export async function approveManualSignature(
     itemConditions: undefined,
     deliveryOutcome: null,
     remarks: null,
+    depositNote: parseDepositNote(sig.depositNote),
     signer: { fullName: existing.fullName, position: existing.position ?? null, nationalId: existing.nationalId },
     signedAt: now,
   })

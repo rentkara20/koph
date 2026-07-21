@@ -1,9 +1,33 @@
 import type { DeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { formatDate } from "@/lib/utils/format"
 import { extractDeliveryLocationLabel } from "@/lib/utils/city-iata"
+import { computeDepositTotal, DEPOSIT_REFUND_TERMS_EN, DEPOSIT_REFUND_TERMS_AR } from "@/lib/domain/deposit-note"
 
 function fmt(ts: number | null | undefined): string {
   return ts ? formatDate(ts) : "—"
+}
+
+function fmtAmount(amount: number): string {
+  return amount.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+}
+
+function cleanNote(value: string | null | undefined): string | null {
+  const note = value?.trim()
+  return note ? note : null
+}
+
+// Split a bilingual "English · عربي" title (either order) into a Latin run and
+// an Arabic run so the header can place English left + Arabic right — matching
+// the rest of the note — instead of rendering one mixed-bidi line. Returns null
+// for a single-language title.
+function splitBilingualTitle(value: string): { en: string; ar: string } | null {
+  const parts = value.split("·").map((p) => p.trim())
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
+  const isArabic = (s: string) => /[؀-ۿ]/.test(s)
+  const [a, b] = parts
+  if (isArabic(a) && !isArabic(b)) return { en: b, ar: a }
+  if (isArabic(b) && !isArabic(a)) return { en: a, ar: b }
+  return null
 }
 
 const RentKaraLogo = () => (
@@ -45,7 +69,6 @@ function SignatureBox({
   nationalId,
   date,
   signatureData,
-  pendingLabel,
 }: {
   titleEn: string
   titleAr: string
@@ -53,7 +76,6 @@ function SignatureBox({
   nationalId: string | null
   date: string
   signatureData: string | null
-  pendingLabel?: string
 }) {
   return (
     <div className="dn-sig-box">
@@ -64,12 +86,12 @@ function SignatureBox({
       <div className="dn-sig-body">
         <div className="dn-sf">
           <span className="dn-sfl-en">Name</span>
-          <span className="dn-sfv">{name ?? "—"}</span>
+          <span className="dn-sfv">{name ?? ""}</span>
           <span className="dn-sfl-ar">الاسم</span>
         </div>
         <div className="dn-sf">
           <span className="dn-sfl-en">ID Number</span>
-          <span className="dn-sfv">{nationalId ?? "—"}</span>
+          <span className="dn-sfv">{nationalId ?? ""}</span>
           <span className="dn-sfl-ar">رقم الهوية</span>
         </div>
         <div className="dn-sf">
@@ -87,7 +109,9 @@ function SignatureBox({
             <img className="dn-sig-img" src={signatureData} alt="Signature" />
           </div>
         ) : (
-          <div className="dn-sig-pending">{pendingLabel ?? "Awaiting signature / بانتظار التوقيع"}</div>
+          // Unsigned: leave a blank space so the customer can sign by hand /
+          // online — no "awaiting" placeholder text on the document itself.
+          <div className="dn-sig-blank" />
         )}
       </div>
     </div>
@@ -95,8 +119,14 @@ function SignatureBox({
 }
 
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
-  const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName } = data
+  const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName, depositNote } = data
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
+  // Only render the deposit block when opted in AND it carries content.
+  const depositLines = depositNote?.lines ?? []
+  const depositNoteText = cleanNote(depositNote?.note)
+  const showDeposit = Boolean(depositNote?.enabled && (depositLines.length > 0 || depositNoteText))
+  const depositTotal = computeDepositTotal(depositLines)
+  const depositTitleParts = depositNote ? splitBilingualTitle(depositNote.title) : null
   const signDate = fmt(signature?.signedAt ?? request?.deliveryDate ?? null)
   // Print the delivery location ("<IATA>, P<n>") taken from the document name,
   // falling back to the customer's registered city for legacy notes.
@@ -183,6 +213,61 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
           </tbody>
         </table>
 
+        {/* Financial security deposit (opt-in) */}
+        {showDeposit && depositNote && (
+          <div className="dn-dep-box">
+            {depositTitleParts ? (
+              <div className="dn-dep-hdr dn-dep-hdr-split">
+                <span>{depositTitleParts.en}</span>
+                <span className="dn-rtl">{depositTitleParts.ar}</span>
+              </div>
+            ) : (
+              <div className="dn-dep-hdr">{depositNote.title}</div>
+            )}
+            {depositLines.length > 0 && (
+              <table className="dn-dep-tbl">
+                <colgroup>
+                  <col style={{ width: "72%" }} />
+                  <col style={{ width: "28%" }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Device / الجهاز</th>
+                    <th className="dn-dep-amt-th">Amount / المبلغ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {depositLines.map((line) => (
+                    <tr key={line.itemId}>
+                      <td className="dn-dep-label">{line.label}</td>
+                      <td className="dn-dep-amt">
+                        {fmtAmount(line.amount)} {depositNote.currency}
+                      </td>
+                    </tr>
+                  ))}
+                  {depositNote.showTotal && (
+                    <tr className="dn-dep-tot">
+                      <td style={{ textAlign: "right", paddingRight: "12px" }}>
+                        Total Deposit &nbsp;/&nbsp; إجمالي التأمين
+                      </td>
+                      <td className="dn-dep-amt">
+                        {fmtAmount(depositTotal)} {depositNote.currency}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+            {depositNote.showRefundTerms && (
+              <div className="dn-dep-terms">
+                <span>{DEPOSIT_REFUND_TERMS_EN}</span>
+                <span className="dn-rtl">{DEPOSIT_REFUND_TERMS_AR}</span>
+              </div>
+            )}
+            {depositNoteText && <div className="dn-dep-note">{depositNoteText}</div>}
+          </div>
+        )}
+
         {/* Disclaimer */}
         <div className="dn-disclaimer">
           I confirm that I have inspected the devices and items, verified the quantities, and received them in good condition.
@@ -249,6 +334,19 @@ const DN_STYLES = `
 .dn-thw{text-align:left;padding-left:8px;}
 .dn-dev-tbl td{padding:5px 6px;border:1px solid #e0dcea;text-align:center;vertical-align:middle;word-break:break-word;}
 .dn-tot-row td{background:#512B83;color:#fff;font-weight:700;}
+.dn-dep-box{border:1px solid #e0dcea;border-radius:6px;margin:0 0 12px;overflow:hidden;}
+.dn-dep-hdr{background:#efecf7;color:#512B83;padding:6px 14px;font-weight:700;font-size:10.5px;text-align:center;border-bottom:1px solid #e0dcea;}
+.dn-dep-hdr-split{display:flex;justify-content:space-between;align-items:center;text-align:left;}
+.dn-dep-tbl{width:100%;border-collapse:collapse;font-size:10px;table-layout:fixed;}
+.dn-dep-tbl th{background:#efecf7;color:#512B83;padding:4px 12px;border:1px solid #e0dcea;text-align:left;font-weight:700;font-size:9px;letter-spacing:.02em;}
+.dn-dep-amt-th{text-align:right;}
+.dn-dep-tbl td{padding:5px 12px;border:1px solid #e0dcea;vertical-align:middle;word-break:break-word;}
+.dn-dep-label{padding-left:12px;}
+.dn-dep-amt{text-align:right;padding-right:12px;font-weight:600;white-space:nowrap;}
+.dn-dep-tot td{background:#e2dcf0;color:#512B83;font-weight:700;}
+.dn-dep-terms{padding:7px 14px;font-size:9.5px;color:#3d3350;line-height:1.7;border-top:1px solid #e0dcea;background:#faf9fd;}
+.dn-dep-terms span{display:block;}
+.dn-dep-note{padding:8px 12px;font-size:9.5px;color:#666;font-style:italic;line-height:1.7;border-top:1px dotted #e8e4f0;white-space:pre-wrap;word-break:break-word;}
 .dn-disclaimer{font-size:10px;color:#512B83;text-align:center;margin:12px 0 14px;line-height:1.8;font-style:italic;}
 .dn-disclaimer-ar{display:block;direction:rtl;margin-top:4px;}
 .dn-sig-wrap{display:flex;gap:14px;margin-bottom:14px;}
@@ -263,7 +361,7 @@ const DN_STYLES = `
 .dn-sfv{font-weight:600;font-size:11px;color:#1A1A1A;text-align:center;}
 .dn-sig-img-wrap{margin-top:8px;padding-top:6px;border-top:1px solid #e0dcea;text-align:center;}
 .dn-sig-img{display:inline-block;width:auto;height:auto;max-width:100%;max-height:70px;object-fit:contain;}
-.dn-sig-pending{margin-top:8px;padding:14px 0;text-align:center;color:#b45309;font-size:10px;font-weight:700;border-top:1px dashed #e0dcea;direction:rtl;}
+.dn-sig-blank{margin-top:8px;min-height:80px;border-top:1px dashed #e0dcea;}
 .dn-footer{text-align:center;padding:10px 16px 12px;border-top:2px solid #60B5D1;font-size:10px;color:#512B83;font-weight:700;line-height:1.8;}
 @media print{@page{margin:8mm;size:A4;}.dn-root{width:100%;}}
 `

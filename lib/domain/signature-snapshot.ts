@@ -8,6 +8,8 @@
 // Pure builder — callers pass the already-fetched rows so it stays unit-testable
 // and free of DB access.
 
+import type { DepositNote } from "./deposit-note"
+
 export type SnapshotItem = {
   id: string
   description: string
@@ -39,6 +41,9 @@ export type SignatureSnapshot = {
   items: SnapshotItem[]
   deliveryOutcome: DeliveryOutcome | null
   remarks: string | null
+  // Optional per-device deposit block, frozen at signing time. Null when the
+  // signature request did not opt in.
+  depositNote: DepositNote | null
   signer: {
     fullName: string
     position: string | null
@@ -54,6 +59,7 @@ export type BuildSnapshotInput = {
   items: SnapshotItem[]
   deliveryOutcome: DeliveryOutcome | null
   remarks: string | null
+  depositNote?: DepositNote | null
   signer: SignatureSnapshot["signer"]
   signedAt: number
 }
@@ -77,6 +83,7 @@ export function buildSignatureSnapshot(input: BuildSnapshotInput): SignatureSnap
     })),
     deliveryOutcome: input.deliveryOutcome,
     remarks: input.remarks,
+    depositNote: input.depositNote ?? null,
     signer: input.signer,
     signedAt: input.signedAt,
   }
@@ -87,7 +94,10 @@ export function parseSignatureSnapshot(raw: string | null | undefined): Signatur
   if (!raw) return null
   try {
     const parsed = JSON.parse(raw) as SignatureSnapshot
-    if (parsed && parsed.version === 1 && Array.isArray(parsed.items)) return parsed
+    if (parsed && parsed.version === 1 && Array.isArray(parsed.items)) {
+      // Older snapshots predate depositNote — normalise the absent field to null.
+      return { ...parsed, depositNote: parsed.depositNote ?? null }
+    }
     return null
   } catch {
     return null

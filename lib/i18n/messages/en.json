@@ -490,6 +490,15 @@
     "creating": "Creating…",
     "unexpectedError": "An unexpected error occurred.",
     "documentNamePlaceholder": "e.g. Delivery Note #10101, RUH, P1",
+    "deposit": {
+      "enable": "Add price note / security deposit",
+      "title": "Block title",
+      "note": "Note",
+      "notePlaceholder": "Optional note shown under the deposit table",
+      "total": "Total deposit",
+      "showRefundTerms": "Show refund-condition line",
+      "noItems": "No devices to price for this request."
+    },
     "proof": {
       "generateOtp": "Generate OTP",
       "regenerateOtp": "Regenerate OTP",

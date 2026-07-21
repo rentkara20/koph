@@ -4,7 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server"
 import { ArrowLeft } from "lucide-react"
 import { getCustomerDeliveryOptions, getRequest, deleteRequest } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts, getBatchSummaryForTask } from "@/lib/actions/tasks"
-import { getSignatureRequestsForRequest } from "@/lib/actions/signatures"
+import { getSignatureRequestsForRequest, getDepositDefaultsForRequest } from "@/lib/actions/signatures"
 import { appBaseUrl } from "@/lib/utils/public-url"
 import { buildDeliveryNoteName } from "@/lib/utils/city-iata"
 import { getTaskServicesForRequest } from "@/lib/actions/task-services"
@@ -33,11 +33,12 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [data, tasks, partnersWithContracts, signatures, taskServicesMap, allServices, companyLocation, t, tCommon, locale] = await Promise.all([
+  const [data, tasks, partnersWithContracts, signatures, depositDefaults, taskServicesMap, allServices, companyLocation, t, tCommon, locale] = await Promise.all([
     getRequest(id),
     getTasksForRequest(id),
     getPartnersWithContracts(),
     getSignatureRequestsForRequest(id),
+    getDepositDefaultsForRequest(id),
     getTaskServicesForRequest(id),
     getActiveServices(),
     getDefaultCompanyLocation(),
@@ -331,6 +332,7 @@ export default async function RequestDetailPage({
                     ? items.map((i) => `${i.description}${i.quantity > 1 ? ` ×${i.quantity}` : ""}`).join("، ")
                     : "الأصناف المتفق عليها"
                 }
+                depositDefaults={depositDefaults}
               />
             </CardContent>
           </Card>

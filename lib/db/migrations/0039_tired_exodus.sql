@@ -1,0 +1,1 @@
+ALTER TABLE `signature_request` ADD `deposit_note` text;

@@ -580,6 +580,11 @@ export const signatureRequests = sqliteTable("signature_request", {
   expiresAt: integer("expires_at"),
   reminderEnabled: integer("reminder_enabled", { mode: "boolean" }).notNull().default(false),
   reminderSentAt: integer("reminder_sent_at"),
+  // Optional per-device price/deposit block on the delivery note (opt-in per
+  // signature request). Stored as a JSON string (DepositNote); null when off.
+  // Frozen into the signing snapshot so later cost edits never rewrite a signed
+  // receipt. See lib/domain/deposit-note.ts.
+  depositNote: text("deposit_note"),
   status: text("status", {
     enum: [
       "draft",

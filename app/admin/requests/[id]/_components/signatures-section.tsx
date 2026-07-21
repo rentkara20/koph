@@ -23,6 +23,12 @@ import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { DeliveryProofActions } from "./delivery-proof-actions"
+import {
+  DEFAULT_DEPOSIT_CURRENCY,
+  DEFAULT_DEPOSIT_TITLE,
+  type DepositNote,
+} from "@/lib/domain/deposit-note"
+import type { DepositDefaultLine } from "@/lib/actions/signatures"
 
 type StatusVariant = "outline" | "info" | "success" | "secondary"
 
@@ -110,6 +116,7 @@ export function SignaturesSection({
   customerName,
   receiverEmail,
   itemsSummary,
+  depositDefaults,
 }: {
   requestId: string
   requestNumber: string
@@ -122,6 +129,7 @@ export function SignaturesSection({
   customerName: string | null
   receiverEmail: string | null
   itemsSummary: string
+  depositDefaults: DepositDefaultLine[]
 }) {
   const messageTemplates = useOperationalMessageTemplates()
   const hasAuthorizedContact = !!authorizedContact
@@ -133,6 +141,39 @@ export function SignaturesSection({
   const [error, setError] = useState("")
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [requestingId, setRequestingId] = useState<string | null>(null)
+
+  // Opt-in per-device deposit block. Default OFF — when off, the delivery note
+  // stays exactly as today and nothing is stored.
+  const [depositEnabled, setDepositEnabled] = useState(false)
+  const [depositTitle, setDepositTitle] = useState(DEFAULT_DEPOSIT_TITLE)
+  const [depositShowRefundTerms, setDepositShowRefundTerms] = useState(true)
+  const [depositNoteText, setDepositNoteText] = useState("")
+  const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(depositDefaults.map((d) => [d.itemId, String(d.amount ?? 0)]))
+  )
+
+  const depositTotal = depositDefaults.reduce(
+    (sum, d) => sum + (Number(depositAmounts[d.itemId]) || 0),
+    0
+  )
+
+  function buildDepositNote(): DepositNote | undefined {
+    if (!depositEnabled) return undefined
+    return {
+      version: 1,
+      enabled: true,
+      currency: DEFAULT_DEPOSIT_CURRENCY,
+      title: depositTitle.trim() || DEFAULT_DEPOSIT_TITLE,
+      showTotal: true,
+      showRefundTerms: depositShowRefundTerms,
+      lines: depositDefaults.map((d) => ({
+        itemId: d.itemId,
+        label: d.label,
+        amount: Number(depositAmounts[d.itemId]) || 0,
+      })),
+      note: depositNoteText.trim() || null,
+    }
+  }
 
   async function handleRequestAuthorized(id: string) {
     setRequestingId(id)
@@ -157,6 +198,7 @@ export function SignaturesSection({
       const result = await createSignatureRequest(requestId, {
         documentName: fd.get("documentName") as string,
         requireNationalId: fd.get("requireNationalId") === "on",
+        depositNote: buildDepositNote(),
       })
       if (result.error) {
         setError(translateActionError(result.error))
@@ -424,6 +466,80 @@ export function SignaturesSection({
               />
               <span className="text-sm">{t("requireNationalId")}</span>
             </label>
+
+            <div className="rounded-md border p-3 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={depositEnabled}
+                  onChange={(e) => setDepositEnabled(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                <span className="text-sm font-medium">{t("deposit.enable")}</span>
+              </label>
+
+              {depositEnabled && (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("deposit.title")}</Label>
+                    <Input
+                      value={depositTitle}
+                      onChange={(e) => setDepositTitle(e.target.value)}
+                    />
+                  </div>
+
+                  {depositDefaults.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">{t("deposit.noItems")}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {depositDefaults.map((line) => (
+                        <div key={line.itemId} className="flex items-center gap-2">
+                          <span className="flex-1 text-xs truncate" title={line.label}>
+                            {line.label}
+                          </span>
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={depositAmounts[line.itemId] ?? ""}
+                            onChange={(e) =>
+                              setDepositAmounts((prev) => ({ ...prev, [line.itemId]: e.target.value }))
+                            }
+                            className="w-28"
+                          />
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between border-t pt-2 text-sm font-semibold">
+                        <span>{t("deposit.total")}</span>
+                        <span>
+                          {depositTotal.toLocaleString("en-US", { maximumFractionDigits: 2 })}{" "}
+                          {DEFAULT_DEPOSIT_CURRENCY}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={depositShowRefundTerms}
+                      onChange={(e) => setDepositShowRefundTerms(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <span className="text-sm">{t("deposit.showRefundTerms")}</span>
+                  </label>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{t("deposit.note")}</Label>
+                    <Input
+                      value={depositNoteText}
+                      onChange={(e) => setDepositNoteText(e.target.value)}
+                      placeholder={t("deposit.notePlaceholder")}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
 
             {error && <p className="text-xs text-destructive">{error}</p>}
 

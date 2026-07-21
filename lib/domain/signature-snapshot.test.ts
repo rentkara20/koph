@@ -51,6 +51,29 @@ describe("buildSignatureSnapshot", () => {
     input.items[0].description = "CHANGED"
     expect(snap.items[0].description).toBe("Laptop")
   })
+
+  it("defaults depositNote to null when not provided", () => {
+    expect(buildSignatureSnapshot(base).depositNote).toBeNull()
+  })
+
+  it("freezes the deposit note when provided", () => {
+    const snap = buildSignatureSnapshot({
+      ...base,
+      depositNote: {
+        version: 1,
+        enabled: true,
+        currency: "SAR",
+        title: "Deposit",
+        showTotal: true,
+        showRefundTerms: true,
+        lines: [{ itemId: "i1", label: "Laptop", amount: 4500 }],
+        note: null,
+      },
+    })
+    expect(snap.depositNote?.lines[0].amount).toBe(4500)
+    const parsed = parseSignatureSnapshot(JSON.stringify(snap))
+    expect(parsed?.depositNote?.enabled).toBe(true)
+  })
 })
 
 describe("parseSignatureSnapshot", () => {
