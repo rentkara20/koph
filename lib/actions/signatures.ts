@@ -312,9 +312,11 @@ export async function getSignatureRequestsForRequest(requestId: string) {
 
 // ─── Admin: get all signature requests (for list page) ───────────────────────
 
-export async function getAllSignatureRequests() {
+export async function getAllSignatureRequests(options?: { limit?: number; offset?: number }) {
   const session = await getStaffSession()
   if (!session) return []
+  const limit = Math.min(Math.max(options?.limit ?? 100, 1), 200)
+  const offset = Math.max(options?.offset ?? 0, 0)
 
   return db
     .select({
@@ -333,6 +335,8 @@ export async function getAllSignatureRequests() {
     .leftJoin(customers, eq(signatureRequests.customerId, customers.id))
     .leftJoin(requests, eq(signatureRequests.requestId, requests.id))
     .orderBy(desc(signatureRequests.createdAt))
+    .limit(limit)
+    .offset(offset)
 }
 
 // ─── Admin: mark as sent ──────────────────────────────────────────────────────
@@ -1116,30 +1120,39 @@ export async function getBatchSignaturesForTaskToken(taskToken: string): Promise
   if (!task || task.kind !== "request" || task.requestId) return []
 
   const affectedRequestIds = await getAffectedRequestIds(task.id)
+  if (affectedRequestIds.length === 0) return []
+
   const requestRows = await db.select().from(requests).where(inArray(requests.id, affectedRequestIds))
+  const sigReqRows = await db
+    .select()
+    .from(signatureRequests)
+    .where(and(eq(signatureRequests.partnerTaskId, task.id), inArray(signatureRequests.requestId, affectedRequestIds)))
+    .orderBy(desc(signatureRequests.createdAt))
 
-  return Promise.all(
-    requestRows.map(async (req) => {
-      const [sigReq] = await db
-        .select()
-        .from(signatureRequests)
-        .where(and(eq(signatureRequests.partnerTaskId, task.id), eq(signatureRequests.requestId, req.id)))
-        .orderBy(desc(signatureRequests.createdAt))
-        .limit(1)
+  const latestSigReqByRequestId = new Map<string, typeof signatureRequests.$inferSelect>()
+  for (const sigReq of sigReqRows) {
+    if (sigReq.requestId && !latestSigReqByRequestId.has(sigReq.requestId)) {
+      latestSigReqByRequestId.set(sigReq.requestId, sigReq)
+    }
+  }
 
-      const sig = sigReq
-        ? (await db.select().from(customerSignatures).where(eq(customerSignatures.signatureRequestId, sigReq.id)))[0]
-        : undefined
+  const latestSigReqIds = Array.from(latestSigReqByRequestId.values()).map((sigReq) => sigReq.id)
+  const sigRows = latestSigReqIds.length
+    ? await db.select().from(customerSignatures).where(inArray(customerSignatures.signatureRequestId, latestSigReqIds))
+    : []
+  const sigByRequestId = new Map(sigRows.map((sig) => [sig.signatureRequestId, sig]))
 
-      return {
-        requestId: req.id,
-        requestNumber: req.requestNumber,
-        sigReq: sigReq ?? null,
-        sig: sig ?? null,
-        signLink: sigReq ? publicUrl(`/sign/${sigReq.secureToken}`) : null,
-      }
-    })
-  )
+  return requestRows.map((req) => {
+    const sigReq = latestSigReqByRequestId.get(req.id) ?? null
+    const sig = sigReq ? sigByRequestId.get(sigReq.id) ?? null : null
+    return {
+      requestId: req.id,
+      requestNumber: req.requestNumber,
+      sigReq,
+      sig,
+      signLink: sigReq ? publicUrl(`/sign/${sigReq.secureToken}`) : null,
+    }
+  })
 }
 
 // ─── Partner: sign on-site for ONE request group of a batched task ──────────

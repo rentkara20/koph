@@ -104,14 +104,17 @@ export async function moveService(
   const a = all[idx]
   const b = all[swapIdx]
 
-  await db
-    .update(servicesCatalog)
-    .set({ sortOrder: b.sortOrder, updatedAt: Date.now() })
-    .where(eq(servicesCatalog.id, a.id))
-  await db
-    .update(servicesCatalog)
-    .set({ sortOrder: a.sortOrder, updatedAt: Date.now() })
-    .where(eq(servicesCatalog.id, b.id))
+  const now = Date.now()
+  await db.transaction(async (tx) => {
+    await tx
+      .update(servicesCatalog)
+      .set({ sortOrder: b.sortOrder, updatedAt: now })
+      .where(eq(servicesCatalog.id, a.id))
+    await tx
+      .update(servicesCatalog)
+      .set({ sortOrder: a.sortOrder, updatedAt: now })
+      .where(eq(servicesCatalog.id, b.id))
+  })
 
   revalidatePath("/admin/settings/services")
   return { id }

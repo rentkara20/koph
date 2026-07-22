@@ -201,25 +201,41 @@ export async function allocateTaskItem(
 
 // Read-only: remaining = ordered − admin-approved delivered − open-allocation sum.
 async function getRemainingQuantities(requestId: string) {
-  const items = await db.select().from(requestItems).where(eq(requestItems.requestId, requestId))
-  const rows = await Promise.all(
-    items.map(async (item) => {
-      const result = await db.run(sql`
-        SELECT COALESCE(SUM(dti.qty_planned), 0) AS allocated FROM delivery_task_item dti
-        JOIN partner_task pt ON pt.id = dti.partner_task_id
-        WHERE dti.request_item_id = ${item.id} AND pt.status NOT IN ${OPEN_TASK_STATUSES}
-      `)
-      const allocated = Number((result.rows[0] as unknown as { allocated: number } | undefined)?.allocated ?? 0)
-      return {
-        requestItemId: item.id,
-        description: item.description,
-        quantity: item.quantity,
-        deliveredQuantity: item.deliveredQuantity,
-        remaining: Math.max(0, item.quantity - item.deliveredQuantity - allocated),
-      }
-    })
-  )
-  return rows
+  const result = await db.run(sql`
+    SELECT
+      ri.id AS requestItemId,
+      ri.description,
+      ri.quantity,
+      ri.delivered_quantity AS deliveredQuantity,
+      COALESCE(SUM(
+        CASE
+          WHEN pt.status NOT IN ${OPEN_TASK_STATUSES} THEN dti.qty_planned
+          ELSE 0
+        END
+      ), 0) AS allocated
+    FROM request_item ri
+    LEFT JOIN delivery_task_item dti ON dti.request_item_id = ri.id
+    LEFT JOIN partner_task pt ON pt.id = dti.partner_task_id
+    WHERE ri.request_id = ${requestId}
+    GROUP BY ri.id
+  `)
+
+  return result.rows.map((row) => {
+    const item = row as unknown as {
+      requestItemId: string
+      description: string
+      quantity: number
+      deliveredQuantity: number
+      allocated: number
+    }
+    return {
+      requestItemId: item.requestItemId,
+      description: item.description,
+      quantity: Number(item.quantity),
+      deliveredQuantity: Number(item.deliveredQuantity),
+      remaining: Math.max(0, Number(item.quantity) - Number(item.deliveredQuantity) - Number(item.allocated ?? 0)),
+    }
+  })
 }
 
 export async function getRemainingQuantitiesForRequest(requestId: string) {

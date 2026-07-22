@@ -2,16 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-/* ─── HeroUI v3 ──────────────────────────────────────────────────────────────
- * Selective imports — avoids re-importing tailwindcss/tw-animate-css.
- * Layer order: theme < base < components < utilities (last wins).
- * ─────────────────────────────────────────────────────────────────────────── */
 @layer theme, base, components, utilities;
-@import "@heroui/styles/base" layer(base);
-@import "@heroui/styles/components/index.css" layer(components);
-@import "@heroui/styles/themes/default";
-@import "@heroui/styles/utilities";
-@import "@heroui/styles/variants";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -78,31 +69,6 @@
   --kara-blue-soft: oklch(0.95 0.03 227);
   --kara-purple-soft: oklch(0.955 0.02 305);
 
-  /* ─── HeroUI bridge ─────────────────────────────────────────────────────────
-   * Maps HeroUI semantic tokens → koph/shadcn design tokens.
-   * These are unlayered so they win over HeroUI's @layer theme definitions.
-   *
-   * Known conflict: HeroUI uses --muted for text (muted gray), shadcn uses it
-   * for surfaces (near-white). HeroUI's text-muted will appear light; use
-   * text-muted-foreground from shadcn for muted text in koph components.
-   * ─────────────────────────────────────────────────────────────────────────── */
-  --surface: var(--card);
-  --surface-foreground: var(--card-foreground);
-  --surface-secondary: var(--secondary);
-  --surface-secondary-foreground: var(--secondary-foreground);
-  --surface-tertiary: var(--muted);
-  --surface-tertiary-foreground: var(--muted-foreground);
-  --overlay: var(--popover);
-  --overlay-foreground: var(--popover-foreground);
-  --default: var(--secondary);
-  --default-foreground: var(--secondary-foreground);
-  --danger: var(--destructive);
-  --danger-foreground: oklch(0.985 0 0);
-  --focus: var(--ring);
-  --separator: var(--border);
-  --link: var(--primary);
-  --segment: var(--muted);
-  --segment-foreground: var(--muted-foreground);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

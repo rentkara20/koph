@@ -289,6 +289,8 @@ export const requestItems = sqliteTable("request_item", {
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
 }, (t) => [
+  index("request_item_request_idx").on(t.requestId),
+  index("request_item_order_unit_idx").on(t.orderUnitId),
   // A request item pulled from a specific serialized order unit must represent
   // exactly one physical device — quantity>1 on such a row would make serial
   // tracking on delivery_task_item ambiguous.
@@ -525,7 +527,10 @@ export const taskServices = sqliteTable("task_service", {
   isCompleted: integer("is_completed", { mode: "boolean" }).notNull().default(false),
   completedAt: integer("completed_at"),
   notes: text("notes"),
-})
+}, (t) => [
+  index("task_service_partner_task_idx").on(t.partnerTaskId),
+  index("task_service_service_idx").on(t.serviceId),
+])
 
 // ─── Consent versions (PDPL) ────────────────────────────────────────────────
 
@@ -556,7 +561,7 @@ export const signatureRequests = sqliteTable("signature_request", {
     .notNull()
     .default("receiver"),
   // Stage-2 requests point back at the receiver's stage-1 request.
-  parentSignatureRequestId: text("parent_signature_request_id"),
+  parentSignatureRequestId: text("parent_signature_request_id").references((): AnySQLiteColumn => signatureRequests.id, { onDelete: "set null" }),
   // The customer contact expected to sign this request (receiver or authorised).
   signatoryContactId: text("signatory_contact_id").references(() => customerContacts.id, { onDelete: "set null" }),
   documentName: text("document_name").notNull(),
@@ -601,7 +606,11 @@ export const signatureRequests = sqliteTable("signature_request", {
     .default("draft"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
   updatedAt: integer("updated_at").notNull().$defaultFn(now),
-}, (t) => [index("signature_request_request_idx").on(t.requestId)])
+}, (t) => [
+  index("signature_request_request_idx").on(t.requestId),
+  index("signature_request_partner_task_request_idx").on(t.partnerTaskId, t.requestId),
+  index("signature_request_parent_idx").on(t.parentSignatureRequestId),
+])
 
 // ─── Signature events (open tracking) ───────────────────────────────────────
 
@@ -617,7 +626,7 @@ export const signatureEvents = sqliteTable("signature_event", {
   userAgent: text("user_agent"),
   metadata: text("metadata"), // JSON
   createdAt: integer("created_at").notNull().$defaultFn(now),
-})
+}, (t) => [index("signature_event_signature_request_idx").on(t.signatureRequestId)])
 
 // ─── Customer signatures ─────────────────────────────────────────────────────
 
@@ -666,7 +675,7 @@ export const customerSignatures = sqliteTable("customer_signature", {
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   auditDataHash: text("audit_data_hash"),
-})
+}, (t) => [index("customer_signature_signature_request_idx").on(t.signatureRequestId)])
 
 // ─── Signature item conditions (per-item acknowledgement on signing) ─────────
 
@@ -761,7 +770,7 @@ export const attachments = sqliteTable("attachment", {
     .notNull()
     .default("sensitive"),
   createdAt: integer("created_at").notNull().$defaultFn(now),
-})
+}, (t) => [index("attachment_entity_idx").on(t.entityType, t.entityId)])
 
 // ─── Activity logs (append-only audit trail) ─────────────────────────────────
 
@@ -806,7 +815,7 @@ export const paymentBatches = sqliteTable("payment_batch", {
   sentAt: integer("sent_at"),
   paidAt: integer("paid_at"),
   notes: text("notes"),
-})
+}, (t) => [index("payment_batch_partner_idx").on(t.partnerId)])
 
 // ─── Partner payments ─────────────────────────────────────────────────────────
 
@@ -1107,7 +1116,7 @@ export const orderUnits = sqliteTable(
       .default("in_stock"),
     location: text("location").notNull().default("main_warehouse"),
     // Where the asset currently is when out of the warehouse.
-    currentRequestId: text("current_request_id"),
+    currentRequestId: text("current_request_id").references(() => requests.id, { onDelete: "set null" }),
     currentCustomerId: text("current_customer_id"),
     retiredAt: integer("retired_at"),
     retirementReason: text("retirement_reason"),
@@ -1121,6 +1130,7 @@ export const orderUnits = sqliteTable(
     index("order_unit_po_line_idx").on(t.purchaseOrderLineId),
     index("order_unit_status_idx").on(t.status),
     index("order_unit_kind_idx").on(t.kind),
+    index("order_unit_current_request_idx").on(t.currentRequestId),
     uniqueIndex("order_unit_serial_idx")
       .on(sql`lower(trim(${t.serialNumber}))`)
       .where(sql`${t.serialNumber} IS NOT NULL AND trim(${t.serialNumber}) <> ''`),

@@ -109,8 +109,10 @@ export async function moveRequestType(
   const a = all[idx]
   const b = all[swapIdx]
 
-  await db.update(requestTypes).set({ sortOrder: b.sortOrder }).where(eq(requestTypes.id, a.id))
-  await db.update(requestTypes).set({ sortOrder: a.sortOrder }).where(eq(requestTypes.id, b.id))
+  await db.transaction(async (tx) => {
+    await tx.update(requestTypes).set({ sortOrder: b.sortOrder }).where(eq(requestTypes.id, a.id))
+    await tx.update(requestTypes).set({ sortOrder: a.sortOrder }).where(eq(requestTypes.id, b.id))
+  })
 
   revalidatePath("/admin/settings/request-tasks")
   return { id }

@@ -118,8 +118,10 @@ export async function moveFailureReason(
   const a = all[idx]
   const b = all[swapIdx]
 
-  await db.update(failureReasons).set({ sortOrder: b.sortOrder }).where(eq(failureReasons.id, a.id))
-  await db.update(failureReasons).set({ sortOrder: a.sortOrder }).where(eq(failureReasons.id, b.id))
+  await db.transaction(async (tx) => {
+    await tx.update(failureReasons).set({ sortOrder: b.sortOrder }).where(eq(failureReasons.id, a.id))
+    await tx.update(failureReasons).set({ sortOrder: a.sortOrder }).where(eq(failureReasons.id, b.id))
+  })
 
   revalidatePath("/admin/settings/request-tasks")
   return { id }

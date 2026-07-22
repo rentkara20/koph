@@ -1,7 +1,7 @@
 "use server"
 
 import { z } from "zod"
-import { and, desc, eq, isNull, sql } from "drizzle-orm"
+import { and, desc, eq, isNotNull, isNull, like, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { accounts, partners, sessions, userInvites, users } from "@/lib/db/schema"
@@ -34,6 +34,27 @@ export async function listUsers(filters?: {
 }): Promise<UserListItem[]> {
   const session = await getSessionWithPermission("users.read")
   if (!session) return []
+  const search = filters?.search?.trim()
+  const conditions = [isNull(users.deletedAt)]
+
+  if (filters?.role) {
+    conditions.push(eq(users.role, filters.role as Role))
+  }
+  if (filters?.status === "active") {
+    conditions.push(isNull(users.disabledAt))
+    conditions.push(sql`EXISTS (SELECT 1 FROM ${accounts} WHERE ${accounts.userId} = ${users.id} AND ${accounts.providerId} = 'credential')`)
+  }
+  if (filters?.status === "disabled") {
+    conditions.push(isNotNull(users.disabledAt))
+  }
+  if (filters?.status === "pending") {
+    conditions.push(isNull(users.disabledAt))
+    conditions.push(sql`NOT EXISTS (SELECT 1 FROM ${accounts} WHERE ${accounts.userId} = ${users.id} AND ${accounts.providerId} = 'credential')`)
+  }
+  if (search) {
+    const pattern = `%${search}%`
+    conditions.push(or(like(users.name, pattern), like(users.email, pattern))!)
+  }
 
   const rows = await db
     .select({
@@ -53,10 +74,8 @@ export async function listUsers(filters?: {
     })
     .from(users)
     .leftJoin(partners, eq(partners.userId, users.id))
-    .where(isNull(users.deletedAt))
+    .where(and(...conditions))
     .orderBy(desc(users.createdAt))
-
-  const search = filters?.search?.trim().toLowerCase()
 
   return rows
     .map((r) => ({
@@ -71,14 +90,6 @@ export async function listUsers(filters?: {
       createdAt: r.createdAt,
       partnerName: r.partnerName ?? null,
     }))
-    .filter((u) => {
-      if (filters?.role && u.role !== filters.role) return false
-      if (filters?.status === "active" && (u.isDisabled || !u.hasLogin)) return false
-      if (filters?.status === "disabled" && !u.isDisabled) return false
-      if (filters?.status === "pending" && (u.hasLogin || u.isDisabled)) return false
-      if (search && !u.name.toLowerCase().includes(search) && !u.email.toLowerCase().includes(search)) return false
-      return true
-    })
 }
 
 /** Partners without a linked login — for the "create partner user" picker. */
