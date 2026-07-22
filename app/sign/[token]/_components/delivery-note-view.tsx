@@ -290,7 +290,7 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
               titleAr="المفوّض بالتوقيع"
               name={authorized?.fullName ?? authorizedName ?? null}
               nationalId={authorized?.nationalId ?? null}
-              date={authorized ? fmt(authorized.signedAt) : "—"}
+              date={authorized ? fmt(authorized.signedAt) : ""}
               signatureData={authorized?.signatureData ?? null}
             />
           )}
