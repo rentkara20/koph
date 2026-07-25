@@ -15,11 +15,16 @@ export function parseCsv(text: string): { headers: string[]; rows: Record<string
   return { headers, rows: result.data }
 }
 
+// UTF-8 BOM — without it, Excel guesses the file's encoding from locale
+// heuristics and garbles non-ASCII text (Arabic model/customer/note fields)
+// into mojibake on open. Papa.unparse emits plain UTF-8 with no BOM.
+const UTF8_BOM = "﻿"
+
 // Builds a template/export CSV from column defs + optional data rows.
 export function toCsv(columns: ColumnDef[], rows: Record<string, unknown>[]): string {
   const headers = columns.map((c) => c.header)
   const data = rows.map((row) => columns.map((c) => formatCell(row[c.field])))
-  return Papa.unparse({ fields: headers, data })
+  return UTF8_BOM + Papa.unparse({ fields: headers, data })
 }
 
 function formatCell(value: unknown): string {

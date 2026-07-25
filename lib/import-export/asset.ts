@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { customers, orderUnits, suppliers } from "@/lib/db/schema"
+import { customers, orderLines, orderUnits, suppliers } from "@/lib/db/schema"
 import { createAssetCore, updateAssetImportCore } from "@/lib/actions/assets"
 import type { ColumnDef, ImportRow } from "./types"
 
@@ -69,12 +69,23 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
       notes: orderUnits.notes,
       supplier: suppliers.name,
       currentClient: customers.name,
+      // Fallback source for assets whose device identity was never back-filled
+      // onto order_unit — most existing assets, which came from a client order
+      // line rather than the CSV importer. The line's free-text description
+      // ("ThinkPad L14, U7-255U, Ram 32GB, ...") is the closest thing KOPH has
+      // to a device spec for these, so it stands in for a blank model.
+      lineBrand: orderLines.brand,
+      lineModel: orderLines.model,
+      lineDescription: orderLines.description,
     })
     .from(orderUnits)
     .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
     .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
+    .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
   return rows.map((r) => ({
     ...r,
+    brand: r.brand || r.lineBrand || "",
+    model: r.model || r.lineModel || r.lineDescription || "",
     purchaseDate: r.purchaseDate ? toDateString(r.purchaseDate) : "",
     warrantyEnd: r.warrantyEnd ? toDateString(r.warrantyEnd) : "",
     // Total Cost is DERIVED, never stored. Blank when both parts are absent so
