@@ -117,4 +117,53 @@ describe("validateAssetRows", () => {
     expect(rows[0].classification).toBe("error")
     expect(rows[0].error).toMatch(/Invalid purchaseDate/)
   })
+
+  it("captures device identity + cost/procurement fields on a new row", async () => {
+    const rows = await validateAssetRows(db, [
+      {
+        assetTag: "KARA-DEV-1",
+        serialNumber: "SN-DEV-1",
+        brand: "Dell",
+        model: "Latitude 5540",
+        deviceType: "Laptop",
+        kind: "rental",
+        status: "",
+        location: "",
+        purchaseCost: "1000",
+        warrantyCost: "150",
+        purchaseDate: "",
+        warrantyEnd: "",
+        invoiceNo: "INV-2026-001",
+        sourceOrderNo: "PO-88",
+        notes: "",
+      },
+    ])
+    expect(rows[0].classification).toBe("new")
+    expect(rows[0].input).toMatchObject({
+      brand: "Dell",
+      model: "Latitude 5540",
+      deviceType: "Laptop",
+      purchaseCost: 1000,
+      warrantyCost: 150,
+      invoiceNo: "INV-2026-001",
+      sourceOrderNo: "PO-88",
+    })
+  })
+
+  it("errors on an invalid warrantyCost", async () => {
+    const rows = await validateAssetRows(db, [
+      { assetTag: "KARA-WC-1", serialNumber: "", kind: "", status: "", location: "", purchaseCost: "", warrantyCost: "abc", purchaseDate: "", warrantyEnd: "", notes: "" },
+    ])
+    expect(rows[0].classification).toBe("error")
+    expect(rows[0].error).toMatch(/Invalid warrantyCost/)
+  })
+
+  it("back-fills device identity onto an existing asset via update", async () => {
+    await seedExistingAsset("KARA-EXIST-DEV")
+    const rows = await validateAssetRows(db, [
+      { assetTag: "KARA-EXIST-DEV", serialNumber: "", brand: "HP", model: "EliteBook 840", deviceType: "Laptop", kind: "", status: "", location: "", purchaseCost: "", warrantyCost: "", purchaseDate: "", warrantyEnd: "", invoiceNo: "", sourceOrderNo: "", notes: "" },
+    ])
+    expect(rows[0].classification).toBe("update")
+    expect(rows[0].input).toMatchObject({ brand: "HP", model: "EliteBook 840", deviceType: "Laptop" })
+  })
 })

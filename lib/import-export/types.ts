@@ -2,6 +2,7 @@
 
 export type ModuleKey =
   | "asset"
+  | "assetLog"
   | "customer"
   | "order"
   | "supplier"

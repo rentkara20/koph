@@ -1,6 +1,6 @@
-import { sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { orderUnits } from "@/lib/db/schema"
+import { customers, orderUnits, suppliers } from "@/lib/db/schema"
 import { createAssetCore, updateAssetImportCore } from "@/lib/actions/assets"
 import type { ColumnDef, ImportRow } from "./types"
 
@@ -14,16 +14,39 @@ type Database = typeof db
 // standalone assets (no client-order/PO origin); see createAssetCore's
 // `standalone` flag.
 
+// Import + round-trip columns. Every field here is owned by the order_unit row
+// itself, so import parses it directly and export emits it unchanged. Device
+// identity (brand/model/deviceType) and cost/procurement refs
+// (warrantyCost/invoiceNo/sourceOrderNo) are back-fillable for legacy devices
+// that have no origin order/PO line — see order_unit schema.
 export const ASSET_COLUMNS: ColumnDef[] = [
   { header: "assetTag", field: "assetTag", required: false },
   { header: "serialNumber", field: "serialNumber", required: false },
+  { header: "brand", field: "brand", required: false },
+  { header: "model", field: "model", required: false },
+  { header: "deviceType", field: "deviceType", required: false },
   { header: "kind", field: "kind", required: false },
   { header: "status", field: "status", required: false },
   { header: "location", field: "location", required: false },
   { header: "purchaseCost", field: "purchaseCost", required: false },
+  { header: "warrantyCost", field: "warrantyCost", required: false },
   { header: "purchaseDate", field: "purchaseDate", required: false },
   { header: "warrantyEnd", field: "warrantyEnd", required: false },
+  { header: "invoiceNo", field: "invoiceNo", required: false },
+  { header: "sourceOrderNo", field: "sourceOrderNo", required: false },
   { header: "notes", field: "notes", required: false },
+]
+
+// Export adds read-only, derived-at-export-time columns on top of the
+// round-trip set: supplier + current client resolved to their names, and Total
+// Cost computed (device + warranty). These are intentionally NOT in
+// ASSET_COLUMNS — they are never parsed back on import (supplier/client are
+// managed relations, totalCost is derived). See ModuleConfig.exportColumns.
+export const ASSET_EXPORT_COLUMNS: ColumnDef[] = [
+  ...ASSET_COLUMNS,
+  { header: "supplier", field: "supplier", required: false },
+  { header: "totalCost", field: "totalCost", required: false },
+  { header: "currentClient", field: "currentClient", required: false },
 ]
 
 export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
@@ -31,19 +54,37 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
     .select({
       assetTag: orderUnits.assetTag,
       serialNumber: orderUnits.serialNumber,
+      brand: orderUnits.brand,
+      model: orderUnits.model,
+      deviceType: orderUnits.deviceType,
       kind: orderUnits.kind,
       status: orderUnits.status,
       location: orderUnits.location,
       purchaseCost: orderUnits.purchaseCost,
+      warrantyCost: orderUnits.warrantyCost,
       purchaseDate: orderUnits.purchaseDate,
       warrantyEnd: orderUnits.warrantyEnd,
+      invoiceNo: orderUnits.invoiceNo,
+      sourceOrderNo: orderUnits.sourceOrderNo,
       notes: orderUnits.notes,
+      supplier: suppliers.name,
+      currentClient: customers.name,
     })
     .from(orderUnits)
+    .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+    .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
   return rows.map((r) => ({
     ...r,
     purchaseDate: r.purchaseDate ? toDateString(r.purchaseDate) : "",
     warrantyEnd: r.warrantyEnd ? toDateString(r.warrantyEnd) : "",
+    // Total Cost is DERIVED, never stored. Blank when both parts are absent so
+    // an untouched legacy row doesn't read as "0".
+    totalCost:
+      r.purchaseCost == null && r.warrantyCost == null
+        ? ""
+        : (r.purchaseCost ?? 0) + (r.warrantyCost ?? 0),
+    supplier: r.supplier ?? "",
+    currentClient: r.currentClient ?? "",
   }))
 }
 
@@ -105,9 +146,15 @@ export async function validateAssetRows(
       const status = raw.status?.trim() || ""
       const location = raw.location?.trim() || undefined
       const notes = raw.notes?.trim() || undefined
+      const brand = raw.brand?.trim() || undefined
+      const model = raw.model?.trim() || undefined
+      const deviceType = raw.deviceType?.trim() || undefined
+      const invoiceNo = raw.invoiceNo?.trim() || undefined
+      const sourceOrderNo = raw.sourceOrderNo?.trim() || undefined
 
       if (kind && !VALID_KINDS.has(kind)) throw new Error(`Invalid kind: "${kind}"`)
       const purchaseCost = parseNumber(raw.purchaseCost?.trim() ?? "", "purchaseCost")
+      const warrantyCost = parseNumber(raw.warrantyCost?.trim() ?? "", "warrantyCost")
       const purchaseDate = parseDate(raw.purchaseDate?.trim() ?? "", "purchaseDate")
       const warrantyEnd = parseDate(raw.warrantyEnd?.trim() ?? "", "warrantyEnd")
 
@@ -140,7 +187,20 @@ export async function validateAssetRows(
           raw,
           classification: "update",
           matchedId: matched.id,
-          input: { serialNumber, location, purchaseCost, purchaseDate, warrantyEnd, notes },
+          input: {
+            serialNumber,
+            location,
+            purchaseCost,
+            warrantyCost,
+            purchaseDate,
+            warrantyEnd,
+            notes,
+            brand,
+            model,
+            deviceType,
+            invoiceNo,
+            sourceOrderNo,
+          },
         })
         continue
       }
@@ -167,9 +227,15 @@ export async function validateAssetRows(
           kind,
           location,
           purchaseCost,
+          warrantyCost,
           purchaseDate,
           warrantyEnd,
           notes,
+          brand,
+          model,
+          deviceType,
+          invoiceNo,
+          sourceOrderNo,
           standalone: true,
         },
       })

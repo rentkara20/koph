@@ -1,7 +1,8 @@
 import { db } from "@/lib/db"
 import { csvImportBatch, csvImportRowError } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
-import { ASSET_COLUMNS, commitAssetRow, exportAssetRows, validateAssetRows } from "./asset"
+import { ASSET_COLUMNS, ASSET_EXPORT_COLUMNS, commitAssetRow, exportAssetRows, validateAssetRows } from "./asset"
+import { ASSET_LOG_COLUMNS, exportAssetLogRows } from "./asset-log"
 import { CUSTOMER_COLUMNS, commitCustomerRow, exportCustomerRows, validateCustomerRows } from "./customer"
 import { ORDER_COLUMNS, commitOrderRow, exportOrderRows, validateOrderRows } from "./order"
 import { SUPPLIER_COLUMNS, commitSupplierRow, exportSupplierRows, validateSupplierRows } from "./supplier"
@@ -38,6 +39,11 @@ type ModuleConfig = {
   key: ModuleKey
   label: string
   columns: ColumnDef[]
+  // Optional export-only column set. When present, export + (for export-only
+  // modules) template use these instead of `columns`; import always uses
+  // `columns`. Lets a module emit derived/relation columns (supplier name,
+  // Total Cost, current client) that are never parsed back on import.
+  exportColumns?: ColumnDef[]
   naturalKey: string
   exportRows: () => Promise<Record<string, unknown>[]>
   exportOnly?: boolean
@@ -50,10 +56,19 @@ export const IMPORT_EXPORT_MODULES: Record<ModuleKey, ModuleConfig> = {
     key: "asset",
     label: "Assets",
     columns: ASSET_COLUMNS,
+    exportColumns: ASSET_EXPORT_COLUMNS,
     naturalKey: "assetTag",
     exportRows: exportAssetRows,
     validateRows: validateAssetRows,
     commitRow: commitAssetRow,
+  },
+  assetLog: {
+    key: "assetLog",
+    label: "Asset log",
+    columns: ASSET_LOG_COLUMNS,
+    naturalKey: "serialNumber+date (export-only)",
+    exportRows: exportAssetLogRows,
+    exportOnly: true,
   },
   customer: {
     key: "customer",
@@ -137,6 +152,7 @@ export const IMPORT_EXPORT_MODULES: Record<ModuleKey, ModuleConfig> = {
 
 const MODULE_KEYS = new Set<ModuleKey>([
   "asset",
+  "assetLog",
   "customer",
   "order",
   "supplier",
@@ -155,7 +171,7 @@ export function isModuleKey(value: string): value is ModuleKey {
 export async function buildExportCsv(module: ModuleKey): Promise<string> {
   const config = IMPORT_EXPORT_MODULES[module]
   const rows = await config.exportRows()
-  return toCsv(config.columns, rows)
+  return toCsv(config.exportColumns ?? config.columns, rows)
 }
 
 export function buildTemplateCsv(module: ModuleKey): string {
@@ -188,7 +204,10 @@ export async function previewImport(
   const batchId = createId()
   await db.insert(csvImportBatch).values({
     id: batchId,
-    module,
+    // Export-only modules (assetLog, request, ...) throw above and never reach
+    // here, so module is always an importable one — narrow to the batch column's
+    // enum, which intentionally omits export-only keys.
+    module: module as typeof csvImportBatch.$inferInsert.module,
     status: "pending",
     totalRows: rows.length,
     successRows: 0,

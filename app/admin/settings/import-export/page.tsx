@@ -7,6 +7,7 @@ import { ImportExportClient } from "./import-export-client"
 
 type ModuleKey =
   | "asset"
+  | "assetLog"
   | "customer"
   | "order"
   | "supplier"
@@ -19,6 +20,7 @@ type ModuleKey =
 
 const MODULE_KEYS: ModuleKey[] = [
   "asset",
+  "assetLog",
   "customer",
   "order",
   "supplier",

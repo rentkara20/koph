@@ -1085,6 +1085,22 @@ export const orderUnits = sqliteTable(
     purchaseCost: real("purchase_cost"),
     purchaseDate: integer("purchase_date"),
     warrantyEnd: integer("warranty_end"),
+    // Device identity carried on the asset itself. Nullable — populated for
+    // standalone/back-filled legacy devices (which have no origin order/PO line
+    // to derive these from) and, going forward, mirror-able from the origin
+    // line. Kept as free-text (Model is one field — NOT decomposed into
+    // CPU/RAM/Storage) per the agreed asset-export design.
+    brand: text("brand"),
+    model: text("model"),
+    deviceType: text("device_type"),
+    // Cost + procurement reference carried on the asset. warrantyCost is the
+    // separately-purchased warranty spend (device cost is purchaseCost above);
+    // Total Cost is DERIVED at export time, never stored. invoiceNo/sourceOrderNo
+    // are free-text references for legacy back-fill (an order/PO may not exist
+    // in KOPH as a live document).
+    warrantyCost: real("warranty_cost"),
+    invoiceNo: text("invoice_no"),
+    sourceOrderNo: text("source_order_no"),
     // KARA asset tag (KARA-00001). Nullable until back-filled; unique when set.
     assetTag: text("asset_tag"),
     // Ownership/return semantics — NOT serialization. A rental unit is

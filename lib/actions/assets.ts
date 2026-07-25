@@ -344,6 +344,12 @@ export async function updateAssetImportCore(
     purchaseDate?: number
     warrantyEnd?: number
     notes?: string
+    brand?: string
+    model?: string
+    deviceType?: string
+    warrantyCost?: number
+    invoiceNo?: string
+    sourceOrderNo?: string
   }
 ): Promise<{ assetId: string }> {
   await tx
@@ -355,6 +361,12 @@ export async function updateAssetImportCore(
       purchaseDate: input.purchaseDate ?? null,
       warrantyEnd: input.warrantyEnd ?? null,
       notes: input.notes || null,
+      brand: input.brand || null,
+      model: input.model || null,
+      deviceType: input.deviceType || null,
+      warrantyCost: input.warrantyCost ?? null,
+      invoiceNo: input.invoiceNo || null,
+      sourceOrderNo: input.sourceOrderNo || null,
       updatedAt: Date.now(),
     })
     .where(eq(orderUnits.id, id))
@@ -415,6 +427,14 @@ const createAssetSchema = z
     location: z.string().trim().max(120).optional(),
     purchaseDate: z.number().optional(),
     warrantyEnd: z.number().optional(),
+    // Device identity + cost/procurement references carried on the asset
+    // itself (see order_unit schema). Every existing caller omits these.
+    brand: z.string().trim().max(120).optional(),
+    model: z.string().trim().max(200).optional(),
+    deviceType: z.string().trim().max(120).optional(),
+    warrantyCost: z.number().min(0).max(100_000_000).optional(),
+    invoiceNo: z.string().trim().max(120).optional(),
+    sourceOrderNo: z.string().trim().max(120).optional(),
   })
   .refine(
     (d) => (d.standalone ? !d.orderLineId && !d.purchaseOrderLineId : Boolean(d.orderLineId) !== Boolean(d.purchaseOrderLineId)),
@@ -517,6 +537,12 @@ export async function createAssetCore(
     location: d.location || "main_warehouse",
     purchaseDate: d.purchaseDate ?? null,
     warrantyEnd: d.warrantyEnd ?? null,
+    brand: d.brand || null,
+    model: d.model || null,
+    deviceType: d.deviceType || null,
+    warrantyCost: d.warrantyCost ?? null,
+    invoiceNo: d.invoiceNo || null,
+    sourceOrderNo: d.sourceOrderNo || null,
   })
 
   await tx.insert(assetEvents).values({

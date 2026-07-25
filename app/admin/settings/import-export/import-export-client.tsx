@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils"
 
 type ModuleKey =
   | "asset"
+  | "assetLog"
   | "customer"
   | "order"
   | "supplier"
@@ -23,6 +24,7 @@ type ModuleKey =
 
 const MODULE_KEYS: { key: ModuleKey; exportOnly?: boolean }[] = [
   { key: "asset" },
+  { key: "assetLog", exportOnly: true },
   { key: "customer" },
   { key: "order" },
   { key: "supplier" },

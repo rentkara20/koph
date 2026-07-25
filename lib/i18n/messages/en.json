@@ -2162,6 +2162,7 @@
     "pageSubtitle": "Export current data, download a blank template, or bulk-import Assets, Customers, Orders, Suppliers, Partners, Warranty products, and Warranty batches. Every import is validated and previewed before anything is committed.",
     "modules": {
       "asset": "Assets",
+      "assetLog": "Asset log",
       "customer": "Customers",
       "order": "Orders",
       "supplier": "Suppliers",
