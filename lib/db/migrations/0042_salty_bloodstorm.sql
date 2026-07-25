@@ -1,0 +1,1 @@
+ALTER TABLE `order_unit` ADD `part_number` text;

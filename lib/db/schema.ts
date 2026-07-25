@@ -1093,6 +1093,9 @@ export const orderUnits = sqliteTable(
     brand: text("brand"),
     model: text("model"),
     deviceType: text("device_type"),
+    // Manufacturer/supplier part number for the device — distinct from Model
+    // (a free-text spec description) and from assetTag (KARA's own tag).
+    partNumber: text("part_number"),
     // Cost + procurement reference carried on the asset. warrantyCost is the
     // separately-purchased warranty spend (device cost is purchaseCost above);
     // Total Cost is DERIVED at export time, never stored. invoiceNo/sourceOrderNo

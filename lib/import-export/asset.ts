@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { customers, orderLines, orderUnits, suppliers } from "@/lib/db/schema"
+import { customers, orderLines, orderUnits, orders, suppliers } from "@/lib/db/schema"
 import { createAssetCore, updateAssetImportCore } from "@/lib/actions/assets"
 import type { ColumnDef, ImportRow } from "./types"
 
@@ -22,6 +22,7 @@ type Database = typeof db
 export const ASSET_COLUMNS: ColumnDef[] = [
   { header: "assetTag", field: "assetTag", required: false },
   { header: "serialNumber", field: "serialNumber", required: false },
+  { header: "partNumber", field: "partNumber", required: false },
   { header: "brand", field: "brand", required: false },
   { header: "model", field: "model", required: false },
   { header: "deviceType", field: "deviceType", required: false },
@@ -37,16 +38,32 @@ export const ASSET_COLUMNS: ColumnDef[] = [
   { header: "notes", field: "notes", required: false },
 ]
 
-// Export adds read-only, derived-at-export-time columns on top of the
-// round-trip set: supplier + current client resolved to their names, and Total
-// Cost computed (device + warranty). These are intentionally NOT in
-// ASSET_COLUMNS — they are never parsed back on import (supplier/client are
-// managed relations, totalCost is derived). See ModuleConfig.exportColumns.
+// Export column order — first the fixed report layout requested (Asset ID
+// through Supplier Name), then every other round-trip/derived field. The
+// leading block's headers are the exact labels asked for; ASSET_COLUMNS'
+// `field` names underneath are unchanged so import round-trips are
+// unaffected — only this export-only list's `header` strings differ.
 export const ASSET_EXPORT_COLUMNS: ColumnDef[] = [
-  ...ASSET_COLUMNS,
-  { header: "supplier", field: "supplier", required: false },
-  { header: "totalCost", field: "totalCost", required: false },
-  { header: "currentClient", field: "currentClient", required: false },
+  { header: "Asset ID", field: "assetTag", required: false },
+  { header: "Serial Number", field: "serialNumber", required: false },
+  { header: "Part Number", field: "partNumber", required: false },
+  { header: "Model", field: "model", required: false },
+  { header: "Device Cost", field: "purchaseCost", required: false },
+  { header: "Warranty cost", field: "warrantyCost", required: false },
+  { header: "Total cost", field: "totalCost", required: false },
+  { header: "Order No.", field: "orderNumber", required: false },
+  { header: "Client Name", field: "currentClient", required: false },
+  { header: "Supplier Name", field: "supplier", required: false },
+  { header: "brand", field: "brand", required: false },
+  { header: "deviceType", field: "deviceType", required: false },
+  { header: "kind", field: "kind", required: false },
+  { header: "status", field: "status", required: false },
+  { header: "location", field: "location", required: false },
+  { header: "purchaseDate", field: "purchaseDate", required: false },
+  { header: "warrantyEnd", field: "warrantyEnd", required: false },
+  { header: "invoiceNo", field: "invoiceNo", required: false },
+  { header: "sourceOrderNo", field: "sourceOrderNo", required: false },
+  { header: "notes", field: "notes", required: false },
 ]
 
 export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
@@ -54,6 +71,7 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
     .select({
       assetTag: orderUnits.assetTag,
       serialNumber: orderUnits.serialNumber,
+      partNumber: orderUnits.partNumber,
       brand: orderUnits.brand,
       model: orderUnits.model,
       deviceType: orderUnits.deviceType,
@@ -69,6 +87,10 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
       notes: orderUnits.notes,
       supplier: suppliers.name,
       currentClient: customers.name,
+      // Real order number for assets that came from a client order — takes
+      // priority over sourceOrderNo (the free-text back-fill reference for
+      // standalone/legacy assets with no live order to link to).
+      liveOrderNumber: orders.orderNumber,
       // Fallback source for assets whose device identity was never back-filled
       // onto order_unit — most existing assets, which came from a client order
       // line rather than the CSV importer. The line's free-text description
@@ -82,6 +104,7 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
     .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
     .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
     .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+    .leftJoin(orders, eq(orderUnits.orderId, orders.id))
   return rows.map((r) => ({
     ...r,
     brand: r.brand || r.lineBrand || "",
@@ -96,6 +119,7 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
         : (r.purchaseCost ?? 0) + (r.warrantyCost ?? 0),
     supplier: r.supplier ?? "",
     currentClient: r.currentClient ?? "",
+    orderNumber: r.liveOrderNumber || r.sourceOrderNo || "",
   }))
 }
 
@@ -160,6 +184,7 @@ export async function validateAssetRows(
       const brand = raw.brand?.trim() || undefined
       const model = raw.model?.trim() || undefined
       const deviceType = raw.deviceType?.trim() || undefined
+      const partNumber = raw.partNumber?.trim() || undefined
       const invoiceNo = raw.invoiceNo?.trim() || undefined
       const sourceOrderNo = raw.sourceOrderNo?.trim() || undefined
 
@@ -209,6 +234,7 @@ export async function validateAssetRows(
             brand,
             model,
             deviceType,
+            partNumber,
             invoiceNo,
             sourceOrderNo,
           },
@@ -245,6 +271,7 @@ export async function validateAssetRows(
           brand,
           model,
           deviceType,
+          partNumber,
           invoiceNo,
           sourceOrderNo,
           standalone: true,

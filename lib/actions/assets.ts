@@ -347,6 +347,7 @@ export async function updateAssetImportCore(
     brand?: string
     model?: string
     deviceType?: string
+    partNumber?: string
     warrantyCost?: number
     invoiceNo?: string
     sourceOrderNo?: string
@@ -364,6 +365,7 @@ export async function updateAssetImportCore(
       brand: input.brand || null,
       model: input.model || null,
       deviceType: input.deviceType || null,
+      partNumber: input.partNumber || null,
       warrantyCost: input.warrantyCost ?? null,
       invoiceNo: input.invoiceNo || null,
       sourceOrderNo: input.sourceOrderNo || null,
@@ -432,6 +434,7 @@ const createAssetSchema = z
     brand: z.string().trim().max(120).optional(),
     model: z.string().trim().max(200).optional(),
     deviceType: z.string().trim().max(120).optional(),
+    partNumber: z.string().trim().max(120).optional(),
     warrantyCost: z.number().min(0).max(100_000_000).optional(),
     invoiceNo: z.string().trim().max(120).optional(),
     sourceOrderNo: z.string().trim().max(120).optional(),
@@ -540,6 +543,7 @@ export async function createAssetCore(
     brand: d.brand || null,
     model: d.model || null,
     deviceType: d.deviceType || null,
+    partNumber: d.partNumber || null,
     warrantyCost: d.warrantyCost ?? null,
     invoiceNo: d.invoiceNo || null,
     sourceOrderNo: d.sourceOrderNo || null,
