@@ -15,6 +15,7 @@ import {
   requests,
   suppliers,
 } from "@/lib/db/schema"
+import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asset-name"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { type AssetAction, type AssetStatus } from "@/lib/domain/asset-status"
@@ -64,6 +65,8 @@ export async function getAssets(filters: AssetFilters = {}) {
       or(
         like(orderUnits.serialNumber, q),
         like(orderUnits.assetTag, q),
+        like(orderUnits.brand, q),
+        like(orderUnits.model, q),
         like(orderLines.description, q),
         like(orderLines.brand, q),
         like(orderLines.model, q),
@@ -79,9 +82,9 @@ export async function getAssets(filters: AssetFilters = {}) {
   // PO line (order_unit_single_origin_chk). LEFT joins on both origins + a
   // COALESCE so procurement-minted assets (orderLineId NULL) are not dropped
   // from the list/count the way an INNER JOIN on orderLineId silently did.
-  const descriptionCol = sql<string>`coalesce(${orderLines.description}, ${purchaseOrderLines.itemDescription})`
-  const brandCol = sql<string | null>`coalesce(${orderLines.brand}, ${purchaseOrderLines.brand})`
-  const modelCol = sql<string | null>`coalesce(${orderLines.model}, ${purchaseOrderLines.model})`
+  const descriptionCol = assetDisplayNameSql(orderLines.description, purchaseOrderLines.itemDescription)
+  const brandCol = assetBrandSql(orderLines.brand, purchaseOrderLines.brand)
+  const modelCol = assetModelSql(orderLines.model, purchaseOrderLines.model)
   const orderNumberCol = sql<string | null>`coalesce(${orders.orderNumber}, ${purchaseOrders.poNumber})`
 
   const [rows, [{ total }]] = await Promise.all([
@@ -154,9 +157,13 @@ export async function getAsset(id: string) {
       currentRequestId: orderUnits.currentRequestId,
       currentCustomerId: orderUnits.currentCustomerId,
       createdAt: orderUnits.createdAt,
-      description: sql<string>`coalesce(${orderLines.description}, ${purchaseOrderLines.itemDescription})`,
-      brand: sql<string | null>`coalesce(${orderLines.brand}, ${purchaseOrderLines.brand})`,
-      model: sql<string | null>`coalesce(${orderLines.model}, ${purchaseOrderLines.model})`,
+      description: assetDisplayNameSql(orderLines.description, purchaseOrderLines.itemDescription),
+      brand: assetBrandSql(orderLines.brand, purchaseOrderLines.brand),
+      model: assetModelSql(orderLines.model, purchaseOrderLines.model),
+      // The un-overridden origin-line text, so the rename form can show what it
+      // is masking and offer a revert.
+      sourceName: sql<string | null>`coalesce(${orderLines.description}, ${purchaseOrderLines.itemDescription})`,
+      nameOverride: orderUnits.model,
       orderId: orders.id,
       purchaseOrderId: purchaseOrders.id,
       orderNumber: sql<string | null>`coalesce(${orders.orderNumber}, ${purchaseOrders.poNumber})`,
@@ -289,6 +296,65 @@ export async function addAssetNote(id: string, note: string): Promise<ActionResu
     byUserId: session.user.id,
   })
   revalidatePath(`/admin/assets/${id}`)
+  return { id }
+}
+
+// ─── Device name (per-asset override of the origin line's description) ───────
+// Writes order_unit.model — the per-asset device descriptor. An empty name
+// clears the override so the asset falls back to its order/PO line text again.
+// Not a lifecycle transition, so it does not go through applyAssetTransition;
+// logged as a "correction" event to keep the rename auditable in the timeline.
+
+export async function renameAssetCore(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  id: string,
+  deviceName: string | null,
+  actorUserId: string | null
+): Promise<{ assetId: string; previous: string | null }> {
+  const [unit] = await tx
+    .select({ id: orderUnits.id, model: orderUnits.model })
+    .from(orderUnits)
+    .where(eq(orderUnits.id, id))
+  if (!unit) throw new Error("Asset not found")
+
+  const previous = unit.model
+  if (previous === deviceName) return { assetId: id, previous }
+
+  await tx
+    .update(orderUnits)
+    .set({ model: deviceName, updatedAt: Date.now() })
+    .where(eq(orderUnits.id, id))
+
+  await tx.insert(assetEvents).values({
+    id: createId(),
+    assetId: id,
+    type: "correction",
+    notes: `${previous ?? "—"} → ${deviceName ?? "—"}`,
+    byUserId: actorUserId,
+  })
+
+  return { assetId: id, previous }
+}
+
+const renameSchema = z.object({ deviceName: z.string().trim().max(200) })
+
+export async function renameAsset(id: string, deviceName: string): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+  const parsed = renameSchema.safeParse({ deviceName })
+  if (!parsed.success) return { error: "Invalid input" }
+
+  try {
+    await db.transaction(async (tx) => {
+      await renameAssetCore(tx, id, parsed.data.deviceName || null, session.user.id)
+    })
+  } catch (error) {
+    if (error instanceof Error && error.message === "Asset not found") return { error: error.message }
+    throw error
+  }
+
+  revalidatePath(`/admin/assets/${id}`)
+  revalidatePath("/admin/assets")
   return { id }
 }
 

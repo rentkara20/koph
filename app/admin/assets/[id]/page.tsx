@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge"
 import { ASSET_STATUS_VARIANT } from "../status-variant"
 import { AssetActions } from "./_components/asset-actions"
 import { OpenMaintenanceButton } from "./_components/open-maintenance-button"
+import { AssetNameForm } from "./_components/asset-name-form"
 import { AssetNoteForm } from "./_components/asset-note-form"
 import { AssetDocuments } from "./_components/asset-documents"
 import { WarrantyCard } from "./_components/warranty-card"
@@ -70,11 +71,19 @@ export default async function AssetPage({
               {asset.assetTag ?? asset.id.slice(0, 8)}
             </span>
           </div>
-          <h1 className="mt-1 truncate text-2xl font-semibold tracking-tight">
-            {asset.description}
-          </h1>
+          <AssetNameForm
+            assetId={asset.id}
+            displayName={asset.description}
+            sourceName={asset.sourceName}
+            hasOverride={Boolean(asset.nameOverride?.trim())}
+          />
           <p className="text-sm text-muted-foreground">
-            {[asset.brand, asset.model].filter(Boolean).join(" · ")}
+            {/* Drop specs that merely repeat the name — an overridden name IS the
+                model string, so printing it twice reads as a bug. */}
+            {[asset.brand, asset.model]
+              .filter((v): v is string => Boolean(v))
+              .filter((v) => v !== asset.description)
+              .join(" · ")}
           </p>
         </div>
         <Badge variant={ASSET_STATUS_VARIANT[asset.status] ?? "outline"} className="text-sm">

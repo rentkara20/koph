@@ -8,6 +8,7 @@
 
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
+import { assetDisplayNameSql } from "@/lib/db/asset-name"
 import {
   activityLogs,
   attachments,
@@ -350,7 +351,7 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
         status: orderUnits.status,
         location: orderUnits.location,
         orderLineId: orderUnits.orderLineId,
-        description: orderLines.description,
+        description: assetDisplayNameSql(orderLines.description),
       })
       .from(orderUnits)
       .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
@@ -364,7 +365,7 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
             status: orderUnits.status,
             location: orderUnits.location,
             purchaseOrderId: orderUnits.purchaseOrderId,
-            description: purchaseOrderLines.itemDescription,
+            description: assetDisplayNameSql(purchaseOrderLines.itemDescription),
           })
           .from(orderUnits)
           .innerJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
