@@ -1,7 +1,11 @@
 import type { DeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { formatDate } from "@/lib/utils/format"
 import { extractDeliveryLocationLabel } from "@/lib/utils/city-iata"
-import { computeDepositTotal, DEPOSIT_REFUND_TERMS_EN, DEPOSIT_REFUND_TERMS_AR } from "@/lib/domain/deposit-note"
+import {
+  computeDepositTotal,
+  DEPOSIT_REFUND_TERMS_EN,
+  DEPOSIT_REFUND_TERMS_AR,
+} from "@/lib/domain/deposit-note"
 
 function fmt(ts: number | null | undefined): string {
   return ts ? formatDate(ts) : "—"
@@ -69,6 +73,7 @@ function SignatureBox({
   nationalId,
   date,
   signatureData,
+  showNationalId = true,
 }: {
   titleEn: string
   titleAr: string
@@ -76,6 +81,9 @@ function SignatureBox({
   nationalId: string | null
   date: string
   signatureData: string | null
+  // Kara's own rep signs as an employee, not an identified counterparty, so
+  // the ID row is dropped on that box rather than printed permanently empty.
+  showNationalId?: boolean
 }) {
   return (
     <div className="dn-sig-box">
@@ -89,11 +97,13 @@ function SignatureBox({
           <span className="dn-sfv">{name ?? ""}</span>
           <span className="dn-sfl-ar">الاسم</span>
         </div>
-        <div className="dn-sf">
-          <span className="dn-sfl-en">ID Number</span>
-          <span className="dn-sfv">{nationalId ?? ""}</span>
-          <span className="dn-sfl-ar">رقم الهوية</span>
-        </div>
+        {showNationalId && (
+          <div className="dn-sf">
+            <span className="dn-sfl-en">ID Number</span>
+            <span className="dn-sfv">{nationalId ?? ""}</span>
+            <span className="dn-sfl-ar">رقم الهوية</span>
+          </div>
+        )}
         <div className="dn-sf">
           <span className="dn-sfl-en">Date</span>
           <span className="dn-sfv">{date}</span>
@@ -118,8 +128,44 @@ function SignatureBox({
   )
 }
 
+// The same document serves both directions of a rental. Outbound it is a
+// delivery note; on a collection it is the customer's proof that the devices
+// went back to Kara, so every line that says "delivered / received" has to
+// flip. Kept as one table rather than ternaries at each call site — the two
+// wordings have to stay legally consistent with each other.
+const NOTE_COPY = {
+  delivery: {
+    titleEn: "Delivery Note",
+    titleAr: "سند تسليم",
+    dateEn: "Delivery Date",
+    dateAr: "تاريخ التسليم",
+    disclaimerEn:
+      "I confirm that I have inspected the devices and items, verified the quantities, and received them in good condition.",
+    disclaimerAr:
+      "أقر بأنني قد قمت بفحص الأجهزة والأصناف والتحقق من الكميات واستلمتها بحالة جيدة.",
+    signatoryEn: "Signature of the Receiver",
+    signatoryAr: "توقيع المستلم",
+  },
+  collection: {
+    titleEn: "Collection Receipt",
+    titleAr: "سند استلام",
+    dateEn: "Collection Date",
+    dateAr: "تاريخ الاستلام",
+    // Second sentence is load-bearing, not boilerplate: a rep collecting a
+    // stack of devices at the customer's door cannot power-test them there.
+    // Without reserving the inspection, signing this would read as Kara
+    // accepting every device as sound at handover.
+    disclaimerEn:
+      "I confirm that I have handed over the devices and items listed above to Kara, in the quantities and condition stated. This receipt is preliminary, and a detailed inspection will be performed later.",
+    disclaimerAr:
+      "أقر بأنني سلّمت الأجهزة والأصناف الموضحة أعلاه إلى كارا بالكميات والحالة المذكورة، ويعد هذا الاستلام مبدئياً وسيتم إجراء فحص تفصيلي للأصناف لاحقاً.",
+    signatoryEn: "Signature of the Handover Party",
+    signatoryAr: "توقيع المُسلِّم",
+  },
+} as const
+
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
-  const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName, depositNote } = data
+  const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName, depositNote, collectedBy } = data
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
   // Only render the deposit block when opted in AND it carries content.
   const depositLines = depositNote?.lines ?? []
@@ -127,10 +173,14 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
   const showDeposit = Boolean(depositNote?.enabled && (depositLines.length > 0 || depositNoteText))
   const depositTotal = computeDepositTotal(depositLines)
   const depositTitleParts = depositNote ? splitBilingualTitle(depositNote.title) : null
-  const signDate = fmt(signature?.signedAt ?? request?.deliveryDate ?? null)
+  const signDate = fmt(signature?.signedAt ?? request?.movementDate ?? null)
   // Print the delivery location ("<IATA>, P<n>") taken from the document name,
   // falling back to the customer's registered city for legacy notes.
   const deliveryLocation = extractDeliveryLocationLabel(sig?.documentName) ?? customer?.city ?? "—"
+  // Anything that is not an explicit collection keeps the delivery wording,
+  // including legacy notes whose request row is gone (typeSlug null).
+  const isCollectionNote = request?.typeSlug === "collection"
+  const copy = isCollectionNote ? NOTE_COPY.collection : NOTE_COPY.delivery
 
   return (
     <div className="dn-root" id="delivery-note-root">
@@ -146,9 +196,9 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
       <div className="dn-body">
         {/* Title */}
         <div className="dn-title-row">
-          <div className="dn-title">Delivery Note</div>
+          <div className="dn-title">{copy.titleEn}</div>
           <div className="dn-title-divider" />
-          <div className="dn-title dn-rtl">سند تسليم</div>
+          <div className="dn-title dn-rtl">{copy.titleAr}</div>
         </div>
 
         {/* Info table — company / customer data */}
@@ -157,7 +207,12 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
             <tbody>
               <tr className="dn-sec-hdr"><td colSpan={3}>Order Information &nbsp;/&nbsp; بيانات الطلب</td></tr>
               <tr><td className="dn-en-lbl">Quote Number</td><td className="dn-val dn-fw">{request?.quoteNumber ?? "—"}</td><td className="dn-ar-lbl">رقم الطلب</td></tr>
-              <tr><td className="dn-en-lbl">Delivery Date</td><td className="dn-val">{fmt(request?.deliveryDate)}</td><td className="dn-ar-lbl">تاريخ التسليم</td></tr>
+              {/* A collection prints both ends of the rental — went out on X,
+                  came back on Y — so the period reads off one page. */}
+              {isCollectionNote && (
+                <tr><td className="dn-en-lbl">Delivery Date</td><td className="dn-val">{fmt(request?.deliveryDate)}</td><td className="dn-ar-lbl">تاريخ التسليم</td></tr>
+              )}
+              <tr><td className="dn-en-lbl">{copy.dateEn}</td><td className="dn-val">{fmt(request?.movementDate)}</td><td className="dn-ar-lbl">{copy.dateAr}</td></tr>
               <tr className="dn-sec-hdr"><td colSpan={3}>Client Information &nbsp;/&nbsp; بيانات العميل</td></tr>
               <tr><td className="dn-en-lbl">Prepared For</td><td className="dn-val dn-fw">{customer?.name ?? "—"}</td><td className="dn-ar-lbl">تم إعداده لصالح</td></tr>
               <tr><td className="dn-en-lbl">Point of Contact</td><td className="dn-val">{customer?.contactPerson ?? "—"}</td><td className="dn-ar-lbl">مسؤول التواصل</td></tr>
@@ -270,20 +325,35 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
 
         {/* Disclaimer */}
         <div className="dn-disclaimer">
-          I confirm that I have inspected the devices and items, verified the quantities, and received them in good condition.
-          <span className="dn-disclaimer-ar">أقر بأنني قد قمت بفحص الأجهزة والأصناف والتحقق من الكميات واستلمتها بحالة جيدة.</span>
+          {copy.disclaimerEn}
+          <span className="dn-disclaimer-ar">{copy.disclaimerAr}</span>
         </div>
 
         {/* Signatures */}
         <div className="dn-sig-wrap">
           <SignatureBox
-            titleEn="Signature of the Receiver"
-            titleAr="توقيع المستلم"
+            titleEn={copy.signatoryEn}
+            titleAr={copy.signatoryAr}
             name={signature?.fullName ?? null}
             nationalId={signature?.nationalId ?? null}
             date={signDate}
             signatureData={signature?.signatureData ?? null}
           />
+          {/* A collection is a two-party handover: the customer releases the
+              devices and Kara's rep acknowledges taking them. The rep signs by
+              hand on the printed page — capturing it is pointless when the rep
+              is the one holding the tablet the customer just signed on. */}
+          {isCollectionNote && (
+            <SignatureBox
+              titleEn="Received by (Kara Team)"
+              titleAr="توقيع مندوب كارا"
+              name={collectedBy}
+              nationalId={null}
+              date={signDate}
+              signatureData={null}
+              showNationalId={false}
+            />
+          )}
           {requiresAuthorized && (
             <SignatureBox
               titleEn="Authorised Signatory"
@@ -349,8 +419,10 @@ const DN_STYLES = `
 .dn-dep-note{padding:8px 12px;font-size:9.5px;color:#666;font-style:italic;line-height:1.7;border-top:1px dotted #e8e4f0;white-space:pre-wrap;word-break:break-word;}
 .dn-disclaimer{font-size:10px;color:#512B83;text-align:center;margin:12px 0 14px;line-height:1.8;font-style:italic;}
 .dn-disclaimer-ar{display:block;direction:rtl;margin-top:4px;}
-.dn-sig-wrap{display:flex;gap:14px;margin-bottom:14px;}
-.dn-sig-box{flex:1;border:1px solid #ccc;border-radius:6px;overflow:hidden;}
+/* Two boxes still split the row evenly; a collection that also needs an
+   authorised signatory makes three, which wrap instead of being crushed. */
+.dn-sig-wrap{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:14px;}
+.dn-sig-box{flex:1 1 30%;min-width:180px;border:1px solid #ccc;border-radius:6px;overflow:hidden;}
 .dn-sig-hdr{background:#e8e4f0;color:#512B83;padding:7px 12px;font-weight:700;font-size:10.5px;border-bottom:1px solid #d4cfe4;display:flex;justify-content:space-between;align-items:center;}
 .dn-sig-hdr-ar{direction:rtl;}
 .dn-sig-body{padding:10px 12px;}

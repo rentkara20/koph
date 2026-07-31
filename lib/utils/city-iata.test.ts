@@ -27,6 +27,37 @@ describe("buildDeliveryNoteName", () => {
       deliveryPartNumber: 1,
     })).toBe("Delivery Note #10101 Al Rajhi Bank - IT Dept, RUH, P1")
   })
+
+  it("names a collection a receipt, not a delivery note", () => {
+    expect(buildDeliveryNoteName({
+      documentNumber: "10101",
+      customerName: "Al Rajhi Bank - IT Dept",
+      city: "Riyadh",
+      requestTypeSlug: "collection",
+    })).toBe("Collection Receipt #10101 Al Rajhi Bank - IT Dept, RUH, P1")
+  })
+
+  it("keeps the location extractable on a collection receipt", () => {
+    // The trailing P-marker is what extractDeliveryLocationLabel keys off; a
+    // collection has no delivery part, so this guards against dropping it.
+    const name = buildDeliveryNoteName({
+      documentNumber: "10101",
+      customerName: "Al Rajhi Bank",
+      city: "Jeddah",
+      deliveryPartNumber: null,
+      requestTypeSlug: "collection",
+    })
+    expect(extractDeliveryLocationLabel(name)).toBe("JED, P1")
+  })
+
+  it("falls back to the delivery wording for any other type", () => {
+    expect(buildDeliveryNoteName({
+      documentNumber: "10101",
+      customerName: "Al Rajhi Bank",
+      city: "Riyadh",
+      requestTypeSlug: "installation",
+    })).toBe("Delivery Note #10101 Al Rajhi Bank, RUH, P1")
+  })
 })
 
 describe("extractDeliveryLocationLabel", () => {

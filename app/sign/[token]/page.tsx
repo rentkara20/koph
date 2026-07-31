@@ -145,9 +145,9 @@ export default async function SignPage({
                       #{request.quoteNumber}
                     </p>
                   )}
-                  {request?.deliveryDate && (
+                  {request?.movementDate && (
                     <p className="text-xs text-primary-foreground/85">
-                      {formatDate(request.deliveryDate)}
+                      {formatDate(request.movementDate)}
                     </p>
                   )}
                 </div>
@@ -210,7 +210,7 @@ export default async function SignPage({
             </section>
 
             {/* Document meta */}
-            {(request?.quoteNumber || customer?.name || request?.deliveryDate) && (
+            {(request?.quoteNumber || customer?.name || request?.movementDate) && (
               <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-xl border border-border bg-card px-4 py-3 text-xs">
                 {customer?.name && (
                   <div>
@@ -224,10 +224,10 @@ export default async function SignPage({
                     <strong className="font-mono text-foreground" dir="ltr">{request.quoteNumber}</strong>
                   </div>
                 )}
-                {request?.deliveryDate && (
+                {request?.movementDate && (
                   <div>
                     <span className="text-muted-foreground">{t("delivery")}: </span>
-                    <strong className="text-foreground">{formatDate(request.deliveryDate)}</strong>
+                    <strong className="text-foreground">{formatDate(request.movementDate)}</strong>
                   </div>
                 )}
               </div>

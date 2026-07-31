@@ -319,6 +319,7 @@ export default async function RequestDetailPage({
                     customer?.city ??
                     null,
                   deliveryPartNumber: request.deliveryPartNumber,
+                  requestTypeSlug: requestType?.slug ?? null,
                 })}
                 baseUrl={appBaseUrl()}
                 customerName={customer?.name ?? null}

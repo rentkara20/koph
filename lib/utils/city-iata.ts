@@ -98,22 +98,29 @@ export function cityToIata(city?: string | null): string {
 }
 
 /**
- * Builds the default delivery-note document name:
- *   "Delivery Note #<num> <customer>, <LOC>, P<delivery part>"
+ * Builds the default signature-document name:
+ *   "<Delivery Note|Collection Receipt> #<num> <customer>, <LOC>, P<part>"
  * Location is omitted when unknown. Legacy requests safely default to P1.
+ *
+ * The trailing "P<n>" marker is kept on collections even though a collection
+ * carries no delivery part — extractDeliveryLocationLabel keys off it to find
+ * the location slot, so dropping it would blank the City field on the note.
  */
 export function buildDeliveryNoteName({
   documentNumber,
   customerName,
   city,
   deliveryPartNumber = 1,
+  requestTypeSlug,
 }: {
   documentNumber: string
   customerName?: string | null
   city?: string | null
   deliveryPartNumber?: number | null
+  requestTypeSlug?: string | null
 }): string {
-  const base = `Delivery Note #${documentNumber}${customerName ? ` ${customerName}` : ""}`
+  const kind = requestTypeSlug === "collection" ? "Collection Receipt" : "Delivery Note"
+  const base = `${kind} #${documentNumber}${customerName ? ` ${customerName}` : ""}`
   const loc = cityToIata(city)
   const part = Math.max(1, deliveryPartNumber ?? 1)
   return loc ? `${base}, ${loc}, P${part}` : `${base}, P${part}`

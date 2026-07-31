@@ -1,13 +1,17 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, notInArray } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   customerContacts,
   customers,
   customerSignatures,
+  deliveryTaskItems,
+  partners,
+  partnerTasks,
   requestItems,
   requests,
+  requestTypes,
   signatureRequests,
   signatureItemConditions,
 } from "@/lib/db/schema"
@@ -35,8 +39,24 @@ export type DeliveryNoteData = {
   request: {
     requestNumber: string
     quoteNumber: string | null
+    // The date for the direction this note documents: the delivery date on an
+    // outbound note, the collection date on a collection receipt. Resolved
+    // here so the view never has to know which column to read.
+    movementDate: number | null
+    // Both raw dates. A collection receipt prints the pair, so the whole rental
+    // period — went out on X, came back on Y — reads off a single page.
     deliveryDate: number | null
+    collectionDate: number | null
+    // Request type slug. Drives the note's wording — a collection is a receipt
+    // FROM the customer, not a delivery TO them. Null on notes whose request
+    // was deleted, which fall back to the delivery wording.
+    typeSlug: string | null
   } | null
+  // The Kara side of a collection: who physically took the devices. Resolved
+  // from the partner task covering this request. Printed as a name over a
+  // blank line the rep signs by hand — deliberately NOT a captured signature,
+  // since the rep is holding the tablet the customer just signed on.
+  collectedBy: string | null
   // Top block = the customer/company on record (NOT the receiver).
   customer: {
     name: string
@@ -104,6 +124,44 @@ async function loadSignatureParty(signatureRequestId: string): Promise<Signature
   return { ...row, userAgent, auditDataHash }
 }
 
+/**
+ * The Kara-side name for a collection receipt: the partner carrying out the
+ * job. Two routes in, mirroring syncRequestStatus in lib/actions/tasks.ts —
+ * Delivery Batching v2 lets one task span several requests, so the task's own
+ * requestId column is advisory and the item bridge is the reliable link.
+ * Cancelled/rejected tasks are ignored; they did not collect anything.
+ */
+async function loadCollectedBy(requestId: string): Promise<string | null> {
+  const dead: (typeof partnerTasks.status.enumValues)[number][] = [
+    "cancelled",
+    "rejected",
+    "failed",
+  ]
+  const [byColumn, byItems] = await Promise.all([
+    db
+      .select({ name: partners.name, contactPerson: partners.contactPerson })
+      .from(partnerTasks)
+      .innerJoin(partners, eq(partnerTasks.partnerId, partners.id))
+      .where(
+        and(eq(partnerTasks.requestId, requestId), notInArray(partnerTasks.status, dead))
+      ),
+    db
+      .selectDistinct({ name: partners.name, contactPerson: partners.contactPerson })
+      .from(partnerTasks)
+      .innerJoin(partners, eq(partnerTasks.partnerId, partners.id))
+      .innerJoin(deliveryTaskItems, eq(deliveryTaskItems.partnerTaskId, partnerTasks.id))
+      .innerJoin(requestItems, eq(requestItems.id, deliveryTaskItems.requestItemId))
+      .where(
+        and(eq(requestItems.requestId, requestId), notInArray(partnerTasks.status, dead))
+      ),
+  ])
+
+  const row = byColumn[0] ?? byItems[0]
+  if (!row) return null
+  // "Contact — Company" when a named person is on file, company alone otherwise.
+  return row.contactPerson ? `${row.contactPerson} — ${row.name}` : row.name
+}
+
 export async function getDeliveryNoteData(
   token: string
 ): Promise<DeliveryNoteData | null> {
@@ -156,10 +214,22 @@ export async function getDeliveryNoteData(
         requestNumber: requests.requestNumber,
         quoteNumber: requests.quoteNumber,
         deliveryDate: requests.deliveryDate,
+        collectionDate: requests.collectionDate,
+        typeSlug: requestTypes.slug,
       })
       .from(requests)
+      .innerJoin(requestTypes, eq(requests.typeId, requestTypes.id))
       .where(eq(requests.id, receiverSig.requestId))
-    requestRow = r ?? null
+    requestRow = r
+      ? {
+          requestNumber: r.requestNumber,
+          quoteNumber: r.quoteNumber,
+          movementDate: r.typeSlug === "collection" ? r.collectionDate : r.deliveryDate,
+          deliveryDate: r.deliveryDate,
+          collectionDate: r.collectionDate,
+          typeSlug: r.typeSlug,
+        }
+      : null
 
     const rawItems = await db
       .select({
@@ -252,6 +322,10 @@ export async function getDeliveryNoteData(
     },
     verificationId: receiverSig.verificationId ?? null,
     request: requestRow,
+    collectedBy:
+      requestRow?.typeSlug === "collection" && receiverSig.requestId
+        ? await loadCollectedBy(receiverSig.requestId)
+        : null,
     customer: customerRow ?? null,
     items,
     signature: receiverParty,
