@@ -27,7 +27,9 @@ import {
   DEFAULT_DEPOSIT_CURRENCY,
   DEFAULT_DEPOSIT_TITLE,
   type DepositNote,
+  type DepositSettlement,
 } from "@/lib/domain/deposit-note"
+import { Select } from "@/components/ui/select"
 import type { DepositDefaultLine } from "@/lib/actions/signatures"
 
 type StatusVariant = "outline" | "info" | "success" | "secondary"
@@ -117,6 +119,7 @@ export function SignaturesSection({
   receiverEmail,
   itemsSummary,
   depositDefaults,
+  requestTypeSlug,
 }: {
   requestId: string
   requestNumber: string
@@ -130,6 +133,7 @@ export function SignaturesSection({
   receiverEmail: string | null
   itemsSummary: string
   depositDefaults: DepositDefaultLine[]
+  requestTypeSlug: string | null
 }) {
   const messageTemplates = useOperationalMessageTemplates()
   const hasAuthorizedContact = !!authorizedContact
@@ -151,6 +155,11 @@ export function SignaturesSection({
   const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>(() =>
     Object.fromEntries(depositDefaults.map((d) => [d.itemId, String(d.amount ?? 0)]))
   )
+  // Settling the deposit only makes sense on the way back in — on a delivery
+  // the money has just been taken and there is nothing to settle yet.
+  const isCollection = requestTypeSlug === "collection"
+  const [depositSettlement, setDepositSettlement] = useState<DepositSettlement>("pending_refund")
+  const [depositSettlementNote, setDepositSettlementNote] = useState("")
 
   const depositTotal = depositDefaults.reduce(
     (sum, d) => sum + (Number(depositAmounts[d.itemId]) || 0),
@@ -172,6 +181,12 @@ export function SignaturesSection({
         amount: Number(depositAmounts[d.itemId]) || 0,
       })),
       note: depositNoteText.trim() || null,
+      // A refund/retention is an event with a date; "still owed" is not, so it
+      // carries no timestamp. Stamped at build time so the value freezes into
+      // the signing snapshot alongside the amounts.
+      settlement: isCollection ? depositSettlement : null,
+      settledAt: isCollection && depositSettlement !== "pending_refund" ? Date.now() : null,
+      settlementNote: isCollection ? depositSettlementNote.trim() || null : null,
     }
   }
 
@@ -516,6 +531,31 @@ export function SignaturesSection({
                           {DEFAULT_DEPOSIT_CURRENCY}
                         </span>
                       </div>
+                    </div>
+                  )}
+
+                  {isCollection && (
+                    <div className="space-y-1.5 rounded-md border border-dashed p-2.5">
+                      <Label className="text-xs">{t("deposit.settlement.label")}</Label>
+                      <Select
+                        value={depositSettlement}
+                        onChange={(e) =>
+                          setDepositSettlement(e.target.value as DepositSettlement)
+                        }
+                      >
+                        <option value="pending_refund">
+                          {t("deposit.settlement.pendingRefund")}
+                        </option>
+                        <option value="refunded_outside">
+                          {t("deposit.settlement.refundedOutside")}
+                        </option>
+                        <option value="retained">{t("deposit.settlement.retained")}</option>
+                      </Select>
+                      <Input
+                        value={depositSettlementNote}
+                        onChange={(e) => setDepositSettlementNote(e.target.value)}
+                        placeholder={t("deposit.settlement.notePlaceholder")}
+                      />
                     </div>
                   )}
 

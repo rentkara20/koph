@@ -16,12 +16,14 @@ import {
   partnerTasks,
   requests,
   requestItems,
+  requestTypes,
   orderUnits,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
 import { publicUrl } from "@/lib/utils/public-url"
 import {
   buildSignatureSnapshot,
+  parseSignatureSnapshot,
   type DeliveryOutcome,
   type SnapshotItem,
 } from "@/lib/domain/signature-snapshot"
@@ -237,22 +239,84 @@ export async function createSignatureRequest(
 
 export type DepositDefaultLine = { itemId: string; label: string; amount: number }
 
+/**
+ * Deposit amounts, by serial, taken from the newest SIGNED note on the same
+ * customer order.
+ *
+ * A collection settles a deposit that was agreed months earlier. Purchase cost
+ * is what the device cost Kara today, not what the customer actually paid — so
+ * defaulting a refund to it can hand back the wrong number. The signed note is
+ * the agreed figure and it is immutable, so it is the only correct source.
+ *
+ * Deposit lines key on the ORIGINATING request's item ids, which the collection
+ * request does not share; the snapshot's own item list carries the serials, so
+ * that is what bridges the two.
+ */
+async function depositAmountsFromSignedNotes(
+  orderReference: string
+): Promise<Map<string, number>> {
+  const rows = await db
+    .select({ snapshot: customerSignatures.snapshot, signedAt: customerSignatures.signedAt })
+    .from(customerSignatures)
+    .innerJoin(
+      signatureRequests,
+      eq(customerSignatures.signatureRequestId, signatureRequests.id)
+    )
+    .innerJoin(requests, eq(signatureRequests.requestId, requests.id))
+    .where(and(eq(requests.quoteNumber, orderReference), isNull(requests.deletedAt)))
+    .orderBy(customerSignatures.signedAt)
+
+  // Ascending scan, so a later signature (a re-issued or corrected note)
+  // overwrites an earlier figure for the same device.
+  const bySerial = new Map<string, number>()
+  for (const row of rows) {
+    const snapshot = parseSignatureSnapshot(row.snapshot)
+    const lines = snapshot?.depositNote?.lines
+    if (!snapshot || !lines?.length) continue
+
+    const serialByItemId = new Map(
+      snapshot.items
+        .filter((item) => item.serialNumber)
+        .map((item) => [item.id, item.serialNumber as string])
+    )
+    for (const line of lines) {
+      const serial = serialByItemId.get(line.itemId)
+      if (serial) bySerial.set(serial, line.amount)
+    }
+  }
+  return bySerial
+}
+
 export async function getDepositDefaultsForRequest(
   requestId: string
 ): Promise<DepositDefaultLine[]> {
   const session = await getStaffSession()
   if (!session) return []
 
-  const items = await db
-    .select({
-      id: requestItems.id,
-      description: requestItems.description,
-      brand: requestItems.brand,
-      model: requestItems.model,
-      serialNumber: requestItems.serialNumber,
-    })
-    .from(requestItems)
-    .where(eq(requestItems.requestId, requestId))
+  const [items, [parent]] = await Promise.all([
+    db
+      .select({
+        id: requestItems.id,
+        description: requestItems.description,
+        brand: requestItems.brand,
+        model: requestItems.model,
+        serialNumber: requestItems.serialNumber,
+      })
+      .from(requestItems)
+      .where(eq(requestItems.requestId, requestId)),
+    db
+      .select({ quoteNumber: requests.quoteNumber, typeSlug: requestTypes.slug })
+      .from(requests)
+      .innerJoin(requestTypes, eq(requests.typeId, requestTypes.id))
+      .where(eq(requests.id, requestId)),
+  ])
+
+  // A collection refunds what was agreed on the signed delivery note; anything
+  // else is taking a fresh deposit, for which purchase cost is the right seed.
+  const agreedBySerial =
+    parent?.typeSlug === "collection" && parent.quoteNumber
+      ? await depositAmountsFromSignedNotes(parent.quoteNumber)
+      : new Map<string, number>()
 
   const serials = [...new Set(items.map((i) => i.serialNumber).filter((s): s is string => !!s))]
   const costBySerial = new Map<string, number>()
@@ -273,10 +337,13 @@ export async function getDepositDefaultsForRequest(
     const label = [i.description, specs || null, i.serialNumber || null]
       .filter(Boolean)
       .join(" · ")
+    // Agreed figure wins; purchase cost is the fallback when this device was
+    // never on a signed deposit block (added mid-term, legacy note, etc.).
+    const agreed = i.serialNumber ? agreedBySerial.get(i.serialNumber) : undefined
     return {
       itemId: i.id,
       label,
-      amount: (i.serialNumber && costBySerial.get(i.serialNumber)) || 0,
+      amount: agreed ?? ((i.serialNumber && costBySerial.get(i.serialNumber)) || 0),
     }
   })
 }

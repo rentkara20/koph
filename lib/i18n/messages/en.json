@@ -500,7 +500,14 @@
       "notePlaceholder": "Optional note shown under the deposit table",
       "total": "Total deposit",
       "showRefundTerms": "Show refund-condition line",
-      "noItems": "No devices to price for this request."
+      "noItems": "No devices to price for this request.",
+      "settlement": {
+        "label": "Deposit settlement",
+        "pendingRefund": "Still owed to the customer",
+        "refundedOutside": "Already refunded outside the system",
+        "retained": "Retained by Kara",
+        "notePlaceholder": "Reference or reason (optional)"
+      }
     },
     "proof": {
       "generateOtp": "Generate OTP",

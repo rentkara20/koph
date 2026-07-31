@@ -68,6 +68,9 @@ describe("buildSignatureSnapshot", () => {
         showRefundTerms: true,
         lines: [{ itemId: "i1", label: "Laptop", amount: 4500 }],
         note: null,
+        settlement: null,
+        settledAt: null,
+        settlementNote: null,
       },
     })
     expect(snap.depositNote?.lines[0].amount).toBe(4500)

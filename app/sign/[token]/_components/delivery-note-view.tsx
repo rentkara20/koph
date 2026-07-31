@@ -5,6 +5,7 @@ import {
   computeDepositTotal,
   DEPOSIT_REFUND_TERMS_EN,
   DEPOSIT_REFUND_TERMS_AR,
+  type DepositSettlement,
 } from "@/lib/domain/deposit-note"
 
 function fmt(ts: number | null | undefined): string {
@@ -164,6 +165,24 @@ const NOTE_COPY = {
   },
 } as const
 
+// What the note states about the deposit once the devices come back. Phrased
+// so KOPH never claims to have moved money it did not move: a refund handled
+// by cash or transfer is recorded as acknowledged, not as executed here.
+const SETTLEMENT_COPY: Record<DepositSettlement, { en: string; ar: string }> = {
+  pending_refund: {
+    en: "Deposit status: still refundable to the customer.",
+    ar: "حالة التأمين: لا يزال مستحق الرد للعميل.",
+  },
+  refunded_outside: {
+    en: "Deposit status: acknowledged as already refunded to the customer outside this system.",
+    ar: "حالة التأمين: نُقرّ بأنه تم رده للعميل خارج هذا النظام.",
+  },
+  retained: {
+    en: "Deposit status: retained by Kara under the terms above.",
+    ar: "حالة التأمين: محتجز لدى كارا وفقًا للشروط الموضحة أعلاه.",
+  },
+}
+
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
   const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName, depositNote, collectedBy } = data
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
@@ -181,6 +200,13 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
   // including legacy notes whose request row is gone (typeSlug null).
   const isCollectionNote = request?.typeSlug === "collection"
   const copy = isCollectionNote ? NOTE_COPY.collection : NOTE_COPY.delivery
+  // Settlement is null on delivery notes and on every note written before the
+  // field existed, so this whole block simply does not render for them.
+  const settlementCopy = depositNote?.settlement
+    ? SETTLEMENT_COPY[depositNote.settlement]
+    : null
+  const settledOn = depositNote?.settledAt ? fmt(depositNote.settledAt) : ""
+  const settlementNoteText = cleanNote(depositNote?.settlementNote)
 
   return (
     <div className="dn-root" id="delivery-note-root">
@@ -319,6 +345,19 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
                 <span className="dn-rtl">{DEPOSIT_REFUND_TERMS_AR}</span>
               </div>
             )}
+            {settlementCopy && (
+              <div className="dn-dep-settle">
+                <span>
+                  {settlementCopy.en}
+                  {settledOn && ` — ${settledOn}`}
+                </span>
+                <span className="dn-rtl">
+                  {settlementCopy.ar}
+                  {settledOn && ` — ${settledOn}`}
+                </span>
+                {settlementNoteText && <span className="dn-dep-settle-note">{settlementNoteText}</span>}
+              </div>
+            )}
             {depositNoteText && <div className="dn-dep-note">{depositNoteText}</div>}
           </div>
         )}
@@ -417,6 +456,9 @@ const DN_STYLES = `
 .dn-dep-terms{padding:7px 14px;font-size:9.5px;color:#3d3350;line-height:1.7;border-top:1px solid #e0dcea;background:#faf9fd;}
 .dn-dep-terms span{display:block;}
 .dn-dep-note{padding:8px 12px;font-size:9.5px;color:#666;font-style:italic;line-height:1.7;border-top:1px dotted #e8e4f0;white-space:pre-wrap;word-break:break-word;}
+.dn-dep-settle{padding:7px 14px;font-size:9.5px;font-weight:700;color:#512B83;line-height:1.7;border-top:1px solid #e0dcea;background:#f4f1fb;}
+.dn-dep-settle span{display:block;}
+.dn-dep-settle-note{font-weight:400;font-style:italic;color:#666;white-space:pre-wrap;word-break:break-word;}
 .dn-disclaimer{font-size:10px;color:#512B83;text-align:center;margin:12px 0 14px;line-height:1.8;font-style:italic;}
 .dn-disclaimer-ar{display:block;direction:rtl;margin-top:4px;}
 /* Two boxes still split the row evenly; a collection that also needs an

@@ -334,6 +334,7 @@ export default async function RequestDetailPage({
                     : "الأصناف المتفق عليها"
                 }
                 depositDefaults={depositDefaults}
+                requestTypeSlug={requestType?.slug ?? null}
               />
             </CardContent>
           </Card>

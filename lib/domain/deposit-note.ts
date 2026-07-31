@@ -11,6 +11,16 @@ import { z } from "zod"
 
 export type DepositNoteLine = { itemId: string; label: string; amount: number }
 
+// What happened to the deposit, stated on the note the customer keeps.
+// Only meaningful on a collection receipt — on the outbound delivery note the
+// deposit has just been taken and there is nothing to settle yet (null).
+//   pending_refund   — still owed back to the customer.
+//   refunded_outside — already returned by a channel KOPH does not record
+//                      (cash, bank transfer); the note documents it, and KOPH
+//                      makes no claim to have moved the money itself.
+//   retained         — kept against damage/loss/non-return.
+export type DepositSettlement = "pending_refund" | "refunded_outside" | "retained"
+
 export type DepositNote = {
   version: 1
   enabled: boolean
@@ -20,6 +30,11 @@ export type DepositNote = {
   showRefundTerms: boolean
   lines: DepositNoteLine[]
   note: string | null
+  settlement: DepositSettlement | null
+  // Epoch ms. Only set alongside refunded_outside/retained.
+  settledAt: number | null
+  // Free text for the "retained" reason or the refund reference.
+  settlementNote: string | null
 }
 
 export const DEFAULT_DEPOSIT_CURRENCY = "SAR"
@@ -51,6 +66,14 @@ export const depositNoteSchema = z.object({
   showRefundTerms: z.boolean().default(true),
   lines: z.array(depositNoteLineSchema).max(500),
   note: z.string().trim().max(2000).nullable(),
+  // Defaulted so every note stored before settlement existed still parses.
+  // No migration needed — the whole block is JSON in a text column.
+  settlement: z
+    .enum(["pending_refund", "refunded_outside", "retained"])
+    .nullable()
+    .default(null),
+  settledAt: z.number().int().positive().nullable().default(null),
+  settlementNote: z.string().trim().max(2000).nullable().default(null),
 })
 
 /**
