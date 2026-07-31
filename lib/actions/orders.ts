@@ -17,6 +17,7 @@ import {
   sourcingRequests,
   suppliers,
 } from "@/lib/db/schema"
+import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asset-name"
 import { deriveOrderJourney, type JourneyStage } from "@/lib/domain/order-journey"
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
@@ -830,6 +831,70 @@ export type OrderLookup = {
   units: AvailableUnit[]
 }
 
+// Which side of the flow the caller is importing units for.
+//
+// "outbound" (delivery/installation/swap) draws from what is still in the
+// warehouse — in_stock units this order may claim, free stock included.
+//
+// "inbound" (collection) is the mirror image: the devices already OUT with
+// this customer under this order. Free stock is deliberately NOT part of an
+// inbound lookup — an unallocated unit that reads "delivered" went out under
+// some other order, and offering it here would let one customer's collection
+// receipt claim another customer's device.
+export type OrderUnitLookupMode = "outbound" | "inbound"
+
+// Delivered units belonging to this order. Two routes in, because the link
+// between an order and the device that went out under it is recorded in two
+// different places depending on where the unit came from:
+//   1. order_unit.order_id — units minted directly against the order's lines.
+//   2. request_item.order_unit_id — how a unit was actually pulled into a
+//      delivery request. This is the only route for free-stock units, which
+//      carry no order_id of their own, and requests link back by quote_number
+//      (there is no request.order_id column).
+export async function getDeliveredOrderUnitsCore(tx: Tx, orderId: string, orderNumber: string) {
+  // Same name/brand/model resolution the assets screens use (per-asset
+  // override wins, origin line is the fallback). Both origins are LEFT-joined
+  // because a free-stock unit has no order line and a directly-minted unit has
+  // no PO line — an inner join on either would silently drop half the fleet.
+  const selection = {
+    unitId: orderUnits.id,
+    serialNumber: orderUnits.serialNumber,
+    description: assetDisplayNameSql(orderLines.description, purchaseOrderLines.itemDescription),
+    brand: assetBrandSql(orderLines.brand, purchaseOrderLines.brand),
+    model: assetModelSql(orderLines.model, purchaseOrderLines.model),
+    supplierName: suppliers.name,
+  }
+
+  const [directUnits, requestedUnits] = await Promise.all([
+    tx
+      .select(selection)
+      .from(orderUnits)
+      .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+      .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+      .where(and(eq(orderUnits.orderId, orderId), eq(orderUnits.status, "delivered"))),
+    tx
+      .selectDistinct(selection)
+      .from(orderUnits)
+      .innerJoin(requestItems, eq(requestItems.orderUnitId, orderUnits.id))
+      .innerJoin(requests, eq(requestItems.requestId, requests.id))
+      .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+      .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+      .where(
+        and(
+          eq(requests.quoteNumber, orderNumber),
+          isNull(requests.deletedAt),
+          eq(orderUnits.status, "delivered"),
+        ),
+      ),
+  ])
+
+  const byId = new Map(directUnits.map((unit) => [unit.unitId, unit]))
+  for (const unit of requestedUnits) byId.set(unit.unitId, unit)
+  return [...byId.values()].sort((a, b) => (a.description ?? "").localeCompare(b.description ?? ""))
+}
+
 export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
   const [directUnits, purchasedUnits, freeStockUnits] = await Promise.all([
     tx
@@ -894,9 +959,10 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
   return [...byId.values()].sort((a, b) => a.description.localeCompare(b.description))
 }
 
-export async function getOrderUnitsByNumber(orderNumber: string): Promise<
-  { error?: string; order?: OrderLookup }
-> {
+export async function getOrderUnitsByNumber(
+  orderNumber: string,
+  mode: OrderUnitLookupMode = "outbound"
+): Promise<{ error?: string; order?: OrderLookup }> {
   const session = await getStaffSession()
   if (!session) return { error: "Unauthorized" }
 
@@ -916,9 +982,14 @@ export async function getOrderUnitsByNumber(orderNumber: string): Promise<
 
   if (!order) return { error: "Order not found" }
 
-  // Both directly-created units and units received through this order's
-  // sourcing/procurement chain are available to the delivery request.
-  const rows = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, order.id))
+  // Outbound: both directly-created units and units received through this
+  // order's sourcing/procurement chain are available to the delivery request.
+  // Inbound: only what this order actually has out with the customer.
+  const rows = await db.transaction((tx) =>
+    mode === "inbound"
+      ? getDeliveredOrderUnitsCore(tx, order.id, order.orderNumber)
+      : getAvailableOrderUnitsCore(tx, order.id)
+  )
 
   return {
     order: {

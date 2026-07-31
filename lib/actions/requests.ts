@@ -180,12 +180,21 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
       // guard closes the race where two concurrent requests both read the same
       // "in_stock" unit as available, and the asset_event is written in the
       // SAME transaction as the request (was a best-effort post-tx call before).
-      for (const unitId of pulledUnitIds) {
-        await applyAssetTransition(tx, unitId, "assign", {
-          requestId: id,
-          customerId: data.customerId,
-          byUserId: session.user.id,
-        })
+      //
+      // A collection pulls the mirror-image set: units already OUT with the
+      // customer, sitting at "delivered". "assign" is only legal from
+      // in_stock/reserved, so running it here would reject the whole request.
+      // Nothing to reserve either — the devices are spoken for by definition.
+      // They stay "delivered" until the collection task is signed off, which
+      // moves them to "returned" (see signOffTask in lib/actions/tasks.ts).
+      if (requestType?.slug !== "collection") {
+        for (const unitId of pulledUnitIds) {
+          await applyAssetTransition(tx, unitId, "assign", {
+            requestId: id,
+            customerId: data.customerId,
+            byUserId: session.user.id,
+          })
+        }
       }
     }
   })

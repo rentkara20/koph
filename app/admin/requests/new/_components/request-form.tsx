@@ -6,7 +6,11 @@ import { useLocale, useTranslations } from "next-intl"
 import Link from "next/link"
 import { CheckCircle2, ChevronDown, Plus, Trash2, PackageSearch } from "lucide-react"
 import { createRequest, getCustomerDeliveryOptions } from "@/lib/actions/requests"
-import { getOrderUnitsByNumber, type OrderLookup } from "@/lib/actions/orders"
+import {
+  getOrderUnitsByNumber,
+  type OrderLookup,
+  type OrderUnitLookupMode,
+} from "@/lib/actions/orders"
 import type { RequestType, Customer } from "@/lib/db/schema"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -76,6 +80,14 @@ export function RequestForm({
   const [loading, setLoading] = useState(false)
   const [items, setItems] = useState<ItemRow[]>([emptyItem()])
 
+  // Controlled because the request type decides which direction the order
+  // lookup runs in: a delivery draws from warehouse stock, a collection draws
+  // from what is already out with the customer.
+  const [typeId, setTypeId] = useState(initialTypeId)
+  const typeSlug = requestTypes.find((rt) => rt.id === typeId)?.slug ?? null
+  const isCollection = typeSlug === "collection"
+  const lookupMode: OrderUnitLookupMode = isCollection ? "inbound" : "outbound"
+
   // Controlled so importing an order can pre-fill them.
   const [customerId, setCustomerId] = useState("")
   const [customerOptions, setCustomerOptions] = useState(
@@ -134,13 +146,15 @@ export function RequestForm({
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
   const [autoImported, setAutoImported] = useState(false)
 
-  async function handleLookup(overrideNumber?: string) {
+  // overrideMode lets the type picker re-run the lookup with the direction it
+  // just switched to, without waiting a render for `lookupMode` to catch up.
+  async function handleLookup(overrideNumber?: string, overrideMode?: OrderUnitLookupMode) {
     const num = (overrideNumber ?? orderNumberInput).trim()
     if (!num) return
     setLookupError("")
     setLookupLoading(true)
     try {
-      const res = await getOrderUnitsByNumber(num)
+      const res = await getOrderUnitsByNumber(num, overrideMode ?? lookupMode)
       if (res.error || !res.order) {
         setLookup(null)
         setLookupError(res.error ?? t("orderNotFound"))
@@ -179,6 +193,21 @@ export function RequestForm({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount only
   }, [])
+
+  // Switching between an outbound and an inbound type invalidates whatever the
+  // picker is showing — in_stock units are meaningless on a collection and
+  // delivered ones on a delivery. Re-fetch in the same direction the user just
+  // picked rather than leaving stale rows on screen to be imported by mistake.
+  function handleTypeChange(nextTypeId: string) {
+    setTypeId(nextTypeId)
+    const nextSlug = requestTypes.find((rt) => rt.id === nextTypeId)?.slug ?? null
+    const nextMode: OrderUnitLookupMode = nextSlug === "collection" ? "inbound" : "outbound"
+    if (nextMode === lookupMode) return
+
+    setLookup(null)
+    setSelectedUnits(new Set())
+    if (!autoImported && orderNumberInput.trim()) handleLookup(orderNumberInput, nextMode)
+  }
 
   function toggleUnit(unitId: string) {
     setSelectedUnits((prev) => {
@@ -241,7 +270,7 @@ export function RequestForm({
       const validItems = items.filter((i) => i.description.trim())
 
       const result = await createRequest({
-        typeId: fd.get("typeId") as string,
+        typeId,
         customerId: customerId,
         customerLocationId: customerLocationId || undefined,
         receiverContactId: receiverContactId || undefined,
@@ -296,7 +325,9 @@ export function RequestForm({
           <PackageSearch className="size-4 text-muted-foreground" />
           <h3 className="text-sm font-medium">{t("importFromOrder")}</h3>
         </div>
-        <p className="text-xs text-muted-foreground">{t("importHint")}</p>
+        <p className="text-xs text-muted-foreground">
+          {isCollection ? t("importHintCollection") : t("importHint")}
+        </p>
         <div className="flex gap-2">
           <Input
             value={orderNumberInput}
@@ -326,13 +357,15 @@ export function RequestForm({
               </p>
               {!autoImported && (
                 <span className="text-xs text-muted-foreground">
-                  {lookup.units.length} {t("availableUnits")}
+                  {lookup.units.length} {isCollection ? t("deliveredUnits") : t("availableUnits")}
                 </span>
               )}
             </div>
 
             {lookup.units.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t("noAvailableUnits")}</p>
+              <p className="text-sm text-muted-foreground">
+                {isCollection ? t("noDeliveredUnits") : t("noAvailableUnits")}
+              </p>
             ) : (
               <>
                 <ul className="space-y-1.5 max-h-64 overflow-y-auto">
@@ -382,7 +415,13 @@ export function RequestForm({
           <Label htmlFor="typeId">
             {t("type")} <span className="text-destructive">*</span>
           </Label>
-          <Select id="typeId" name="typeId" required defaultValue={initialTypeId}>
+          <Select
+            id="typeId"
+            name="typeId"
+            required
+            value={typeId}
+            onChange={(event) => handleTypeChange(event.target.value)}
+          >
             <option value="">— {t("chooseType")} —</option>
             {requestTypes.map((rt) => (
               <option key={rt.id} value={rt.id}>
@@ -475,13 +514,26 @@ export function RequestForm({
           )}
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor="deliveryDate">
-            {t("deliveryDate")}{" "}
-            <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
-          </Label>
-          <Input id="deliveryDate" name="deliveryDate" type="date" />
-        </div>
+        {/* The date that matters is the one for the direction being scheduled.
+            Both columns exist on the row; only the relevant one is promoted
+            here, and the other stays available under additional details. */}
+        {isCollection ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="collectionDate">
+              {t("collectionDate")}{" "}
+              <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
+            </Label>
+            <Input id="collectionDate" name="collectionDate" type="date" />
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor="deliveryDate">
+              {t("deliveryDate")}{" "}
+              <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
+            </Label>
+            <Input id="deliveryDate" name="deliveryDate" type="date" />
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="timeWindow">
@@ -513,10 +565,19 @@ export function RequestForm({
               className="font-mono"
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="collectionDate">{t("collectionDate")}</Label>
-            <Input id="collectionDate" name="collectionDate" type="date" />
-          </div>
+          {/* Whichever date was not promoted above — never both, or the form
+              would carry two inputs sharing one id and name. */}
+          {isCollection ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="deliveryDate">{t("deliveryDate")}</Label>
+              <Input id="deliveryDate" name="deliveryDate" type="date" />
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="collectionDate">{t("collectionDate")}</Label>
+              <Input id="collectionDate" name="collectionDate" type="date" />
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="salesRef">{t("salesRef")}</Label>
             <Input id="salesRef" name="salesRef" />
