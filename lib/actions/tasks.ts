@@ -560,7 +560,17 @@ export async function getTasksForRequest(requestId: string) {
 
 // ─── Admin: sign off task ─────────────────────────────────────────────────────
 
+// What the partner gets paid for the trip. Deliberately NOT connected to the
+// asset lifecycle: "partial" here means Kara is paying part of the fee (a late
+// or messy trip), not that some devices stayed in the van. Which devices moved
+// is decided by the reported items and the signed outcome — see the OI-1 block
+// in signOffTask — so a docked fee never silently leaves stock unaccounted for.
 export type PaymentDecision = "full" | "partial" | "none" | "hold"
+
+// Signed outcomes that block the whole-request fallback: the receiver has
+// stated in writing that not everything changed hands, so only an explicit
+// per-item report may move devices for that request.
+const PARTIAL_OUTCOMES = new Set(["partial", "refused"])
 
 export type SignOffInput = {
   decision: PaymentDecision
@@ -857,10 +867,11 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
     // OI-1: move devices through the asset lifecycle in the SAME transaction as
     // the task close, PER affected request — different requests in a batch
     // can be different request types (e.g. delivery vs collection), so each
-    // gets its own assetAction resolved from its own type. Scoped to THIS
-    // task's approved serialized allocations when delivery_task_item rows
-    // exist (attributed to their owning request); legacy tasks (no rows) fall
-    // back to the whole-request set, matching pre-existing behavior exactly.
+    // gets its own assetAction resolved from its own type.
+    //
+    // Which units move is resolved per request by resolveUnitsToTransition
+    // below. Signing off is the admin asserting the trip happened, so the
+    // absence of per-item reporting must not be read as "nothing arrived".
     const typeIds = [...new Set(parentRequests.map((r) => r.typeId))]
     const typeRows = await tx
       .select({ id: requestTypes.id, slug: requestTypes.slug })
@@ -877,6 +888,31 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
       itemIdToRequestId = new Map(itemRows.map((i) => [i.id, i.requestId]))
     }
 
+    // Latest signed outcome per request. The only thing it is used for here is
+    // to refuse the whole-request fallback: "partial"/"refused" is the receiver
+    // stating on a signed document that some devices did not change hands, so
+    // moving them all would write a fact the customer already contradicted.
+    const outcomeRows = await tx
+      .select({
+        requestId: signatureRequests.requestId,
+        outcome: customerSignatures.deliveryOutcome,
+        signedAt: customerSignatures.signedAt,
+      })
+      .from(customerSignatures)
+      .innerJoin(signatureRequests, eq(customerSignatures.signatureRequestId, signatureRequests.id))
+      .where(
+        and(
+          eq(signatureRequests.status, "signed"),
+          inArray(signatureRequests.requestId, parentRequests.map((r) => r.id))
+        )
+      )
+      .orderBy(customerSignatures.signedAt)
+    // Ascending, so a later signature overwrites an earlier one per request.
+    const outcomeByRequestId = new Map<string, string>()
+    for (const row of outcomeRows) {
+      if (row.requestId && row.outcome) outcomeByRequestId.set(row.requestId, row.outcome)
+    }
+
     for (const req of parentRequests) {
       const slug = slugByTypeId.get(req.typeId)
       const assetAction =
@@ -885,22 +921,23 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
         : null
       if (!assetAction) continue
 
+      // Reported subset wins; otherwise the whole request moves, unless the
+      // signed receipt explicitly says not everything arrived.
+      const approvedSerialized = taskItems.filter(
+        (ti) =>
+          ti.verificationStatus === "approved" &&
+          ti.qtyDelivered > 0 &&
+          itemIdToRequestId.get(ti.requestItemId) === req.id
+      )
+
       let unitIds: string[] = []
-      if (taskItems.length > 0) {
-        const approvedSerialized = taskItems.filter(
-          (ti) =>
-            ti.verificationStatus === "approved" &&
-            ti.qtyDelivered > 0 &&
-            itemIdToRequestId.get(ti.requestItemId) === req.id
-        )
-        if (approvedSerialized.length > 0) {
-          const items = await tx
-            .select()
-            .from(requestItems)
-            .where(inArray(requestItems.id, approvedSerialized.map((ti) => ti.requestItemId)))
-          unitIds = items.map((i) => i.orderUnitId).filter((v): v is string => Boolean(v))
-        }
-      } else {
+      if (approvedSerialized.length > 0) {
+        const items = await tx
+          .select()
+          .from(requestItems)
+          .where(inArray(requestItems.id, approvedSerialized.map((ti) => ti.requestItemId)))
+        unitIds = items.map((i) => i.orderUnitId).filter((v): v is string => Boolean(v))
+      } else if (!PARTIAL_OUTCOMES.has(outcomeByRequestId.get(req.id) ?? "")) {
         const pulled = await tx
           .select({ orderUnitId: requestItems.orderUnitId })
           .from(requestItems)
