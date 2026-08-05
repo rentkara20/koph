@@ -82,7 +82,10 @@
     "moveDown": "Move down",
     "systemManaged": "System-managed",
     "saving": "Saving…",
-    "adding": "Adding…"
+    "adding": "Adding…",
+    "none": "None",
+    "select": "Select",
+    "done": "Done"
   },
   "auth": {
     "login": "Log in",
@@ -342,7 +345,38 @@
       "poNumber": "PO number",
       "planned": "Planned",
       "openMap": "Location"
-    }
+    },
+    "adHocReason": {
+      "manual_pickup": "Manual pickup",
+      "internal_delivery": "Internal delivery",
+      "supplier_visit": "Supplier visit",
+      "asset_transfer": "Asset transfer",
+      "other": "Other"
+    },
+    "adHocNewButton": "Ad-hoc task",
+    "adHocNewTitle": "New ad-hoc partner task",
+    "adHocNewSubtitle": "An operational trip not tied to a customer request or purchase order",
+    "adHocTaskLabel": "Ad-hoc task",
+    "adHocReasonLabel": "Reason",
+    "adHocTitleLabel": "Task title",
+    "adHocDestination": "Destination",
+    "adHocPhotoRequired": "Require proof photo",
+    "adHocCreated": "Task created",
+    "adHocTaskLink": "Partner task link",
+    "adHocLinkHint": "Send this link to the partner to run the task.",
+    "adHocCreateAnother": "Create another",
+    "adHocListTitle": "Ad-hoc tasks",
+    "adHocWhatsappHint": "Please open the link to run this trip:",
+    "adHocSendWhatsapp": "Send to partner on WhatsApp",
+    "adHocNoMobile": "Partner has no mobile number — copy the link and send it manually.",
+    "adHocNoContract": "This partner has no active contract.",
+    "adHocCreateContract": "Create a contract",
+    "adHocConfirmPay": "Confirm & pay {amount}",
+    "adHocStart": "Start trip",
+    "adHocDone": "Done",
+    "photoRequiredError": "Please upload a proof photo first.",
+    "selectFailureReason": "Select a reason",
+    "markFailedShort": "Couldn’t do it"
   },
   "customers": {
     "title": "Customers",
@@ -872,7 +906,8 @@
     "noMobile": "No mobile number on file for this contact",
     "whatsappOpened": "Opening WhatsApp…",
     "conditionsSaved": "Item conditions recorded",
-    "taskReturned": "Task returned to partner"
+    "taskReturned": "Task returned to partner",
+    "taskUpdated": "Task updated"
   },
   "delete": {
     "confirm": "Are you sure?",
@@ -1185,7 +1220,8 @@
     "dismiss": "Dismiss",
     "batchTitle": "Multi-stop delivery",
     "batchSubtitle": "This trip covers {count} requests",
-    "batchGroupItems": "{count} items"
+    "batchGroupItems": "{count} items",
+    "destination": "Destination"
   },
   "trust": {
     "secureLink": "Secure link",
@@ -1224,7 +1260,8 @@
     "pickupTaskAssigned": "New pickup task for PO {poNumber}",
     "pickupInTransit": "Pickup in transit: {quantity} unit(s)",
     "pickupReceived": "Pickup fully received at warehouse",
-    "procurementCaseClosed": "Procurement case closed"
+    "procurementCaseClosed": "Procurement case closed",
+    "adHocTaskAssigned": "New ad-hoc task: {title}"
   },
   "suppliers": {
     "title": "Suppliers",
@@ -2167,7 +2204,8 @@
     "deliveryOtpGenerated": "Delivery code generated",
     "manualSignatureUploaded": "Signed file uploaded: {fileName}",
     "manualSignatureApproved": "Manually signed receipt approved",
-    "manualSignatureRejected": "Signed file rejected: {reason}"
+    "manualSignatureRejected": "Signed file rejected: {reason}",
+    "adHocTaskCreated": "Ad-hoc task created"
   },
   "products": {
     "title": "Products for Sale",

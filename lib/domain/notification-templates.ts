@@ -51,6 +51,7 @@ export function notificationLinkUrl(ctx: EventContext): string | undefined {
     case "signature_request":
       return requestId ? `/admin/requests/${requestId}` : "/admin/signatures"
     case "task":
+      if (str(ctx.payload.kind) === "ad_hoc") return "/admin/partners/tasks"
       if (purchaseOrderId) return `/admin/procurement/${purchaseOrderId}`
       return requestId ? `/admin/requests/${requestId}` : "/admin/requests"
     default:
