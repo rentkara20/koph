@@ -19,6 +19,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { failureReasonLabel, type FailureReasonLabels } from "@/lib/domain/failure-reason-label"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   pending: "outline",
@@ -394,6 +395,7 @@ export function TasksSection({
   taskServicesMap,
   allServices,
   batchSummaryByTaskId,
+  failureReasonLabels,
 }: {
   requestId: string
   requestNumber: string
@@ -408,8 +410,10 @@ export function TasksSection({
   // than one request; drives a single WhatsApp message covering the whole
   // trip instead of naming just this page's own request.
   batchSummaryByTaskId?: Record<string, { requestNumber: string; customerName: string | null }[]>
+  failureReasonLabels: FailureReasonLabels
 }) {
   const messageTemplates = useOperationalMessageTemplates()
+  const locale = useLocale()
   const t = useTranslations("tasks")
   const tCommon = useTranslations("common")
   const tToast = useTranslations("toast")
@@ -510,7 +514,7 @@ export function TasksSection({
 
                 {task.status === "failed" && task.failureReason && (
                   <p className="text-xs text-destructive">
-                    {task.failureReason.replace(/_/g, " ")}
+                    {failureReasonLabel(failureReasonLabels, task.failureReason, locale)}
                     {task.failureNotes ? ` — ${task.failureNotes}` : ""}
                   </p>
                 )}

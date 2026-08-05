@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import { failureReasons } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole } from "@/lib/auth/session"
+import type { FailureReasonLabels } from "@/lib/domain/failure-reason-label"
 
 export type FailureReasonActionResult = { error?: string; id?: string }
 
@@ -29,6 +30,18 @@ export async function getActiveFailureReasons() {
     .from(failureReasons)
     .where(eq(failureReasons.isActive, true))
     .orderBy(asc(failureReasons.sortOrder))
+}
+
+/**
+ * Public — slug → names, for DISPLAYING a reason a task already recorded.
+ * Includes inactive rows on purpose: retiring a reason must not blank out the
+ * label on tasks that were failed for it while it was still offered.
+ */
+export async function getFailureReasonLabels(): Promise<FailureReasonLabels> {
+  const rows = await db
+    .select({ slug: failureReasons.slug, nameEn: failureReasons.nameEn, nameAr: failureReasons.nameAr })
+    .from(failureReasons)
+  return Object.fromEntries(rows.map((r) => [r.slug, { nameEn: r.nameEn, nameAr: r.nameAr }]))
 }
 
 export async function isValidActiveFailureReason(slug: string): Promise<boolean> {

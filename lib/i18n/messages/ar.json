@@ -295,14 +295,6 @@
     "markFailed": "تحديد كفاشلة",
     "failureReason": "سبب الفشل",
     "failureNotes": "ملاحظات الفشل",
-    "failureReasons": {
-      "customer_unavailable": "العميل غير متاح",
-      "wrong_address": "عنوان خاطئ",
-      "item_damaged": "الجهاز تالف",
-      "access_denied": "تم رفض الوصول",
-      "customer_rescheduled": "أعاد العميل الجدولة",
-      "other": "أخرى"
-    },
     "signoff": "الموافقة على المهمة",
     "quantity": "الكمية",
     "regenerateLink": "إعادة توليد رابط المهمة",

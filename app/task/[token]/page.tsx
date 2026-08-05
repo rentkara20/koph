@@ -3,7 +3,8 @@ import Image from "next/image"
 import type { Customer } from "@/lib/db/schema"
 import { getLocale, getTranslations } from "next-intl/server"
 import { getTaskByToken, getTaskPhotosByToken } from "@/lib/actions/tasks"
-import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
+import { getActiveFailureReasons, getFailureReasonLabels } from "@/lib/actions/failure-reasons"
+import { failureReasonLabel } from "@/lib/domain/failure-reason-label"
 import { getServicesForTaskToken } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
@@ -108,12 +109,13 @@ export default async function TaskPage({
   // request-kind branch always carries a customer row; narrow off the union.
   const customer = data.customer as Customer | null
 
-  const [photos, taskServices, allContacts, sigData, failureReasons] = await Promise.all([
+  const [photos, taskServices, allContacts, sigData, failureReasons, failureReasonLabels] = await Promise.all([
     getTaskPhotosByToken(token),
     getServicesForTaskToken(token),
     customer && !linkedContact ? getCustomerContacts(customer.id) : Promise.resolve([]),
     getSignatureForTaskToken(token),
     getActiveFailureReasons(),
+    getFailureReasonLabels(),
   ])
 
   // If a specific contact was selected, show only that one; otherwise show all
@@ -209,7 +211,7 @@ export default async function TaskPage({
         )}
         {task.status === "failed" && task.failureReason && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
-            {t(`failureReasons.${task.failureReason}`)}
+            {failureReasonLabel(failureReasonLabels, task.failureReason, locale)}
             {task.failureNotes ? `. ${task.failureNotes}` : ""}
           </div>
         )}

@@ -295,14 +295,6 @@
     "markFailed": "Mark as failed",
     "failureReason": "Failure reason",
     "failureNotes": "Failure notes",
-    "failureReasons": {
-      "customer_unavailable": "Customer unavailable",
-      "wrong_address": "Wrong address",
-      "item_damaged": "Item damaged",
-      "access_denied": "Access denied",
-      "customer_rescheduled": "Customer rescheduled",
-      "other": "Other"
-    },
     "signoff": "Sign off task",
     "quantity": "Quantity",
     "regenerateLink": "Regenerate task link",
