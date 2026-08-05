@@ -4,6 +4,7 @@ import type { RequestWorkspace } from "@/lib/actions/request-workspace"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
 import { CustomerConfirmationCard } from "@/components/request-workspace/customer-confirmation-card"
+import { CollectionCard } from "@/components/request-workspace/collection-card"
 
 // Overview: customer + contacts, requested lines with a fulfillment bar per
 // line (requested / in stock / delivered — derived), rental terms, notes.
@@ -20,6 +21,14 @@ export async function OverviewTab({ workspace }: { workspace: RequestWorkspace }
         {!order.customerConfirmedAt && order.status === "draft" && (
           <CustomerConfirmationCard orderId={order.id} />
         )}
+        <CollectionCard
+          orderNumber={order.orderNumber}
+          readiness={workspace.collection}
+          rentalEndAt={workspace.rentalEndAt}
+          openCollectionHref={
+            workspace.collection.openJobId ? `/admin/requests/${workspace.collection.openJobId}` : null
+          }
+        />
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{tOrders("lines")}</CardTitle>

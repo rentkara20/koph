@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server"
 import type { RequestWorkspace } from "@/lib/actions/request-workspace"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { CollectionCard } from "@/components/request-workspace/collection-card"
 
 // Devices: every unit in the family (order-origin + PO-origin) with serial,
 // tag, status and location. Rows link to the asset detail page.
@@ -17,7 +18,15 @@ export async function DevicesTab({ workspace }: { workspace: RequestWorkspace })
       <CardHeader>
         <CardTitle className="text-base">{t("tabs.devices")}</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-4">
+        <CollectionCard
+          orderNumber={workspace.order.orderNumber}
+          readiness={workspace.collection}
+          rentalEndAt={workspace.rentalEndAt}
+          openCollectionHref={
+            workspace.collection.openJobId ? `/admin/requests/${workspace.collection.openJobId}` : null
+          }
+        />
         {workspace.units.length === 0 ? (
           <p className="text-sm text-muted-foreground">{t("devices.none")}</p>
         ) : (

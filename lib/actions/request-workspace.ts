@@ -43,6 +43,10 @@ import {
   type RequestJourneyStage,
 } from "@/lib/domain/order-journey"
 import {
+  deriveCollectionReadiness,
+  type CollectionReadiness,
+} from "@/lib/domain/collection-readiness"
+import {
   deriveNextActions,
   primaryActionsPerTrack,
   type NextAction,
@@ -104,6 +108,8 @@ export type WorkspaceUnit = {
   serialNumber: string | null
   assetTag: string | null
   status: string
+  /** rental units must come back; sale units transferred ownership. */
+  kind: "rental" | "sale"
   location: string
   description: string
   customerDescription: string | null
@@ -177,6 +183,8 @@ export type RequestWorkspace = {
   journey: RequestJourneyStage[]
   nextActions: NextAction[]
   primaryActions: NextAction[]
+  /** Standing manual-collection offer, independent of any rental-end date. */
+  collection: CollectionReadiness
 }
 
 // Rental end derived from commercial terms (quoteDate + rental months). The
@@ -351,6 +359,7 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
         serialNumber: orderUnits.serialNumber,
         assetTag: orderUnits.assetTag,
         status: orderUnits.status,
+        kind: orderUnits.kind,
         location: orderUnits.location,
         orderLineId: orderUnits.orderLineId,
         description: assetDisplayNameSql(orderLines.description),
@@ -365,6 +374,7 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
             serialNumber: orderUnits.serialNumber,
             assetTag: orderUnits.assetTag,
             status: orderUnits.status,
+            kind: orderUnits.kind,
             location: orderUnits.location,
             purchaseOrderId: orderUnits.purchaseOrderId,
             description: assetDisplayNameSql(purchaseOrderLines.itemDescription),
@@ -378,7 +388,7 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
   // Merge, de-duping (a PO-origin unit can also carry the orderId once assigned).
   const unitMap = new Map<
     string,
-    { id: string; serialNumber: string | null; assetTag: string | null; status: string; location: string; description: string | null; purchaseOrderId?: string | null }
+    { id: string; serialNumber: string | null; assetTag: string | null; status: string; kind: "rental" | "sale"; location: string; description: string | null; purchaseOrderId?: string | null }
   >()
   for (const u of orderOriginUnits) unitMap.set(u.id, u)
   for (const u of poOriginUnits) if (!unitMap.has(u.id)) unitMap.set(u.id, u)
@@ -596,6 +606,7 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
     serialNumber: u.serialNumber,
     assetTag: u.assetTag,
     status: u.status,
+    kind: u.kind,
     location: u.location,
     description: u.description ?? "—",
     customerDescription: null,
@@ -776,6 +787,13 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
 
   const nextActions = deriveNextActions(facts)
 
+  // Standing manual path: the date-driven scheduleCollection action needs a
+  // rentalEndAt, which legacy orders (no rentalPeriodMonths) never have.
+  const collection = deriveCollectionReadiness({
+    units: workspaceUnits,
+    jobs: jobFacts,
+  })
+
   const deliveredByLine = new Map<string, number>()
   const unitsByLine = new Map<string, number>()
   for (const u of orderOriginUnits) {
@@ -833,5 +851,6 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
     journey,
     nextActions,
     primaryActions: primaryActionsPerTrack(nextActions),
+    collection,
   }
 }

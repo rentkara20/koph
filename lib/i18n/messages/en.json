@@ -2117,6 +2117,15 @@
       "none": "No devices registered for this request yet.",
       "receivingQc": "Receiving QC"
     },
+    "collection": {
+      "title": "{count} devices with the customer",
+      "noEndDate": "No rental period set on this order — you can request a collection at any time.",
+      "endsOn": "Rental ends {date}",
+      "start": "Request collection",
+      "runningTitle": "Collection in progress",
+      "runningBody": "{count} devices are still out.",
+      "openJob": "Open the collection"
+    },
     "jobs": {
       "none": "No field jobs pulled devices from this request yet.",
       "itemCount": "{count} devices"
