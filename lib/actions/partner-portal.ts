@@ -47,6 +47,8 @@ export async function getMyTasks() {
       adHocTitle: partnerTasks.adHocTitle,
       adHocReason: partnerTasks.adHocReason,
       destinationLocation: partnerTasks.destinationLocation,
+      scheduledAt: partnerTasks.scheduledAt,
+      timeWindow: partnerTasks.timeWindow,
       requestNumber: requests.requestNumber,
       customerName: customers.name,
       deliveryDate: requests.deliveryDate,

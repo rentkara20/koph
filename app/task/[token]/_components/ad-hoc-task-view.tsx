@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation"
 import Image from "next/image"
 import { getLocale, getTranslations } from "next-intl/server"
-import { ClipboardList, MapPin } from "lucide-react"
+import { CalendarClock, ClipboardList, MapPin } from "lucide-react"
 import { getTaskByToken, getTaskPhotosByToken } from "@/lib/actions/tasks"
 import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
+import { formatDate } from "@/lib/utils/format"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { PhotoUpload } from "./photo-upload"
 import { AdHocActions } from "./ad-hoc-actions"
@@ -79,6 +80,19 @@ export async function AdHocTaskView({ token }: { token: string }) {
               {partner?.name && <p className="mt-0.5 text-xs text-muted-foreground">{partner.name}</p>}
             </div>
           </div>
+
+          {(task.scheduledAt || task.timeWindow) && (
+            <div className="flex items-start gap-1.5 border-t pt-3 text-sm">
+              <CalendarClock className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+              <div>
+                <p className="text-xs text-muted-foreground">{t("scheduledDate")}</p>
+                <p className="font-medium">
+                  {task.scheduledAt ? formatDate(task.scheduledAt) : "—"}
+                  {task.timeWindow ? ` · ${task.timeWindow}` : ""}
+                </p>
+              </div>
+            </div>
+          )}
 
           {task.destinationLocation && (
             <div className="flex items-start gap-1.5 border-t pt-3 text-sm">

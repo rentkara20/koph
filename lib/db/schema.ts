@@ -377,6 +377,8 @@ export const partnerTasks = sqliteTable("partner_task", {
   adHocReason: text("ad_hoc_reason", {
     enum: ["manual_pickup", "internal_delivery", "supplier_visit", "asset_transfer", "other"],
   }),
+  scheduledAt: integer("scheduled_at"),
+  timeWindow: text("time_window"),
   partnerId: text("partner_id")
     .notNull()
     .references(() => partners.id),
@@ -446,6 +448,7 @@ export const partnerTasks = sqliteTable("partner_task", {
 }, (t) => [
   index("partner_task_request_idx").on(t.requestId),
   index("partner_task_partner_status_idx").on(t.partnerId, t.status),
+  index("partner_task_scheduled_idx").on(t.scheduledAt),
   index("partner_task_po_idx").on(t.purchaseOrderId),
   index("partner_task_case_idx").on(t.procurementCaseId),
   check(

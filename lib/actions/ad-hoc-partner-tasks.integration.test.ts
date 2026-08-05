@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, test, vi } from "vitest"
 import { createClient } from "@libsql/client"
 import { drizzle } from "drizzle-orm/libsql"
 import { migrate } from "@/lib/db/test-migrate"
-import { and, eq } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
@@ -16,6 +16,7 @@ import * as schema from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 
 const ADMIN_ID = "admin-user-ad-hoc-itest"
+const DEFAULT_SCHEDULE = { scheduledDate: "2026-08-06", timeWindow: "09:00-11:00" }
 
 const holder = vi.hoisted(() => ({
   db: null as unknown,
@@ -93,6 +94,7 @@ describe("createAdHocPartnerTask", () => {
       adHocTitle: "Drop laptop at Riyadh office",
       adHocReason: "internal_delivery",
       destinationLocation: "Riyadh HQ",
+      ...DEFAULT_SCHEDULE,
     })
     expect(res.error).toBeUndefined()
     expect(res.id).toBeTruthy()
@@ -105,6 +107,8 @@ describe("createAdHocPartnerTask", () => {
     expect(row.status).toBe("pending")
     expect(row.adHocTitle).toBe("Drop laptop at Riyadh office")
     expect(row.adHocReason).toBe("internal_delivery")
+    expect(row.scheduledAt).toBe(new Date(`${DEFAULT_SCHEDULE.scheduledDate}T00:00:00`).getTime())
+    expect(row.timeWindow).toBe(DEFAULT_SCHEDULE.timeWindow)
     expect(row.assignedBy).toBe(ADMIN_ID)
   })
 
@@ -116,6 +120,7 @@ describe("createAdHocPartnerTask", () => {
       contractId,
       adHocTitle: "",
       adHocReason: "other",
+      ...DEFAULT_SCHEDULE,
     })
     expect(res.error).toBe("Invalid input")
   })
@@ -126,6 +131,7 @@ describe("createAdHocPartnerTask", () => {
       partnerId,
       adHocTitle: "Trip with no contract",
       adHocReason: "other",
+      ...DEFAULT_SCHEDULE,
     } as Parameters<typeof createAdHocPartnerTask>[0])
     expect(res.error).toBe("Invalid input")
   })
@@ -139,6 +145,7 @@ describe("createAdHocPartnerTask", () => {
       adHocTitle: "Trip",
       adHocReason: "other",
       contractId: contractB,
+      ...DEFAULT_SCHEDULE,
     })
     expect(res.error).toBe("Contract does not belong to this partner")
   })
@@ -171,6 +178,7 @@ describe("partner magic-link lifecycle (photo-only, no signature/OTP)", () => {
       contractId,
       adHocTitle: "Collect device from supplier branch",
       adHocReason: "manual_pickup",
+      ...DEFAULT_SCHEDULE,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
@@ -180,6 +188,8 @@ describe("partner magic-link lifecycle (photo-only, no signature/OTP)", () => {
     expect(view!.task.kind).toBe("ad_hoc")
     expect(view!.request).toBeNull()
     expect(view!.task.adHocTitle).toBe("Collect device from supplier branch")
+    expect(view!.task.scheduledAt).toBe(new Date(`${DEFAULT_SCHEDULE.scheduledDate}T00:00:00`).getTime())
+    expect(view!.task.timeWindow).toBe(DEFAULT_SCHEDULE.timeWindow)
 
     // accept+start merged: partner starts straight from pending.
     expect((await updateTaskByToken(token, "accept")).error).toBe("Invalid action for current task status")
@@ -199,6 +209,7 @@ describe("partner magic-link lifecycle (photo-only, no signature/OTP)", () => {
       adHocTitle: "Photo-gated trip",
       adHocReason: "other",
       photoRequired: true,
+      ...DEFAULT_SCHEDULE,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
@@ -233,6 +244,7 @@ describe("admin sign-off (no request context)", () => {
       adHocTitle: "Paid trip",
       adHocReason: "supplier_visit",
       contractId,
+      ...DEFAULT_SCHEDULE,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
@@ -277,6 +289,7 @@ describe("admin sign-off (no request context)", () => {
       adHocTitle: "Unpaid trip",
       adHocReason: "other",
       contractId,
+      ...DEFAULT_SCHEDULE,
     })
     const [row] = await db.select().from(schema.partnerTasks).where(eq(schema.partnerTasks.id, created.id!))
     const token = row.taskToken
@@ -312,6 +325,7 @@ describe("partner portal listing", () => {
       contractId,
       adHocTitle: "Listed trip",
       adHocReason: "asset_transfer",
+      ...DEFAULT_SCHEDULE,
     })
 
     holder.userRole = "partner"

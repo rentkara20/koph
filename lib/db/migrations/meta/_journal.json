@@ -309,6 +309,13 @@
       "when": 1785951738547,
       "tag": "0043_ad_hoc_partner_task",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1785960251261,
+      "tag": "0044_ad_hoc_task_schedule",
+      "breakpoints": true
     }
   ]
 }

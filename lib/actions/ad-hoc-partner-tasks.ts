@@ -7,11 +7,11 @@
 // reuses the request partner lifecycle (pending → accepted → in_progress →
 // pending_signoff → closed), the magic-link token, photo proof, notifications,
 // and admin sign-off/payment (see signOffAdHocTask in tasks.ts).
-import { desc, eq } from "drizzle-orm"
+import { and, desc, eq, gte, isNull, lt, or, SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
-import { partnerContracts, partners, partnerTasks } from "@/lib/db/schema"
+import { customerContacts, partnerContracts, partners, partnerTasks, requestTypes, requests } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
 import { logActivity } from "@/lib/utils/activity"
 import { notify } from "@/lib/utils/notify"
@@ -35,9 +35,17 @@ const createAdHocSchema = z.object({
   // sign-off can pay the contract amount with no per-task payment decision.
   contractId: z.string().trim().min(1),
   destinationLocation: z.string().trim().max(200).optional(),
+  scheduledDate: z.string().trim().min(1),
+  timeWindow: z.string().trim().min(1).max(120),
   photoRequired: z.boolean().optional(),
   notes: z.string().trim().max(2000).optional(),
 })
+
+function parseDateOnly(value?: string) {
+  if (!value) return null
+  const date = new Date(`${value}T00:00:00`)
+  return Number.isNaN(date.getTime()) ? null : date.getTime()
+}
 
 // Testable core: validates + inserts inside the caller's tx. Defense-in-depth
 // alongside the DB check constraint — this path can NEVER set requestId,
@@ -65,6 +73,8 @@ export async function createAdHocPartnerTaskCore(
   const taskId = createId()
   const taskToken = generateToken()
   const taskTokenExpiresAt = Date.now() + (await getTaskTokenTtlMs())
+  const scheduledAt = parseDateOnly(d.scheduledDate)
+  if (scheduledAt == null) throw new Error("Invalid scheduled date")
 
   await tx.insert(partnerTasks).values({
     id: taskId,
@@ -77,6 +87,8 @@ export async function createAdHocPartnerTaskCore(
     adHocTitle: d.adHocTitle,
     adHocReason: d.adHocReason,
     destinationLocation: d.destinationLocation || null,
+    scheduledAt,
+    timeWindow: d.timeWindow || null,
     partnerId: d.partnerId,
     contractId: d.contractId,
     // Photo is optional for ad-hoc trips; admin opts in per task at creation.
@@ -149,28 +161,84 @@ export async function createAdHocPartnerTask(
   return { id: taskId, taskToken }
 }
 
-// ─── Admin: list ad-hoc tasks (with partner + contract pricing for sign-off) ──
+// ─── Admin: unified task list ────────────────────────────────────────────────
 
-export async function getAdHocTasks() {
+export type AdminTaskKindFilter = "all" | "request" | "ad_hoc"
+
+export async function getAdminTasks(filters: {
+  kind?: AdminTaskKindFilter
+  partnerId?: string
+  status?: string
+  date?: string
+} = {}) {
   const session = await getStaffSession()
   if (!session) return []
+
+  const conditions: SQL[] = []
+  if (filters.kind === "request") conditions.push(eq(partnerTasks.kind, "request"))
+  if (filters.kind === "ad_hoc") conditions.push(eq(partnerTasks.kind, "ad_hoc"))
+  if (filters.partnerId) conditions.push(eq(partnerTasks.partnerId, filters.partnerId))
+  if (filters.status) conditions.push(eq(partnerTasks.status, filters.status as typeof partnerTasks.status.enumValues[number]))
+  const dateStart = parseDateOnly(filters.date)
+  if (dateStart != null) {
+    const dateEnd = dateStart + 24 * 60 * 60 * 1000
+    conditions.push(
+      or(
+        and(gte(partnerTasks.scheduledAt, dateStart), lt(partnerTasks.scheduledAt, dateEnd)),
+        and(gte(requests.deliveryDate, dateStart), lt(requests.deliveryDate, dateEnd))
+      )!
+    )
+  }
+
   return db
     .select({
       id: partnerTasks.id,
+      kind: partnerTasks.kind,
       status: partnerTasks.status,
       adHocTitle: partnerTasks.adHocTitle,
       adHocReason: partnerTasks.adHocReason,
       destinationLocation: partnerTasks.destinationLocation,
+      scheduledAt: partnerTasks.scheduledAt,
+      timeWindow: partnerTasks.timeWindow,
       taskToken: partnerTasks.taskToken,
       createdAt: partnerTasks.createdAt,
+      partnerId: partnerTasks.partnerId,
       partnerName: partners.name,
       contractId: partnerTasks.contractId,
       pricingModel: partnerContracts.pricingModel,
       unitPrice: partnerContracts.unitPrice,
+      requestId: partnerTasks.requestId,
+      requestNumber: requests.requestNumber,
+      requestDeliveryDate: requests.deliveryDate,
+      requestTimeWindow: requests.timeWindow,
+      requestTypeNameEn: requestTypes.nameEn,
+      requestTypeNameAr: requestTypes.nameAr,
+      contactName: customerContacts.name,
+      contactCity: customerContacts.city,
     })
     .from(partnerTasks)
     .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
     .leftJoin(partnerContracts, eq(partnerTasks.contractId, partnerContracts.id))
-    .where(eq(partnerTasks.kind, "ad_hoc"))
+    .leftJoin(requests, eq(partnerTasks.requestId, requests.id))
+    .leftJoin(requestTypes, eq(partnerTasks.taskTypeId, requestTypes.id))
+    .leftJoin(customerContacts, eq(partnerTasks.contactId, customerContacts.id))
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(desc(partnerTasks.createdAt))
 }
+
+export async function getTaskFilterOptions() {
+  const session = await getStaffSession()
+  if (!session) return { partners: [] }
+
+  const partnerRows = await db
+    .select({ id: partners.id, name: partners.name })
+    .from(partners)
+    .where(isNull(partners.deletedAt))
+    .orderBy(partners.name)
+
+  return { partners: partnerRows }
+}
+
+// The ad-hoc-only list that used to live here was superseded by getAdminTasks
+// above, which serves the same page across all three kinds. Kept deleted rather
+// than unused so there is one task-list query, not two that can drift.

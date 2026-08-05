@@ -29,14 +29,18 @@ export default async function PartnerTasksPage() {
           {data.tasks.map((task) => {
             const expired = task.taskTokenExpiresAt < Date.now()
             const closed = ["done", "cancelled", "rejected", "failed"].includes(task.status)
+            const title = task.kind === "ad_hoc" ? task.adHocTitle : task.customerName
+            const plannedAt = task.scheduledAt ?? task.deliveryDate
             const inner = (
               <div className="flex items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 transition-colors hover:bg-muted/40">
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{task.customerName ?? "—"}</p>
+                  <p className="truncate text-sm font-medium">{title ?? "—"}</p>
                   <p className="text-xs text-muted-foreground">
                     <span className="font-mono" dir="ltr">{task.requestNumber ?? ""}</span>
                     {task.city ? ` · ${task.city}` : ""}
-                    {task.deliveryDate ? ` · ${formatDate(task.deliveryDate)}` : ""}
+                    {task.destinationLocation ? ` · ${task.destinationLocation}` : ""}
+                    {plannedAt ? ` · ${formatDate(plannedAt)}` : ""}
+                    {task.timeWindow ? ` · ${task.timeWindow}` : ""}
                   </p>
                   {expired && !closed && (
                     <p className="mt-0.5 text-xs text-destructive">{t("expiredLink")}</p>

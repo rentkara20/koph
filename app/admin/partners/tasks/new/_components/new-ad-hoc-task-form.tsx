@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { TimeWindowPicker } from "@/components/time-window-picker"
 import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
 
@@ -34,6 +35,8 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
   const [adHocReason, setAdHocReason] = useState<(typeof REASONS)[number]>("manual_pickup")
   const [adHocTitle, setAdHocTitle] = useState("")
   const [destinationLocation, setDestinationLocation] = useState("")
+  const [scheduledDate, setScheduledDate] = useState("")
+  const [timeWindow, setTimeWindow] = useState("")
   const [notes, setNotes] = useState("")
   const [photoRequired, setPhotoRequired] = useState(false)
 
@@ -56,6 +59,8 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
         adHocReason,
         contractId,
         destinationLocation: destinationLocation.trim() || undefined,
+        scheduledDate,
+        timeWindow,
         notes: notes.trim() || undefined,
         photoRequired,
       })
@@ -136,6 +141,8 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
               setCreated(null)
               setAdHocTitle("")
               setDestinationLocation("")
+              setScheduledDate("")
+              setTimeWindow("")
               setNotes("")
               setLoading(false)
             }}
@@ -231,6 +238,30 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
         </div>
 
         <div className="space-y-1.5 sm:col-span-2">
+          <Label htmlFor="scheduledDate">
+            {t("scheduledDate")} <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            id="scheduledDate"
+            type="date"
+            value={scheduledDate}
+            onChange={(e) => setScheduledDate(e.target.value)}
+            required
+          />
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label>{t("timeWindow")}</Label>
+          <TimeWindowPicker
+            value={timeWindow}
+            onChange={setTimeWindow}
+            name="timeWindow"
+            idPrefix="ad-hoc-window"
+            required
+          />
+        </div>
+
+        <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="adHocTitle">
             {t("adHocTitleLabel")} <span className="text-destructive">*</span>
           </Label>
@@ -267,7 +298,7 @@ export function NewAdHocTaskForm({ partners }: { partners: PartnerOption[] }) {
         <Link href="/admin/partners/tasks" className={cn(buttonVariants({ variant: "outline" }))}>
           {tCommon("cancel")}
         </Link>
-        <Button type="submit" disabled={loading || !partnerId || !contractId || !adHocTitle.trim()}>
+        <Button type="submit" disabled={loading || !partnerId || !contractId || !scheduledDate || !timeWindow || !adHocTitle.trim()}>
           {loading ? tCommon("loading") : tCommon("create")}
         </Button>
       </div>
