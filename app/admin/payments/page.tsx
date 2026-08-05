@@ -1,10 +1,13 @@
 import Link from "next/link"
+import { SlidersHorizontal } from "lucide-react"
 import { getPaymentBatches, getPartnersWithPendingPayments } from "@/lib/actions/payments"
 import { Badge } from "@/components/ui/badge"
+import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
 import { GenerateBatchForm } from "./_components/generate-batch-form"
 import { paymentBatchStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
+import { cn } from "@/lib/utils"
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
@@ -29,7 +32,13 @@ export default async function PaymentsPage() {
             {pending.length > 0 && ` · ${pending.length} partner period${pending.length !== 1 ? "s" : ""} with pending payments`}
           </p>
         </div>
-        <GenerateBatchForm pending={pending} />
+        <div className="flex items-center gap-2">
+          <Link href="/admin/payments/review" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+            <SlidersHorizontal className="size-3.5" />
+            Settlement
+          </Link>
+          <GenerateBatchForm pending={pending} />
+        </div>
       </div>
 
       <Card>
