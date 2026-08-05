@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, inArray, isNull, like, ne, or, sql } from "drizzle-orm"
+import { and, desc, eq, inArray, isNotNull, isNull, like, ne, notInArray, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
@@ -829,6 +829,12 @@ export type OrderLookup = {
   customerId: string
   customerName: string | null
   units: AvailableUnit[]
+  /**
+   * When the devices originally went out, for an inbound (collection) lookup.
+   * A collection receipt prints BOTH rental dates, and the handover date is
+   * historical fact the operator should not be retyping from memory.
+   */
+  originDeliveryDate?: number | null
 }
 
 // Which side of the flow the caller is importing units for.
@@ -851,6 +857,34 @@ export type OrderUnitLookupMode = "outbound" | "inbound"
 //      delivery request. This is the only route for free-stock units, which
 //      carry no order_id of their own, and requests link back by quote_number
 //      (there is no request.order_id column).
+// When this order's devices were actually handed over, for pre-filling a
+// collection receipt. Read off the outbound requests that carried them.
+//
+// A completed request always wins over a merely-planned one: a draft's
+// deliveryDate is an intention, and printing it on a signed receipt as the
+// handover date would be a fabrication. Cancelled and failed requests are
+// excluded outright — nothing was handed over on those. Within a tier the
+// newest date wins, since a re-delivery or swap supersedes what came before.
+export async function getOriginDeliveryDateCore(tx: Tx, orderNumber: string) {
+  const [row] = await tx
+    .select({ deliveryDate: requests.deliveryDate, status: requests.status })
+    .from(requests)
+    .innerJoin(requestTypes, eq(requests.typeId, requestTypes.id))
+    .where(
+      and(
+        eq(requests.quoteNumber, orderNumber),
+        isNull(requests.deletedAt),
+        inArray(requestTypes.slug, ["delivery", "installation", "swap"]),
+        isNotNull(requests.deliveryDate),
+        notInArray(requests.status, ["cancelled", "failed"]),
+      ),
+    )
+    .orderBy(sql`case when ${requests.status} = 'completed' then 0 else 1 end`, desc(requests.deliveryDate))
+    .limit(1)
+
+  return row?.deliveryDate ?? null
+}
+
 export async function getDeliveredOrderUnitsCore(tx: Tx, orderId: string, orderNumber: string) {
   // Same name/brand/model resolution the assets screens use (per-asset
   // override wins, origin line is the fallback). Both origins are LEFT-joined
@@ -1002,10 +1036,13 @@ export async function getOrderUnitsByNumber(
   // Outbound: both directly-created units and units received through this
   // order's sourcing/procurement chain are available to the delivery request.
   // Inbound: only what this order actually has out with the customer.
-  const rows = await db.transaction((tx) =>
+  const { rows, originDeliveryDate } = await db.transaction(async (tx) =>
     mode === "inbound"
-      ? getDeliveredOrderUnitsCore(tx, order.id, order.orderNumber)
-      : getAvailableOrderUnitsCore(tx, order.id)
+      ? {
+          rows: await getDeliveredOrderUnitsCore(tx, order.id, order.orderNumber),
+          originDeliveryDate: await getOriginDeliveryDateCore(tx, order.orderNumber),
+        }
+      : { rows: await getAvailableOrderUnitsCore(tx, order.id), originDeliveryDate: null }
   )
 
   return {
@@ -1015,6 +1052,7 @@ export async function getOrderUnitsByNumber(
       customerId: order.customerId,
       customerName: order.customerName,
       units: rows,
+      originDeliveryDate,
     },
   }
 }

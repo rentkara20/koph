@@ -12,6 +12,7 @@ import {
   type OrderUnitLookupMode,
 } from "@/lib/actions/orders"
 import type { RequestType, Customer } from "@/lib/db/schema"
+import { toDateInputValue } from "@/lib/utils/format"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -145,6 +146,10 @@ export function RequestForm({
   const [lookup, setLookup] = useState<OrderLookup | null>(null)
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set())
   const [autoImported, setAutoImported] = useState(false)
+  // Historical handover date, pulled from the order on an inbound lookup. The
+  // collection receipt prints it next to the collection date, so it must not be
+  // left for the operator to retype from memory.
+  const [deliveryDate, setDeliveryDate] = useState("")
 
   // overrideMode lets the type picker re-run the lookup with the direction it
   // just switched to, without waiting a render for `lookupMode` to catch up.
@@ -179,6 +184,10 @@ export function RequestForm({
       // Order number IS the quote number; pre-fill customer + quote for traceability.
       if (!customerId) setCustomerId(res.order.customerId)
       if (!quoteNumber.trim()) setQuoteNumber(res.order.orderNumber)
+      // Only fills a blank field: a date the operator already typed wins.
+      if (res.order.originDeliveryDate && !deliveryDate) {
+        setDeliveryDate(toDateInputValue(res.order.originDeliveryDate))
+      }
     } catch {
       setLookupError(t("orderNotFound"))
     } finally {
@@ -531,7 +540,13 @@ export function RequestForm({
               {t("deliveryDate")}{" "}
               <span className="text-xs text-muted-foreground">({tCommon("optional")})</span>
             </Label>
-            <Input id="deliveryDate" name="deliveryDate" type="date" />
+            <Input
+              id="deliveryDate"
+              name="deliveryDate"
+              type="date"
+              value={deliveryDate}
+              onChange={(e) => setDeliveryDate(e.target.value)}
+            />
           </div>
         )}
 
@@ -570,7 +585,13 @@ export function RequestForm({
           {isCollection ? (
             <div className="space-y-1.5">
               <Label htmlFor="deliveryDate">{t("deliveryDate")}</Label>
-              <Input id="deliveryDate" name="deliveryDate" type="date" />
+              <Input
+                id="deliveryDate"
+                name="deliveryDate"
+                type="date"
+                value={deliveryDate}
+                onChange={(e) => setDeliveryDate(e.target.value)}
+              />
             </div>
           ) : (
             <div className="space-y-1.5">

@@ -45,3 +45,11 @@ export function formatAuditDateTime(ts: number | null | undefined): string {
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")} AST (UTC+3)`
 }
+
+// A stored date as an <input type="date"> value. Dates written from such an
+// input are parsed as midnight UTC, so slicing the ISO string round-trips the
+// same calendar day it was entered on — do NOT "fix" this to a local-time
+// conversion or every date shifts by the Riyadh offset.
+export function toDateInputValue(ms: number | null | undefined): string {
+  return ms ? new Date(ms).toISOString().slice(0, 10) : ""
+}

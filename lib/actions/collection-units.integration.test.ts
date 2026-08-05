@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { createClient } from "@libsql/client"
 import { drizzle } from "drizzle-orm/libsql"
+import { eq } from "drizzle-orm"
 import { migrate } from "@/lib/db/test-migrate"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
@@ -207,7 +208,7 @@ describe("getDeliveredOrderUnitsCore", () => {
     })
     await db.insert(schema.procurementCases).values({
       id: caseId,
-      source: "sourcing",
+      source: "commercial_flow",
       sourcingRequestId: sourcingId,
       supplierId,
     })
@@ -262,7 +263,7 @@ describe("getDeliveredOrderUnitsCore", () => {
     })
     await db.insert(schema.procurementCases).values({
       id: caseId,
-      source: "sourcing",
+      source: "commercial_flow",
       sourcingRequestId: sourcingId,
       supplierId,
     })
@@ -293,5 +294,170 @@ describe("getDeliveredOrderUnitsCore", () => {
     const units = await db.transaction((tx) => getDeliveredOrderUnitsCore(tx, orderId, "50507"))
 
     expect(units).toEqual([])
+  })
+})
+
+// request_type.slug is unique, so tests in this file share one "delivery" row
+// rather than each inserting their own.
+async function deliveryTypeId() {
+  const existing = await db
+    .select({ id: schema.requestTypes.id })
+    .from(schema.requestTypes)
+    .where(eq(schema.requestTypes.slug, "delivery"))
+  if (existing[0]) return existing[0].id
+  const [created] = await db
+    .insert(schema.requestTypes)
+    .values({ id: createId(), slug: "delivery", nameEn: "Delivery", nameAr: "توصيل" })
+    .returning()
+  return created.id
+}
+
+describe("getOriginDeliveryDateCore", () => {
+  it("returns the newest completed handover date for the order", async () => {
+    const customerId = createId()
+    await db.insert(schema.customers).values({ id: customerId, name: "Origin Date Customer" })
+    const deliveryTypeIdValue = await deliveryTypeId()
+
+    const older = Date.UTC(2026, 0, 10)
+    const newer = Date.UTC(2026, 2, 5)
+
+    await db.insert(schema.requests).values([
+      {
+        id: createId(),
+        requestNumber: "REQ-OD-1",
+        trackingCode: "TRK-OD-1",
+        typeId: deliveryTypeIdValue,
+        customerId,
+        quoteNumber: "60601",
+        status: "completed",
+        deliveryDate: older,
+      },
+      {
+        id: createId(),
+        requestNumber: "REQ-OD-2",
+        trackingCode: "TRK-OD-2",
+        typeId: deliveryTypeIdValue,
+        customerId,
+        quoteNumber: "60601",
+        status: "completed",
+        deliveryDate: newer,
+      },
+    ])
+
+    const { getOriginDeliveryDateCore } = await import("./orders")
+    const date = await db.transaction((tx) => getOriginDeliveryDateCore(tx, "60601"))
+
+    // Newest handover wins — a re-delivery or swap is the current truth.
+    expect(date).toBe(newer)
+  })
+
+  it("ignores requests belonging to another order and returns null when there is nothing to go on", async () => {
+    const customerId = createId()
+    await db.insert(schema.customers).values({ id: customerId, name: "Other Order Customer" })
+    const [deliveryType] = await db
+      .insert(schema.requestTypes)
+      .values({ id: createId(), slug: "delivery-60603", nameEn: "Delivery", nameAr: "توصيل" })
+      .returning()
+    await db.insert(schema.requests).values({
+      id: createId(),
+      requestNumber: "REQ-OD-3",
+      trackingCode: "TRK-OD-3",
+      typeId: deliveryType.id,
+      customerId,
+      quoteNumber: "60603",
+      status: "completed",
+      deliveryDate: Date.UTC(2026, 3, 1),
+    })
+
+    const { getOriginDeliveryDateCore } = await import("./orders")
+    expect(await db.transaction((tx) => getOriginDeliveryDateCore(tx, "60602"))).toBeNull()
+  })
+
+  it("skips a collection request — its own date is not a handover date", async () => {
+    const customerId = createId()
+    await db.insert(schema.customers).values({ id: customerId, name: "Collection Only Customer" })
+    const [collectionType] = await db
+      .insert(schema.requestTypes)
+      .values({ id: createId(), slug: "collection", nameEn: "Collection", nameAr: "استلام" })
+      .returning()
+    await db.insert(schema.requests).values({
+      id: createId(),
+      requestNumber: "REQ-OD-4",
+      trackingCode: "TRK-OD-4",
+      typeId: collectionType.id,
+      customerId,
+      quoteNumber: "60604",
+      status: "completed",
+      deliveryDate: Date.UTC(2026, 4, 4),
+    })
+
+    const { getOriginDeliveryDateCore } = await import("./orders")
+    expect(await db.transaction((tx) => getOriginDeliveryDateCore(tx, "60604"))).toBeNull()
+  })
+  it("prefers a completed delivery over a later draft — a plan is not a handover", async () => {
+    const customerId = createId()
+    await db.insert(schema.customers).values({ id: customerId, name: "Draft vs Done Customer" })
+    const deliveryTypeIdValue = await deliveryTypeId()
+
+    const doneOn = Date.UTC(2026, 1, 1)
+    const plannedFor = Date.UTC(2026, 5, 1) // later, but never executed
+
+    await db.insert(schema.requests).values([
+      {
+        id: createId(),
+        requestNumber: "REQ-OD-5",
+        trackingCode: "TRK-OD-5",
+        typeId: deliveryTypeIdValue,
+        customerId,
+        quoteNumber: "60605",
+        status: "completed",
+        deliveryDate: doneOn,
+      },
+      {
+        id: createId(),
+        requestNumber: "REQ-OD-6",
+        trackingCode: "TRK-OD-6",
+        typeId: deliveryTypeIdValue,
+        customerId,
+        quoteNumber: "60605",
+        status: "draft",
+        deliveryDate: plannedFor,
+      },
+    ])
+
+    const { getOriginDeliveryDateCore } = await import("./orders")
+    expect(await db.transaction((tx) => getOriginDeliveryDateCore(tx, "60605"))).toBe(doneOn)
+  })
+
+  it("never reports a cancelled or failed delivery as the handover date", async () => {
+    const customerId = createId()
+    await db.insert(schema.customers).values({ id: customerId, name: "Cancelled Customer" })
+    const deliveryTypeIdValue = await deliveryTypeId()
+
+    await db.insert(schema.requests).values([
+      {
+        id: createId(),
+        requestNumber: "REQ-OD-7",
+        trackingCode: "TRK-OD-7",
+        typeId: deliveryTypeIdValue,
+        customerId,
+        quoteNumber: "60606",
+        status: "cancelled",
+        deliveryDate: Date.UTC(2026, 6, 1),
+      },
+      {
+        id: createId(),
+        requestNumber: "REQ-OD-8",
+        trackingCode: "TRK-OD-8",
+        typeId: deliveryTypeIdValue,
+        customerId,
+        quoteNumber: "60606",
+        status: "failed",
+        deliveryDate: Date.UTC(2026, 6, 2),
+      },
+    ])
+
+    const { getOriginDeliveryDateCore } = await import("./orders")
+    expect(await db.transaction((tx) => getOriginDeliveryDateCore(tx, "60606"))).toBeNull()
   })
 })
