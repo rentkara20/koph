@@ -5,6 +5,17 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
 
+// Statuses where the signing page is still live and worth linking to.
+const ACTIVE_SIGNATURE_STATUSES = ["draft", "sent", "opened", "otp_verified"]
+
+// Signed rows open the printable delivery note; still-active rows open the
+// signing page itself. Anything else (void/expired) stays unlinked.
+function signatureHref(status: string, token: string): string | null {
+  if (status === "signed") return `/sign/${token}/print`
+  if (ACTIVE_SIGNATURE_STATUSES.includes(status)) return `/sign/${token}`
+  return null
+}
+
 // Documents: signature requests (delivery notes) + uploaded attachments
 // across the whole family (jobs, tasks, signatures, purchase orders).
 export async function DocumentsTab({ workspace }: { workspace: RequestWorkspace }) {
@@ -24,15 +35,30 @@ export async function DocumentsTab({ workspace }: { workspace: RequestWorkspace 
             <p className="text-sm text-muted-foreground">{t("documents.noSignatures")}</p>
           ) : (
             <ul className="divide-y rounded-lg border">
-              {workspace.signatures.map((sig) => (
+              {workspace.signatures.map((sig) => {
+                const href = signatureHref(sig.status, sig.secureToken)
+                return (
                 <li
                   key={sig.id}
-                  className="flex flex-wrap items-center justify-between gap-2 px-4 py-3"
+                  className={`relative flex flex-wrap items-center justify-between gap-2 px-4 py-3${
+                    href ? " transition-colors hover:bg-muted/30" : ""
+                  }`}
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     <PenLine className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{sig.documentName}</p>
+                      {href ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block truncate text-sm font-medium after:absolute after:inset-0"
+                        >
+                          {sig.documentName}
+                        </a>
+                      ) : (
+                        <p className="truncate text-sm font-medium">{sig.documentName}</p>
+                      )}
                       <p className="text-xs text-muted-foreground">
                         {t(`documents.signatoryRole.${sig.signatoryRole}`)} ·{" "}
                         {formatDate(sig.createdAt)}
@@ -43,7 +69,8 @@ export async function DocumentsTab({ workspace }: { workspace: RequestWorkspace 
                     {tSignatures(`status.${sig.status}`)}
                   </Badge>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
         </CardContent>

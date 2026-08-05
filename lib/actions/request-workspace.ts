@@ -128,6 +128,8 @@ export type WorkspaceSignature = {
   documentName: string
   signatoryRole: string
   status: string
+  // Anyone-with-link signing token — admin surfaces only, never the portal.
+  secureToken: string
   createdAt: number
 }
 
@@ -432,6 +434,7 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
             signatoryRole: signatureRequests.signatoryRole,
             signatoryContactId: signatureRequests.signatoryContactId,
             status: signatureRequests.status,
+            secureToken: signatureRequests.secureToken,
             createdAt: signatureRequests.createdAt,
           })
           .from(signatureRequests)
@@ -810,6 +813,9 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
       documentName: s.documentName,
       signatoryRole: s.signatoryRole,
       status: s.status,
+      // Anyone-with-link token. Admin-only surfaces may render it as a link;
+      // never expose it through the partner/customer portal.
+      secureToken: s.secureToken,
       createdAt: s.createdAt,
     })),
     attachments: allAttachments,
