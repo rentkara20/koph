@@ -865,7 +865,7 @@ export async function getDeliveredOrderUnitsCore(tx: Tx, orderId: string, orderN
     supplierName: suppliers.name,
   }
 
-  const [directUnits, requestedUnits] = await Promise.all([
+  const [directUnits, requestedUnits, purchasedUnits] = await Promise.all([
     tx
       .select(selection)
       .from(orderUnits)
@@ -888,9 +888,26 @@ export async function getDeliveredOrderUnitsCore(tx: Tx, orderId: string, orderN
           eq(orderUnits.status, "delivered"),
         ),
       ),
+    // Third route, mirroring getAvailableOrderUnitsCore: a unit received
+    // through THIS order's sourcing -> case -> PO chain. orderId is only
+    // stamped on a unit once something allocates it, so a PO-origin device can
+    // be out with the customer while order_id is still null — without this the
+    // collection form reported "0 out with customer" for an order whose
+    // workspace was showing the devices.
+    tx
+      .selectDistinct(selection)
+      .from(orderUnits)
+      .innerJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+      .innerJoin(purchaseOrders, eq(purchaseOrderLines.purchaseOrderId, purchaseOrders.id))
+      .innerJoin(procurementCases, eq(purchaseOrders.procurementCaseId, procurementCases.id))
+      .innerJoin(sourcingRequests, eq(procurementCases.sourcingRequestId, sourcingRequests.id))
+      .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+      .where(and(eq(sourcingRequests.orderId, orderId), eq(orderUnits.status, "delivered"))),
   ])
 
-  const byId = new Map(directUnits.map((unit) => [unit.unitId, unit]))
+  const byId = new Map(purchasedUnits.map((unit) => [unit.unitId, unit]))
+  for (const unit of directUnits) byId.set(unit.unitId, unit)
   for (const unit of requestedUnits) byId.set(unit.unitId, unit)
   return [...byId.values()].sort((a, b) => (a.description ?? "").localeCompare(b.description ?? ""))
 }

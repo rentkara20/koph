@@ -181,4 +181,117 @@ describe("getDeliveredOrderUnitsCore", () => {
 
     expect(units[0].description).toBe("Dell Latitude 5540")
   })
+  it("finds a PO-origin unit whose procurement chain resolves to this order, even with order_id unset", async () => {
+    // Regression: order_id is only stamped on a unit once something allocates
+    // it, so a device purchased through the order's own sourcing chain can be
+    // out with the customer while order_unit.order_id is still null. The
+    // outbound lookup already resolved that chain; inbound did not, so the
+    // collection form reported "0 out with customer" for an order whose
+    // workspace was listing the devices.
+    const { orderId } = await seedOrder("50506")
+
+    const supplierId = createId()
+    const sourcingId = createId()
+    const caseId = createId()
+    const poId = createId()
+    const poLineId = createId()
+    const unitId = createId()
+
+    await db.insert(schema.suppliers).values({ id: supplierId, name: "Chain Supplier" })
+    await db.insert(schema.sourcingRequests).values({
+      id: sourcingId,
+      sourceType: "customer_order",
+      description: "Chain Laptop",
+      orderId,
+      status: "handed_off",
+    })
+    await db.insert(schema.procurementCases).values({
+      id: caseId,
+      source: "sourcing",
+      sourcingRequestId: sourcingId,
+      supplierId,
+    })
+    await db.insert(schema.purchaseOrders).values({
+      id: poId,
+      supplierId,
+      poNumber: "PO-CHAIN-50506",
+      status: "received",
+      procurementCaseId: caseId,
+    })
+    await db.insert(schema.purchaseOrderLines).values({
+      id: poLineId,
+      purchaseOrderId: poId,
+      itemDescription: "Chain Laptop",
+      qtyOrdered: 1,
+      qtyReceived: 1,
+    })
+    await db.insert(schema.orderUnits).values({
+      id: unitId,
+      purchaseOrderLineId: poLineId,
+      purchaseOrderId: poId,
+      supplierId,
+      serialNumber: "SN-CHAIN-OUT",
+      status: "delivered",
+      // orderId deliberately left unset — that is the whole point.
+    })
+
+    const { getDeliveredOrderUnitsCore } = await import("./orders")
+    const units = await db.transaction((tx) => getDeliveredOrderUnitsCore(tx, orderId, "50506"))
+
+    expect(units.map((u) => u.serialNumber)).toEqual(["SN-CHAIN-OUT"])
+    expect(units[0].description).toBe("Chain Laptop")
+  })
+
+  it("still excludes a PO-origin delivered unit whose chain resolves to another order", async () => {
+    const { orderId } = await seedOrder("50507")
+    const other = await seedOrder("50508")
+
+    const supplierId = createId()
+    const sourcingId = createId()
+    const caseId = createId()
+    const poId = createId()
+    const poLineId = createId()
+
+    await db.insert(schema.suppliers).values({ id: supplierId, name: "Other Chain Supplier" })
+    await db.insert(schema.sourcingRequests).values({
+      id: sourcingId,
+      sourceType: "customer_order",
+      description: "Other Chain Laptop",
+      orderId: other.orderId,
+      status: "handed_off",
+    })
+    await db.insert(schema.procurementCases).values({
+      id: caseId,
+      source: "sourcing",
+      sourcingRequestId: sourcingId,
+      supplierId,
+    })
+    await db.insert(schema.purchaseOrders).values({
+      id: poId,
+      supplierId,
+      poNumber: "PO-CHAIN-50508",
+      status: "received",
+      procurementCaseId: caseId,
+    })
+    await db.insert(schema.purchaseOrderLines).values({
+      id: poLineId,
+      purchaseOrderId: poId,
+      itemDescription: "Other Chain Laptop",
+      qtyOrdered: 1,
+      qtyReceived: 1,
+    })
+    await db.insert(schema.orderUnits).values({
+      id: createId(),
+      purchaseOrderLineId: poLineId,
+      purchaseOrderId: poId,
+      supplierId,
+      serialNumber: "SN-CHAIN-OTHER",
+      status: "delivered",
+    })
+
+    const { getDeliveredOrderUnitsCore } = await import("./orders")
+    const units = await db.transaction((tx) => getDeliveredOrderUnitsCore(tx, orderId, "50507"))
+
+    expect(units).toEqual([])
+  })
 })
