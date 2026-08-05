@@ -1281,11 +1281,19 @@
       "cancelled": "Cancelled"
     },
     "unitStatus": {
+      "receiving_qc": "Receiving QC",
       "in_stock": "In stock",
+      "reserved": "Reserved",
       "assigned": "Assigned",
       "delivered": "Delivered",
       "returned": "Returned",
-      "damaged": "Damaged"
+      "maintenance": "Maintenance",
+      "damaged": "Damaged",
+      "supplier_return_pending": "Supplier return pending",
+      "supplier_returned": "Returned to supplier",
+      "retired": "Retired",
+      "sold": "Sold",
+      "lost": "Lost"
     },
     "devices": "Devices",
     "unitsCount": "devices",
