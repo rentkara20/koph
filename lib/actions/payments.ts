@@ -1,6 +1,6 @@
 "use server"
 
-import { and, count, desc, eq, inArray, notInArray, sql } from "drizzle-orm"
+import { and, count, desc, eq, gte, inArray, lte, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
@@ -9,6 +9,11 @@ import {
   partnerTasks,
   paymentBatches,
   requests,
+  customers,
+  requestItems,
+  requestTypes,
+  servicesCatalog,
+  taskServices,
 } from "@/lib/db/schema"
 import { createId, generateSecureToken } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
@@ -20,6 +25,51 @@ import { sumBatchTotal } from "@/lib/domain/payments"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 
 export type PaymentActionResult = { error?: string; id?: string }
+
+export type PaymentReviewFilters = {
+  from?: string
+  to?: string
+  partnerIds?: string[]
+}
+
+type FinanceNoteData = {
+  financeServiceType?: string
+  financeServiceDescription?: string
+  notes?: string
+}
+
+function parseFinanceNotes(value: string | null): FinanceNoteData {
+  if (!value) return {}
+  try {
+    const parsed = JSON.parse(value) as FinanceNoteData
+    if (parsed && typeof parsed === "object") return parsed
+  } catch {
+    // Legacy free-text notes remain valid notes.
+  }
+  return { notes: value }
+}
+
+function serializeFinanceNotes(input: FinanceNoteData): string | null {
+  const trimmed = {
+    financeServiceType: input.financeServiceType?.trim() || undefined,
+    financeServiceDescription: input.financeServiceDescription?.trim() || undefined,
+    notes: input.notes?.trim() || undefined,
+  }
+  if (!trimmed.financeServiceType && !trimmed.financeServiceDescription && !trimmed.notes) return null
+  return JSON.stringify(trimmed)
+}
+
+function parseDateStart(value?: string): number | null {
+  if (!value) return null
+  const time = new Date(`${value}T00:00:00+03:00`).getTime()
+  return Number.isNaN(time) ? null : time
+}
+
+function parseDateEnd(value?: string): number | null {
+  if (!value) return null
+  const time = new Date(`${value}T23:59:59.999+03:00`).getTime()
+  return Number.isNaN(time) ? null : time
+}
 
 // Thrown inside a transaction when a guarded status UPDATE affects 0 rows —
 // i.e. a concurrent writer already moved the batch/payment out of the status we
@@ -160,6 +210,188 @@ export async function getPartnersWithPendingPayments() {
       sql`strftime('%Y-%m', datetime(${partnerPayments.createdAt}/1000, 'unixepoch', ${offset}))`
     )
     .orderBy(partners.name)
+}
+
+export async function updatePaymentLine(
+  paymentId: string,
+  formData: FormData
+): Promise<PaymentActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const totalAmount = Number.parseFloat(String(formData.get("totalAmount") ?? ""))
+  if (!Number.isFinite(totalAmount) || totalAmount < 0) return { error: "Invalid amount" }
+  const notes = String(formData.get("notes") ?? "").trim() || null
+  const financeServiceType = String(formData.get("financeServiceType") ?? "").trim() || undefined
+  const financeServiceDescription = String(formData.get("financeServiceDescription") ?? "").trim() || undefined
+
+  const [payment] = await db.select().from(partnerPayments).where(eq(partnerPayments.id, paymentId))
+  if (!payment) return { error: "Not found" }
+  if (payment.status === "paid") return { error: "Paid items cannot be edited" }
+
+  if (payment.batchId) {
+    const [batch] = await db.select().from(paymentBatches).where(eq(paymentBatches.id, payment.batchId))
+    if (batch && batch.status !== "draft") {
+      return { error: "Only draft batch items can be edited" }
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(partnerPayments)
+      .set({
+        totalAmount,
+        unitPrice: payment.quantity > 0 ? totalAmount / payment.quantity : totalAmount,
+        notes: serializeFinanceNotes({ financeServiceType, financeServiceDescription, notes: notes ?? undefined }),
+        updatedAt: Date.now(),
+      })
+      .where(eq(partnerPayments.id, paymentId))
+
+    if (payment.batchId) await recalcBatchTotal(tx, payment.batchId)
+
+    await logActivity(
+      {
+        entityType: payment.batchId ? "payment_batch" : "partner_task",
+        entityId: payment.batchId ?? payment.partnerTaskId,
+        action: "payment_line_updated",
+        i18nKey: "activity.paymentLineUpdated",
+        i18nData: {
+          paymentId,
+          from: payment.totalAmount,
+          to: totalAmount,
+          notes: notes ?? "",
+        },
+        performedBy: session.user.id,
+      },
+      tx
+    )
+  })
+
+  if (payment.batchId) revalidatePath(`/admin/payments/${payment.batchId}`)
+  revalidatePath("/admin/payments")
+  revalidatePath("/admin/payments/review")
+  revalidatePath("/admin/payments/finance-report")
+  return { id: paymentId }
+}
+
+// ─── Flexible payment review ─────────────────────────────────────────────────
+
+export async function getPaymentReview(filters: PaymentReviewFilters = {}) {
+  const session = await getStaffSession()
+  if (!session) return { partners: [], summary: [], payments: [] }
+
+  const fromTs = parseDateStart(filters.from)
+  const toTs = parseDateEnd(filters.to)
+  const partnerIds = (filters.partnerIds ?? []).filter(Boolean)
+
+  const conditions = [
+    fromTs ? gte(partnerPayments.createdAt, fromTs) : undefined,
+    toTs ? lte(partnerPayments.createdAt, toTs) : undefined,
+    partnerIds.length > 0 ? inArray(partnerPayments.partnerId, partnerIds) : undefined,
+  ].filter(Boolean)
+
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined
+
+  const partnerList = await db
+    .select({ id: partners.id, name: partners.name })
+    .from(partners)
+    .where(eq(partners.status, "active"))
+    .orderBy(partners.name)
+
+  const summaryRows = await db
+    .select({
+      partnerId: partnerPayments.partnerId,
+      partnerName: partners.name,
+      paymentCount: count(partnerPayments.id),
+      pendingTotal: sql<number>`COALESCE(SUM(CASE WHEN ${partnerPayments.status} = 'pending' THEN ${partnerPayments.totalAmount} ELSE 0 END), 0)`,
+      batchedTotal: sql<number>`COALESCE(SUM(CASE WHEN ${partnerPayments.status} = 'batched' THEN ${partnerPayments.totalAmount} ELSE 0 END), 0)`,
+      paidTotal: sql<number>`COALESCE(SUM(CASE WHEN ${partnerPayments.status} = 'paid' THEN ${partnerPayments.totalAmount} ELSE 0 END), 0)`,
+      heldTotal: sql<number>`COALESCE(SUM(CASE WHEN ${partnerPayments.status} = 'on_hold' THEN ${partnerPayments.totalAmount} ELSE 0 END), 0)`,
+      totalAmount: sql<number>`COALESCE(SUM(${partnerPayments.totalAmount}), 0)`,
+    })
+    .from(partnerPayments)
+    .leftJoin(partners, eq(partnerPayments.partnerId, partners.id))
+    .where(whereClause)
+    .groupBy(partnerPayments.partnerId, partners.name)
+    .orderBy(partners.name)
+
+  const paymentRows = await db
+    .select({
+      id: partnerPayments.id,
+      partnerId: partnerPayments.partnerId,
+      partnerName: partners.name,
+      status: partnerPayments.status,
+      pricingModel: partnerPayments.pricingModel,
+      quantity: partnerPayments.quantity,
+      unitPrice: partnerPayments.unitPrice,
+      totalAmount: partnerPayments.totalAmount,
+      createdAt: partnerPayments.createdAt,
+      requestId: partnerTasks.requestId,
+      requestNumber: requests.requestNumber,
+      quoteNumber: requests.quoteNumber,
+      customerName: customers.name,
+      serviceType: requestTypes.nameEn,
+      serviceDescription: sql<string>`COALESCE(
+        (
+          SELECT group_concat(${servicesCatalog.nameEn}, ', ')
+          FROM ${taskServices}
+          LEFT JOIN ${servicesCatalog} ON ${taskServices.serviceId} = ${servicesCatalog.id}
+          WHERE ${taskServices.partnerTaskId} = ${partnerTasks.id}
+        ),
+        CASE
+          WHEN ${requests.origin} IS NOT NULL OR ${requests.destination} IS NOT NULL
+          THEN 'from ' || COALESCE(${requests.origin}, '-') || ' to ' || COALESCE(${requests.destination}, '-')
+          ELSE ${requests.notes}
+        END,
+        ''
+      )`,
+      serialNumber: sql<string>`COALESCE(
+        (
+          SELECT group_concat(NULLIF(${requestItems.serialNumber}, ''), ', ')
+          FROM ${requestItems}
+          WHERE ${requestItems.requestId} = ${requests.id}
+        ),
+        ''
+      )`,
+      deviceSpecs: sql<string>`COALESCE(
+        (
+          SELECT group_concat(
+            trim(
+              COALESCE(${requestItems.description}, '') || ' ' ||
+              COALESCE(${requestItems.brand}, '') || ' ' ||
+              COALESCE(${requestItems.model}, '')
+            ),
+            ', '
+          )
+          FROM ${requestItems}
+          WHERE ${requestItems.requestId} = ${requests.id}
+        ),
+        ''
+      )`,
+      rawNotes: partnerPayments.notes,
+      batchId: partnerPayments.batchId,
+    })
+    .from(partnerPayments)
+    .leftJoin(partners, eq(partnerPayments.partnerId, partners.id))
+    .leftJoin(partnerTasks, eq(partnerPayments.partnerTaskId, partnerTasks.id))
+    .leftJoin(requests, eq(partnerTasks.requestId, requests.id))
+    .leftJoin(customers, eq(requests.customerId, customers.id))
+    .leftJoin(requestTypes, eq(requests.typeId, requestTypes.id))
+    .where(whereClause)
+    .orderBy(desc(partnerPayments.createdAt))
+    .limit(500)
+
+  const payments = paymentRows.map((payment) => {
+    const parsedNotes = parseFinanceNotes(payment.rawNotes)
+    return {
+      ...payment,
+      serviceType: parsedNotes.financeServiceType || payment.serviceType,
+      serviceDescription: parsedNotes.financeServiceDescription || payment.serviceDescription,
+      notes: parsedNotes.notes ?? null,
+    }
+  })
+
+  return { partners: partnerList, summary: summaryRows, payments }
 }
 
 // ─── Generate batch ───────────────────────────────────────────────────────────
