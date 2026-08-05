@@ -2,10 +2,28 @@ import { describe, expect, test } from "vitest"
 import {
   actionForTransition,
   assetActionsFor,
+  assetKindForOrderLineType,
   assetStatusAfter,
   canAssetTransition,
   TERMINAL_ASSET_STATUSES,
 } from "./asset-status"
+
+describe("assetKindForOrderLineType", () => {
+  test("a sold_product line yields a sale unit", () => {
+    expect(assetKindForOrderLineType("sold_product")).toBe("sale")
+  })
+
+  test("a rental_asset line yields a rental unit", () => {
+    expect(assetKindForOrderLineType("rental_asset")).toBe("rental")
+  })
+
+  // Guards the consequence, not just the mapping: a rental unit wrongly stamped
+  // "sale" gains delivered -> sold and loses its collection route.
+  test("kind decides whether a delivered unit can be sold", () => {
+    expect(canAssetTransition("delivered", "sell", assetKindForOrderLineType("sold_product"))).toBe(true)
+    expect(canAssetTransition("delivered", "sell", assetKindForOrderLineType("rental_asset"))).toBe(false)
+  })
+})
 
 describe("canAssetTransition", () => {
   test("allows the normal rental cycle", () => {

@@ -19,6 +19,7 @@ import {
 } from "@/lib/db/schema"
 import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asset-name"
 import { deriveOrderJourney, type JourneyStage } from "@/lib/domain/order-journey"
+import { assetKindForOrderLineType } from "@/lib/domain/asset-status"
 import { createId } from "@/lib/utils/ids"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { applyAssetStatusCorrection } from "@/lib/actions/asset-transition"
@@ -348,10 +349,11 @@ export async function saveOrderUnits(
 
   // Every unit must belong to a line of THIS order (guard against tampering).
   const lines = await db
-    .select({ id: orderLines.id })
+    .select({ id: orderLines.id, type: orderLines.type })
     .from(orderLines)
     .where(eq(orderLines.orderId, orderId))
   const lineIds = new Set(lines.map((l) => l.id))
+  const lineTypeById = new Map(lines.map((l) => [l.id, l.type]))
   if (d.units.some((u) => !lineIds.has(u.orderLineId))) {
     return { error: "Invalid line reference" }
   }
@@ -409,10 +411,17 @@ export async function saveOrderUnits(
         // a named business action) so every status change on an existing unit
         // still gets a validated transition and an atomic asset_event — no
         // direct status write remains for this caller.
+        // kind is re-derived, not carried over: this editor can re-point a unit
+        // at a different line of the same order, and a unit left with the old
+        // line's kind contradicts its new line. That drift is silent and costly
+        // — kind gates both the sell transition and collection readiness, so a
+        // rental device stamped "sale" loses its route back from the customer.
+        // Same rule as createAssetCore, from the one shared helper.
         await tx
           .update(orderUnits)
           .set({
             orderLineId: u.orderLineId,
+            kind: assetKindForOrderLineType(lineTypeById.get(u.orderLineId)!),
             serialNumber: u.serialNumber || null,
             supplierId: u.supplierId || null,
             purchaseCost: u.purchaseCost ?? null,

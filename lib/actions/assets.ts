@@ -18,7 +18,7 @@ import {
 import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asset-name"
 import { createId } from "@/lib/utils/ids"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
-import { type AssetAction, type AssetStatus } from "@/lib/domain/asset-status"
+import { assetKindForOrderLineType, type AssetAction, type AssetStatus } from "@/lib/domain/asset-status"
 import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 
@@ -555,7 +555,7 @@ export async function createAssetCore(
     if (!line) throw new Error("Order line not found")
     orderLineId = line.id
     orderId = line.orderId
-    effectiveKind = line.type === "sold_product" ? "sale" : "rental"
+    effectiveKind = assetKindForOrderLineType(line.type)
   } else {
     const [line] = await tx
       .select({

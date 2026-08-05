@@ -68,6 +68,17 @@ const GUIDED_ACTIONS = new Set<AssetAction>(["start_supplier_return", "confirm_s
 // unit is sold to the customer and never re-enters the rental pool.
 export type AssetKind = "rental" | "sale"
 
+// The order line's own type is authoritative for a unit's kind: a unit created
+// from — or re-pointed at — a sold_product line is a sale unit, everything else
+// is rental. Single source of the rule so creation (createAssetCore) and
+// re-pointing (saveOrderUnits) cannot drift apart and leave a unit whose kind
+// contradicts its line. A stale kind is not cosmetic: `sell` from `delivered`
+// is legal only for kind=sale, and collection readiness counts only kind=rental,
+// so a wrong kind silently removes a device's route back from the customer.
+export function assetKindForOrderLineType(lineType: "rental_asset" | "sold_product"): AssetKind {
+  return lineType === "sold_product" ? "sale" : "rental"
+}
+
 // Sale units follow a reduced lifecycle: once sold they never return to the
 // rental pool, so the rental-return actions are forbidden for them. A sale
 // unit that is lost/damaged is handled the same way (damaged/lost) but is
