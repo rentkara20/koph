@@ -13,6 +13,7 @@ import { z } from "zod"
 import { db } from "@/lib/db"
 import { customerContacts, partnerContracts, partners, partnerTasks, requestTypes, requests } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
+import { parseRiyadhDate } from "@/lib/utils/format"
 import { logActivity } from "@/lib/utils/activity"
 import { notify } from "@/lib/utils/notify"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
@@ -41,11 +42,7 @@ const createAdHocSchema = z.object({
   notes: z.string().trim().max(2000).optional(),
 })
 
-function parseDateOnly(value?: string) {
-  if (!value) return null
-  const date = new Date(`${value}T00:00:00`)
-  return Number.isNaN(date.getTime()) ? null : date.getTime()
-}
+const parseDateOnly = parseRiyadhDate
 
 // Testable core: validates + inserts inside the caller's tx. Defense-in-depth
 // alongside the DB check constraint — this path can NEVER set requestId,

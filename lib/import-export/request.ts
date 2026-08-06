@@ -2,6 +2,7 @@ import { eq, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { customers, requestTypes, requests } from "@/lib/db/schema"
 import type { ColumnDef } from "./types"
+import { toDateInputValue } from "@/lib/utils/format"
 
 // Export-only — request creation involves tracking-code generation,
 // delivery-part-number sequencing, and asset-transition side effects that
@@ -22,9 +23,8 @@ export const REQUEST_COLUMNS: ColumnDef[] = [
   { header: "notes", field: "notes", required: false },
 ]
 
-function toDateString(ms: number | null): string {
-  return ms ? new Date(ms).toISOString().slice(0, 10) : ""
-}
+// Riyadh calendar day, matching parseRiyadhDate on the import side.
+const toDateString = toDateInputValue
 
 export async function exportRequestRows(): Promise<Record<string, unknown>[]> {
   const rows = await db

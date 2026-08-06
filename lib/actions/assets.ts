@@ -17,6 +17,7 @@ import {
 } from "@/lib/db/schema"
 import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asset-name"
 import { createId } from "@/lib/utils/ids"
+import { parseRiyadhDate } from "@/lib/utils/format"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { assetKindForOrderLineType, type AssetAction, type AssetStatus } from "@/lib/domain/asset-status"
 import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
@@ -380,8 +381,8 @@ export async function updateAssetDetails(
     .update(orderUnits)
     .set({
       serialNumber: d.serialNumber || null,
-      purchaseDate: d.purchaseDate ? new Date(d.purchaseDate).getTime() : null,
-      warrantyEnd: d.warrantyEnd ? new Date(d.warrantyEnd).getTime() : null,
+      purchaseDate: parseRiyadhDate(d.purchaseDate),
+      warrantyEnd: parseRiyadhDate(d.warrantyEnd),
       location: d.location || "main_warehouse",
       notes: d.notes || null,
       updatedAt: Date.now(),

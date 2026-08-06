@@ -13,6 +13,7 @@ import { createRequestSchema, itemInputSchema, firstError } from "@/lib/validati
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { resolveNextDeliveryPartNumber } from "@/lib/domain/delivery-part"
 import { validateRequestExceptionInput, type RequestExceptionInput } from "@/lib/domain/request-exception-actions"
+import { parseRiyadhDate } from "@/lib/utils/format"
 
 export type ActionResult = { error?: string; id?: string }
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -141,8 +142,8 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
       deliveryPartNumber,
       salesRef: data.salesRef || null,
       poNumber: data.poNumber || null,
-      deliveryDate: data.deliveryDate ? new Date(data.deliveryDate).getTime() : null,
-      collectionDate: data.collectionDate ? new Date(data.collectionDate).getTime() : null,
+      deliveryDate: parseRiyadhDate(data.deliveryDate),
+      collectionDate: parseRiyadhDate(data.collectionDate),
       timeWindow: data.timeWindow || null,
       requireNationalId: data.requireNationalId,
       notes: data.notes || null,

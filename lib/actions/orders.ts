@@ -21,6 +21,7 @@ import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asse
 import { deriveOrderJourney, type JourneyStage } from "@/lib/domain/order-journey"
 import { assetKindForOrderLineType } from "@/lib/domain/asset-status"
 import { createId } from "@/lib/utils/ids"
+import { parseRiyadhDate } from "@/lib/utils/format"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import { applyAssetStatusCorrection } from "@/lib/actions/asset-transition"
 import { createAssetCore } from "@/lib/actions/assets"
@@ -84,10 +85,8 @@ export async function createOrderCore(
     contactPerson: d.contactPerson || null,
     contactMobile: d.contactMobile || null,
     contactEmail: d.contactEmail || null,
-    quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
-    customerConfirmedAt: d.customerConfirmationDate
-      ? new Date(d.customerConfirmationDate).getTime()
-      : null,
+    quoteDate: parseRiyadhDate(d.quoteDate),
+    customerConfirmedAt: parseRiyadhDate(d.customerConfirmationDate),
     rentalPeriodMonths: d.rentalPeriodMonths ?? null,
     additionalPeriodMonths: d.additionalPeriodMonths ?? null,
     total,
@@ -164,8 +163,8 @@ export async function confirmOrderCustomerApproval(
   if (order.status === "cancelled") return { error: "A cancelled order cannot be confirmed" }
   if (order.customerConfirmedAt) return { id: parsed.data.orderId }
 
-  const confirmedAt = new Date(`${parsed.data.confirmationDate}T00:00:00`).getTime()
-  if (!Number.isFinite(confirmedAt)) return { error: "Invalid confirmation date" }
+  const confirmedAt = parseRiyadhDate(parsed.data.confirmationDate)
+  if (confirmedAt == null) return { error: "Invalid confirmation date" }
 
   await db
     .update(orders)
@@ -244,10 +243,8 @@ export async function updateOrderCore(
       contactPerson: d.contactPerson || null,
       contactMobile: d.contactMobile || null,
       contactEmail: d.contactEmail || null,
-      quoteDate: d.quoteDate ? new Date(d.quoteDate).getTime() : null,
-      customerConfirmedAt: d.customerConfirmationDate
-        ? new Date(d.customerConfirmationDate).getTime()
-        : null,
+      quoteDate: parseRiyadhDate(d.quoteDate),
+      customerConfirmedAt: parseRiyadhDate(d.customerConfirmationDate),
       rentalPeriodMonths: d.rentalPeriodMonths ?? null,
       additionalPeriodMonths: d.additionalPeriodMonths ?? null,
       total,

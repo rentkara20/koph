@@ -3,6 +3,7 @@ import { db } from "@/lib/db"
 import { customers, orderLines, orderUnits, orders, suppliers } from "@/lib/db/schema"
 import { createAssetCore, updateAssetImportCore } from "@/lib/actions/assets"
 import type { ColumnDef, ImportRow } from "./types"
+import { parseRiyadhDate, toDateInputValue } from "@/lib/utils/format"
 
 // Db-injectable, matching lib/actions/customers.ts's searchCustomersCore
 // convention — lets validateAssetRows run against an ephemeral test db.
@@ -123,14 +124,15 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
   }))
 }
 
-function toDateString(ms: number): string {
-  return new Date(ms).toISOString().slice(0, 10)
-}
+// Riyadh calendar day — the inverse of parseDate above. Formatting in UTC
+// here would export a Riyadh-midnight timestamp as the previous day, so a
+// CSV export/import round-trip would walk every date back by one.
+const toDateString = toDateInputValue
 
 function parseDate(value: string, field: string): number | undefined {
   if (!value) return undefined
-  const t = new Date(`${value}T00:00:00Z`).getTime()
-  if (!Number.isFinite(t)) throw new Error(`Invalid ${field}: "${value}" (expected YYYY-MM-DD)`)
+  const t = parseRiyadhDate(value)
+  if (t == null) throw new Error(`Invalid ${field}: "${value}" (expected YYYY-MM-DD)`)
   return t
 }
 

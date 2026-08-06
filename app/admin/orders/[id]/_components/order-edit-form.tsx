@@ -16,6 +16,7 @@ import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { ExternalLink } from "lucide-react"
+import { toDateInputValue } from "@/lib/utils/format"
 
 type LineType = "rental_asset" | "sold_product"
 
@@ -29,10 +30,7 @@ type LineRow = {
 
 let nextKey = 1
 
-function dateInputValue(epoch: number | null): string {
-  if (!epoch) return ""
-  return new Date(epoch).toISOString().slice(0, 10)
-}
+const dateInputValue = toDateInputValue
 
 export function OrderEditForm({
   order,

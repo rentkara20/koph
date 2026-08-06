@@ -20,6 +20,7 @@ import {
   warrantyProducts,
 } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
+import { parseRiyadhDate } from "@/lib/utils/format"
 import { getSessionWithRole, getStaffSession } from "@/lib/auth/session"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { getWarrantyExpiryAlertDays } from "@/lib/actions/settings"
@@ -253,7 +254,7 @@ export async function assignWarrantyCore(
     assetId: d.assetId,
     warrantyBatchId: d.warrantyBatchId,
     status: "assigned_not_activated",
-    activationDueAt: d.activationDueAt ? new Date(d.activationDueAt).getTime() : null,
+    activationDueAt: parseRiyadhDate(d.activationDueAt),
   })
   await tx
     .update(warrantyBatches)

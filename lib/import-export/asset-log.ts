@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { assetEvents, customers, orderUnits } from "@/lib/db/schema"
 import type { ColumnDef } from "./types"
+import { toDateInputValue } from "@/lib/utils/format"
 
 // ─── Asset Log (Sheet 2 of the agreed asset-export design) ──────────────────
 // One row per lifecycle event — the movement ledger / passport of each device,
@@ -23,9 +24,8 @@ export const ASSET_LOG_COLUMNS: ColumnDef[] = [
   { header: "note", field: "note", required: false },
 ]
 
-function toDateString(ms: number | null): string {
-  return ms ? new Date(ms).toISOString().slice(0, 10) : ""
-}
+// Riyadh calendar day, matching parseRiyadhDate on the import side.
+const toDateString = toDateInputValue
 
 export async function exportAssetLogRows(): Promise<Record<string, unknown>[]> {
   const rows = await db

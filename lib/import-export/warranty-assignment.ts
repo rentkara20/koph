@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { orderUnits, warrantyAssignments, warrantyBatches, warrantyProducts } from "@/lib/db/schema"
 import type { ColumnDef } from "./types"
+import { toDateInputValue } from "@/lib/utils/format"
 
 // Export-only — lifecycle-gated (capacity checks live in assignWarrantyCore),
 // not CSV-safe. See lib/import-export/modules.ts (exportOnly).
@@ -17,7 +18,7 @@ export const WARRANTY_ASSIGNMENT_COLUMNS: ColumnDef[] = [
 ]
 
 function toDateString(ms: number | null): string {
-  return ms ? new Date(ms).toISOString().slice(0, 10) : ""
+  return toDateInputValue(ms)
 }
 
 export async function exportWarrantyAssignmentRows(): Promise<Record<string, unknown>[]> {

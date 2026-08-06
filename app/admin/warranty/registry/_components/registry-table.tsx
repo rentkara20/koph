@@ -20,6 +20,7 @@ import type { WarrantyRequestMessageTemplates } from "@/lib/domain/message-templ
 import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
 import { cn } from "@/lib/utils"
 import type { WarrantyRegistryRow } from "@/lib/actions/warranty"
+import { todayInputValue } from "@/lib/utils/format"
 
 type ProductOption = { id: string; nameEn: string }
 type SupplierOption = { id: string; name: string; contactPerson: string | null; mobile: string | null; email: string | null }
@@ -45,7 +46,7 @@ export function RegistryTable({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
-  const [activateStartAt, setActivateStartAt] = useState(() => new Date().toISOString().slice(0, 10))
+  const [activateStartAt, setActivateStartAt] = useState(todayInputValue)
   const [activatePending, startActivateTransition] = useTransition()
 
   const [productId, setProductId] = useState(products[0]?.id ?? "")

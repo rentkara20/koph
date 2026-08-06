@@ -1,5 +1,6 @@
 import { Client } from "@notionhq/client"
 import { isNotionSyncForceDisabled } from "@/lib/actions/settings"
+import { toDateInputValue } from "@/lib/utils/format"
 
 // One-way mirror: KOPH -> Notion. Soft-disabled until both env vars are set
 // (see report for setup steps) — never blocks the caller. Uses the v5 SDK's
@@ -54,7 +55,7 @@ export async function upsertAssetInNotion(row: NotionAssetRow): Promise<void> {
     "Current Customer": { rich_text: [{ text: { content: row.currentCustomerName ?? "" } }] },
     "Purchase Cost": { number: row.purchaseCost },
     "Warranty End": row.warrantyEnd
-      ? { date: { start: new Date(row.warrantyEnd).toISOString().slice(0, 10) } }
+      ? { date: { start: toDateInputValue(row.warrantyEnd) } }
       : { date: null },
     "KOPH Link": { url: row.koph_link },
   }
