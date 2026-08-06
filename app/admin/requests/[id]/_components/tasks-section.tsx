@@ -72,6 +72,7 @@ type PartnerData = {
     contractName: string | null
     pricingModel: string | null
     unitPrice: number | null
+    serviceTypeId: string | null
   }[]
 }
 
@@ -391,6 +392,7 @@ export function TasksSection({
   contacts,
   receiverContactId,
   requestTypeSlug,
+  requestTypeId,
   taskServicesMap,
   allServices,
   batchSummaryByTaskId,
@@ -402,6 +404,7 @@ export function TasksSection({
   contacts: ContactOption[]
   receiverContactId: string | null
   requestTypeSlug: string | null
+  requestTypeId: string | null
   taskServicesMap: Record<string, ServiceItem[]>
   allServices: ActiveService[]
   // Delivery Batching v2 P5 — present only for tasks that genuinely span more
@@ -421,6 +424,23 @@ export function TasksSection({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const selectedPartner = partners.find((p) => p.id === selectedPartnerId)
+
+  // Contracts matching this request's service type come first, and the top one
+  // is preselected: partners often hold several contracts at different rates
+  // (Delivery 40, Hardware Services 15) and an unordered list with no default
+  // made it easy to assign the wrong rate silently.
+  const contractOptions = selectedPartner
+    ? [...selectedPartner.contracts].sort((a, b) => {
+        const aMatch = requestTypeId != null && a.serviceTypeId === requestTypeId
+        const bMatch = requestTypeId != null && b.serviceTypeId === requestTypeId
+        if (aMatch !== bMatch) return aMatch ? -1 : 1
+        return (a.contractName ?? "").localeCompare(b.contractName ?? "")
+      })
+    : []
+  const defaultContractId =
+    requestTypeId != null && contractOptions[0]?.serviceTypeId === requestTypeId
+      ? contractOptions[0].contractId ?? ""
+      : ""
 
   async function handleAssign(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -660,14 +680,18 @@ export function TasksSection({
               </Select>
             </div>
 
-            {selectedPartner && selectedPartner.contracts.length > 0 && (
+            {contractOptions.length > 0 && (
               <div className="space-y-1.5">
                 <Label className="text-xs">{t("contract")} <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>
-                <Select name="contractId" defaultValue="">
+                {/* keyed on the partner so the preselected default re-applies
+                    when the partner changes (uncontrolled defaultValue alone
+                    would keep the previous partner's selection) */}
+                <Select key={selectedPartnerId} name="contractId" defaultValue={defaultContractId}>
                   <option value="">— {t("noContract")} —</option>
-                  {selectedPartner.contracts.map((c) => (
+                  {contractOptions.map((c) => (
                     <option key={c.contractId} value={c.contractId!}>
-                      {c.contractName} ({c.pricingModel?.replace(/_/g, " ")})
+                      {c.contractName} ({c.pricingModel?.replace(/_/g, " ")}
+                      {c.unitPrice != null ? ` — SAR ${c.unitPrice}` : ""})
                     </option>
                   ))}
                 </Select>

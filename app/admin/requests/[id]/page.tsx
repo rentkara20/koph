@@ -278,6 +278,7 @@ export default async function RequestDetailPage({
                 contacts={contacts}
                 receiverContactId={request.receiverContactId ?? null}
                 requestTypeSlug={requestType?.slug ?? null}
+                requestTypeId={requestType?.id ?? null}
                 taskServicesMap={taskServicesMap}
                 allServices={allServices}
                 batchSummaryByTaskId={batchSummaryByTaskId}

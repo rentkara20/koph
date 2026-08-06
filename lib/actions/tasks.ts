@@ -1732,6 +1732,9 @@ export async function getPartnersWithContracts() {
       contractName: partnerContracts.name,
       pricingModel: partnerContracts.pricingModel,
       unitPrice: partnerContracts.unitPrice,
+      // Lets the assign form preselect the contract matching the request's own
+      // service type — picking the wrong contract silently pays the wrong rate.
+      serviceTypeId: partnerContracts.serviceTypeId,
     })
     .from(partners)
     .leftJoin(
