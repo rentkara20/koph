@@ -958,9 +958,11 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
       .select({
         unitId: orderUnits.id,
         serialNumber: orderUnits.serialNumber,
-        description: orderLines.description,
-        brand: orderLines.brand,
-        model: orderLines.model,
+        // Per-asset rename lives on order_unit.model, so the picker must resolve
+        // the display name the same way the asset list and collection lookup do.
+        description: assetDisplayNameSql(orderLines.description),
+        brand: assetBrandSql(orderLines.brand),
+        model: assetModelSql(orderLines.model),
         supplierName: suppliers.name,
       })
       .from(orderUnits)
@@ -971,9 +973,9 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
       .select({
         unitId: orderUnits.id,
         serialNumber: orderUnits.serialNumber,
-        description: purchaseOrderLines.itemDescription,
-        brand: purchaseOrderLines.brand,
-        model: purchaseOrderLines.model,
+        description: assetDisplayNameSql(purchaseOrderLines.itemDescription),
+        brand: assetBrandSql(purchaseOrderLines.brand),
+        model: assetModelSql(purchaseOrderLines.model),
         supplierName: suppliers.name,
       })
       .from(orderUnits)
@@ -991,9 +993,9 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
       .select({
         unitId: orderUnits.id,
         serialNumber: orderUnits.serialNumber,
-        description: purchaseOrderLines.itemDescription,
-        brand: purchaseOrderLines.brand,
-        model: purchaseOrderLines.model,
+        description: assetDisplayNameSql(purchaseOrderLines.itemDescription),
+        brand: assetBrandSql(purchaseOrderLines.brand),
+        model: assetModelSql(purchaseOrderLines.model),
         supplierName: suppliers.name,
       })
       .from(orderUnits)

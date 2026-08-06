@@ -14,6 +14,7 @@ import * as schema from "@/lib/db/schema"
 import { assetDisplayNameSql } from "@/lib/db/asset-name"
 import { createId } from "@/lib/utils/ids"
 import { renameAssetCore } from "@/lib/actions/assets"
+import { getAvailableOrderUnitsCore } from "@/lib/actions/orders"
 
 let dir: string
 let db: ReturnType<typeof drizzle<typeof schema>>
@@ -119,6 +120,19 @@ describe("renameAssetCore", () => {
     await db.transaction((tx) => renameAssetCore(tx, unitId, "Same name", null))
     await db.transaction((tx) => renameAssetCore(tx, unitId, "Same name", null))
     expect(await eventsOf(unitId)).toHaveLength(1)
+  })
+
+  // The delivery request's "import from order" picker used to select the raw
+  // line description, so a renamed device kept showing its old name there (and
+  // carried it into the imported request item and the delivery note).
+  test("the order-unit picker shows the renamed device name", async () => {
+    const { unitId, orderId } = await seedAsset("Picker device")
+    await db.update(schema.orderUnits).set({ status: "in_stock" }).where(eq(schema.orderUnits.id, unitId))
+    await db.transaction((tx) => renameAssetCore(tx, unitId, "Picker renamed", null))
+
+    const units = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, orderId))
+
+    expect(units.find((u) => u.unitId === unitId)?.description).toBe("Picker renamed")
   })
 
   test("unknown asset id is rejected", async () => {
