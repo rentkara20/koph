@@ -300,14 +300,6 @@
     "markFailed": "تحديد كفاشلة",
     "failureReason": "سبب الفشل",
     "failureNotes": "ملاحظات الفشل",
-    "failureReasons": {
-      "customer_unavailable": "العميل غير متاح",
-      "wrong_address": "عنوان خاطئ",
-      "item_damaged": "الجهاز تالف",
-      "access_denied": "تم رفض الوصول",
-      "customer_rescheduled": "أعاد العميل الجدولة",
-      "other": "أخرى"
-    },
     "signoff": "الموافقة على المهمة",
     "quantity": "الكمية",
     "regenerateLink": "إعادة توليد رابط المهمة",
@@ -1330,11 +1322,19 @@
       "cancelled": "ملغاة"
     },
     "unitStatus": {
+      "receiving_qc": "في فحص الاستلام",
       "in_stock": "متوفر",
+      "reserved": "محجوز",
       "assigned": "مخصّص",
       "delivered": "مُسلّم",
       "returned": "مُرتجع",
-      "damaged": "تالف"
+      "maintenance": "في الصيانة",
+      "damaged": "تالف",
+      "supplier_return_pending": "بانتظار الإرجاع للمورد",
+      "supplier_returned": "مُرجع للمورد",
+      "retired": "خارج الخدمة",
+      "sold": "مُباع",
+      "lost": "مفقود"
     },
     "devices": "الأجهزة",
     "unitsCount": "جهاز",

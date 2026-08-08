@@ -2,7 +2,8 @@ import Image from "next/image"
 import { getTranslations, getLocale } from "next-intl/server"
 import { Phone } from "lucide-react"
 import { getTaskByToken, getTaskPhotosByToken } from "@/lib/actions/tasks"
-import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
+import { getActiveFailureReasons, getFailureReasonLabels } from "@/lib/actions/failure-reasons"
+import { failureReasonLabel } from "@/lib/domain/failure-reason-label"
 import { getServicesForTaskToken } from "@/lib/actions/task-services"
 import { getBatchSignaturesForTaskToken } from "@/lib/actions/signatures"
 import { isDeliveryStageUnlocked } from "@/lib/actions/otp"
@@ -24,18 +25,29 @@ import { OnSiteSigningFlow } from "./on-site-signing"
 type Data = NonNullable<Awaited<ReturnType<typeof getTaskByToken>>>
 
 export async function BatchTaskView({ token, data }: { token: string; data: Data }) {
-  const [t, tStatus, tPortal, locale, photos, taskServices, failureReasons, signatures, messageTemplates] =
-    await Promise.all([
-      getTranslations("tasks"),
-      getTranslations("tasks.status"),
-      getTranslations("portal"),
-      getLocale(),
-      getTaskPhotosByToken(token),
-      getServicesForTaskToken(token),
-      getActiveFailureReasons(),
-      getBatchSignaturesForTaskToken(token),
-      getOperationalMessageTemplates(),
-    ])
+  const [
+    t,
+    tStatus,
+    tPortal,
+    locale,
+    photos,
+    taskServices,
+    failureReasons,
+    failureReasonLabels,
+    signatures,
+    messageTemplates,
+  ] = await Promise.all([
+    getTranslations("tasks"),
+    getTranslations("tasks.status"),
+    getTranslations("portal"),
+    getLocale(),
+    getTaskPhotosByToken(token),
+    getServicesForTaskToken(token),
+    getActiveFailureReasons(),
+    getFailureReasonLabels(),
+    getBatchSignaturesForTaskToken(token),
+    getOperationalMessageTemplates(),
+  ])
 
   const { task, partner, batchGroups, isExpired } = data
   const groups = batchGroups ?? []
@@ -84,7 +96,7 @@ export async function BatchTaskView({ token, data }: { token: string; data: Data
         )}
         {task.status === "failed" && task.failureReason && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-800">
-            {t(`failureReasons.${task.failureReason}`)}
+            {failureReasonLabel(failureReasonLabels, task.failureReason, locale)}
             {task.failureNotes ? `. ${task.failureNotes}` : ""}
           </div>
         )}

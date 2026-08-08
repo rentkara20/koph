@@ -7,7 +7,7 @@ import { authClient } from "@/lib/auth/client"
 
 export function PartnerLogout() {
   const router = useRouter()
-  const t = useTranslations("common")
+  const t = useTranslations("nav")
 
   async function handleLogout() {
     await authClient.signOut()

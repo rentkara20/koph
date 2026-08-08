@@ -9,6 +9,7 @@ import { appBaseUrl } from "@/lib/utils/public-url"
 import { buildDeliveryNoteName } from "@/lib/utils/city-iata"
 import { getTaskServicesForRequest } from "@/lib/actions/task-services"
 import { getActiveServices } from "@/lib/actions/services"
+import { getFailureReasonLabels } from "@/lib/actions/failure-reasons"
 import { buttonVariants } from "@/components/ui/button"
 import { Badge, requestStatusVariant } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -33,7 +34,7 @@ export default async function RequestDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const [data, tasks, partnersWithContracts, signatures, depositDefaults, taskServicesMap, allServices, companyLocation, t, tCommon, locale] = await Promise.all([
+  const [data, tasks, partnersWithContracts, signatures, depositDefaults, taskServicesMap, allServices, companyLocation, failureReasonLabels, t, tCommon, locale] = await Promise.all([
     getRequest(id),
     getTasksForRequest(id),
     getPartnersWithContracts(),
@@ -42,6 +43,7 @@ export default async function RequestDetailPage({
     getTaskServicesForRequest(id),
     getActiveServices(),
     getDefaultCompanyLocation(),
+    getFailureReasonLabels(),
     getTranslations("requests"),
     getTranslations("common"),
     getLocale(),
@@ -282,6 +284,7 @@ export default async function RequestDetailPage({
                 taskServicesMap={taskServicesMap}
                 allServices={allServices}
                 batchSummaryByTaskId={batchSummaryByTaskId}
+                failureReasonLabels={failureReasonLabels}
               />
               <div className="mt-3">
                 <PartialResolutionPanel

@@ -300,14 +300,6 @@
     "markFailed": "Mark as failed",
     "failureReason": "Failure reason",
     "failureNotes": "Failure notes",
-    "failureReasons": {
-      "customer_unavailable": "Customer unavailable",
-      "wrong_address": "Wrong address",
-      "item_damaged": "Item damaged",
-      "access_denied": "Access denied",
-      "customer_rescheduled": "Customer rescheduled",
-      "other": "Other"
-    },
     "signoff": "Sign off task",
     "quantity": "Quantity",
     "regenerateLink": "Regenerate task link",
@@ -1330,11 +1322,19 @@
       "cancelled": "Cancelled"
     },
     "unitStatus": {
+      "receiving_qc": "Receiving QC",
       "in_stock": "In stock",
+      "reserved": "Reserved",
       "assigned": "Assigned",
       "delivered": "Delivered",
       "returned": "Returned",
-      "damaged": "Damaged"
+      "maintenance": "Maintenance",
+      "damaged": "Damaged",
+      "supplier_return_pending": "Supplier return pending",
+      "supplier_returned": "Returned to supplier",
+      "retired": "Retired",
+      "sold": "Sold",
+      "lost": "Lost"
     },
     "devices": "Devices",
     "unitsCount": "devices",
