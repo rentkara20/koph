@@ -258,9 +258,7 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
           partners={partners.map((pt) => ({
             id: pt.id,
             name: pt.name,
-            contracts: pt.contracts
-              .filter((c) => c.contractId)
-              .map((c) => ({ id: c.contractId as string, name: c.contractName ?? "" })),
+            contracts: pt.contracts.filter((c) => c.contractId),
           }))}
         />
       ) : (

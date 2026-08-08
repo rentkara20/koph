@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { createPickupTask } from "@/lib/actions/procurement-pickup"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { orderContractsForServiceType } from "@/lib/domain/contract-preselect"
 
 interface LineOption {
   id: string
@@ -18,7 +19,15 @@ interface LineOption {
 interface PartnerOption {
   id: string
   name: string
-  contracts: { id: string; name: string }[]
+  contracts: {
+    contractId: string | null
+    contractName: string | null
+    pricingModel: string | null
+    unitPrice: number | null
+    // A supplier pickup has no customer request behind it, so there is no
+    // service type to match a contract against — see the ordering note below.
+    serviceTypeId: string | null
+  }[]
 }
 
 export function CreatePickupForm({
@@ -40,6 +49,15 @@ export function CreatePickupForm({
   const [pending, startTransition] = useTransition()
 
   const selectedPartner = partners.find((p) => p.id === partnerId)
+  // Ordered but NOT preselected. The other two assign surfaces preselect the
+  // contract whose service type matches the request's, but a supplier pickup is
+  // anchored to a purchase order and has no request type — and KOPH's
+  // "collection" type means collecting from a customer, not from a supplier, so
+  // there is nothing here that can be matched without inventing the mapping.
+  // Passing null yields a stable alphabetical order; the rate is shown in each
+  // option so a wrong pick is at least visible rather than silent. Once a
+  // pickup service type is agreed, pass it here and use preselectedContractId.
+  const contractOptions = orderContractsForServiceType(selectedPartner?.contracts ?? [], null)
   const plannableLines = lines.filter((l) => l.plannable > 0)
 
   function submit() {
@@ -100,18 +118,19 @@ export function CreatePickupForm({
             ))}
           </select>
         </label>
-        {selectedPartner && selectedPartner.contracts.length > 0 && (
+        {contractOptions.length > 0 && (
           <label className="text-sm">
-            <span className="mb-1 block text-muted-foreground">Contract</span>
+            <span className="mb-1 block text-muted-foreground">{t("contract")}</span>
             <select
               className="h-9 w-full rounded-md border bg-background px-2"
               value={contractId}
               onChange={(e) => setContractId(e.target.value)}
             >
               <option value="">—</option>
-              {selectedPartner.contracts.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
+              {contractOptions.map((c) => (
+                <option key={c.contractId} value={c.contractId!}>
+                  {c.contractName} ({c.pricingModel?.replace(/_/g, " ")}
+                  {c.unitPrice != null ? ` — SAR ${c.unitPrice}` : ""})
                 </option>
               ))}
             </select>
