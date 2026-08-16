@@ -1,9 +1,11 @@
 import Image from "next/image"
 import { getLocale, getTranslations } from "next-intl/server"
-import { ShieldCheck } from "lucide-react"
+import { FileSpreadsheet, ShieldCheck } from "lucide-react"
 import { getBatchByStatementToken } from "@/lib/actions/payments"
 import { Badge } from "@/components/ui/badge"
+import { buttonVariants } from "@/components/ui/button"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
+import { cn } from "@/lib/utils"
 import { formatDate } from "@/lib/utils/format"
 import { paymentBatchStatusVariant as BATCH_STATUS_VARIANT } from "@/lib/domain/status-variant"
 
@@ -65,9 +67,18 @@ export default async function StatementPage({
                   {t("for")} <span className="font-medium text-foreground">{batch.partnerName ?? "—"}</span>
                 </p>
               </div>
-              <Badge variant={BATCH_STATUS_VARIANT[batch.status] ?? "outline"}>
-                {tStatus(batch.status)}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <a
+                  className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                  href={`/statement/${token}/export`}
+                >
+                  <FileSpreadsheet className="size-3.5" />
+                  {t("downloadExcel")}
+                </a>
+                <Badge variant={BATCH_STATUS_VARIANT[batch.status] ?? "outline"}>
+                  {tStatus(batch.status)}
+                </Badge>
+              </div>
             </div>
             <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               <div>

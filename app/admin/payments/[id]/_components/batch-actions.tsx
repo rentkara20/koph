@@ -4,10 +4,11 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { toast } from "sonner"
-import { Download } from "lucide-react"
+import { Download, FileSpreadsheet } from "lucide-react"
 import { approveBatch, markBatchSentToFinance, markBatchPaid } from "@/lib/actions/payments"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { cn } from "@/lib/utils"
 
 type Payment = {
   requestNumber: string | null
@@ -110,6 +111,13 @@ export function BatchActions({ batchId, status, partnerName, period, payments }:
             {loading ? "…" : "Mark as paid"}
           </Button>
         )}
+        <a
+          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          href={`/admin/payments/${batchId}/export`}
+        >
+          <FileSpreadsheet className="size-3.5" />
+          Export Excel
+        </a>
         <Button variant="outline" size="sm" onClick={exportCsv}>
           <Download className="size-3.5" />
           Export CSV

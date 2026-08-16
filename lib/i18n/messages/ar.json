@@ -388,7 +388,8 @@
     "adHocDone": "تم",
     "photoRequiredError": "ارفع صورة إثبات الأول.",
     "selectFailureReason": "اختر السبب",
-    "markFailedShort": "تعذّر"
+    "markFailedShort": "تعذّر",
+    "deliveryDate": "تاريخ التسليم"
   },
   "customers": {
     "title": "العملاء",
@@ -724,7 +725,33 @@
     "qty": "الكمية",
     "unitSar": "سعر الوحدة (ريال)",
     "totalSar": "الإجمالي (ريال)",
-    "total": "الإجمالي"
+    "total": "الإجمالي",
+    "excel": {
+      "sheetSummary": "ملخص",
+      "sheetPayments": "المدفوعات",
+      "batchTitle": "دفعة مدفوعات شريك",
+      "reviewTitle": "كشف مدفوعات خدمات الشركاء",
+      "colDate": "التاريخ",
+      "colCustomer": "العميل",
+      "colStatus": "الحالة",
+      "colService": "نوع الخدمة",
+      "colDescription": "وصف الخدمة",
+      "colSerial": "الرقم التسلسلي",
+      "colDevice": "مواصفات الجهاز",
+      "colPricingModel": "نموذج التسعير",
+      "colNotes": "ملاحظات",
+      "lblPeriod": "الفترة",
+      "lblGenerated": "تاريخ الإنشاء",
+      "lblApproved": "تاريخ الاعتماد",
+      "lblSentToFinance": "تاريخ الإرسال للمالية",
+      "lblPaid": "تاريخ الدفع",
+      "lblLines": "عدد البنود",
+      "lblFrom": "من تاريخ",
+      "lblTo": "إلى تاريخ",
+      "lblPartners": "عدد الشركاء",
+      "valueStart": "من البداية",
+      "valueToday": "حتى اليوم"
+    }
   },
   "statement": {
     "title": "كشف حساب مدفوعات الشريك",
@@ -741,7 +768,8 @@
     "total": "الإجمالي",
     "note": "هذا الكشف صادر من كارا. إذا بدا أي بند غير صحيح، تواصل مع مكتب كارا قبل تاريخ الدفع.",
     "empty": "لا توجد بنود في هذا الكشف.",
-    "notFound": "الكشف غير موجود أو انتهت صلاحية الرابط."
+    "notFound": "الكشف غير موجود أو انتهت صلاحية الرابط.",
+    "downloadExcel": "تحميل Excel"
   },
   "certificate": {
     "title": "شهادة إتمام",
@@ -1658,7 +1686,8 @@
       "planPlaceholder": "الكمية المطلوب استلامها",
       "selectPartner": "اختر الشريك",
       "noReadyPo": "حدّد أمر الشراء كجاهز للاستلام لإنشاء المهام",
-      "collectedOf": "تم استلام {picked} من {planned}"
+      "collectedOf": "تم استلام {picked} من {planned}",
+      "contract": "العقد"
     },
     "intakeKind": "الوجهة",
     "intakeKindRental": "أصل إيجار",

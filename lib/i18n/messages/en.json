@@ -388,7 +388,8 @@
     "adHocDone": "Done",
     "photoRequiredError": "Please upload a proof photo first.",
     "selectFailureReason": "Select a reason",
-    "markFailedShort": "Couldn’t do it"
+    "markFailedShort": "Couldn’t do it",
+    "deliveryDate": "Delivery date"
   },
   "customers": {
     "title": "Customers",
@@ -724,7 +725,33 @@
     "qty": "Qty",
     "unitSar": "Unit (SAR)",
     "totalSar": "Total (SAR)",
-    "total": "Total"
+    "total": "Total",
+    "excel": {
+      "sheetSummary": "Summary",
+      "sheetPayments": "Payments",
+      "batchTitle": "Partner payment batch",
+      "reviewTitle": "Partner services payment sheet",
+      "colDate": "Date",
+      "colCustomer": "Customer",
+      "colStatus": "Status",
+      "colService": "Service",
+      "colDescription": "Description",
+      "colSerial": "Serial",
+      "colDevice": "Device",
+      "colPricingModel": "Pricing model",
+      "colNotes": "Notes",
+      "lblPeriod": "Period",
+      "lblGenerated": "Generated",
+      "lblApproved": "Approved",
+      "lblSentToFinance": "Sent to finance",
+      "lblPaid": "Paid",
+      "lblLines": "Payment lines",
+      "lblFrom": "Period from",
+      "lblTo": "Period to",
+      "lblPartners": "Partners",
+      "valueStart": "Start",
+      "valueToday": "Today"
+    }
   },
   "statement": {
     "title": "Partner payment statement",
@@ -741,7 +768,8 @@
     "total": "Total",
     "note": "This statement is issued by KARA. If any line item looks incorrect, contact the KARA office before the payment date.",
     "empty": "No line items in this statement.",
-    "notFound": "Statement not found or link is no longer valid."
+    "notFound": "Statement not found or link is no longer valid.",
+    "downloadExcel": "Download Excel"
   },
   "certificate": {
     "title": "Certificate of Completion",
@@ -1658,7 +1686,8 @@
       "planPlaceholder": "Qty to collect",
       "selectPartner": "Select partner",
       "noReadyPo": "Mark the PO ready for pickup to create tasks",
-      "collectedOf": "{picked} of {planned} collected"
+      "collectedOf": "{picked} of {planned} collected",
+      "contract": "Contract"
     },
     "intakeKind": "Destination",
     "intakeKindRental": "Rental asset",

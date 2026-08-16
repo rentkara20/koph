@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { formatDate } from "@/lib/utils/format"
 import { cn } from "@/lib/utils"
-import { FinancePackage } from "../_components/finance-package"
+import { FinancePackage, buildReviewExportHref } from "../_components/finance-package"
 import { PaymentLineEditor } from "./_components/payment-line-editor"
 
 const LINE_STATUS_LABEL: Record<string, string> = {
@@ -318,7 +318,14 @@ export default async function PaymentReviewPage({
         </CardContent>
       </Card>}
 
-      {tab === "send" && <FinancePackage payments={data.payments} from={from} to={to} />}
+      {tab === "send" && (
+        <FinancePackage
+          payments={data.payments}
+          from={from}
+          to={to}
+          exportHref={buildReviewExportHref(from, to, selectedPartnerIds)}
+        />
+      )}
 
       {tab === "prepare" && <Card>
         <CardHeader>

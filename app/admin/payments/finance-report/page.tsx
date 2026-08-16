@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react"
 import { getPaymentReview } from "@/lib/actions/payments"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { FinancePackage } from "../_components/finance-package"
+import { FinancePackage, buildReviewExportHref } from "../_components/finance-package"
 
 function asList(value: string | string[] | undefined): string[] {
   if (!value) return []
@@ -35,7 +35,12 @@ export default async function FinanceReportPage({
         </div>
       </div>
 
-      <FinancePackage payments={data.payments} from={from} to={to} />
+      <FinancePackage
+        payments={data.payments}
+        from={from}
+        to={to}
+        exportHref={buildReviewExportHref(from, to, selectedPartnerIds)}
+      />
     </div>
   )
 }

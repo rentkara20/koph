@@ -1,4 +1,7 @@
+import { FileSpreadsheet } from "lucide-react"
 import { formatDate } from "@/lib/utils/format"
+import { buttonVariants } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { ExportCsvButton, ReportActions } from "../finance-report/_components/report-actions"
 
 type PaymentLine = {
@@ -13,6 +16,19 @@ type PaymentLine = {
   status: string
   notes: string | null
   createdAt: number
+}
+
+export function buildReviewExportHref(
+  from: string,
+  to: string,
+  partnerIds: ReadonlyArray<string>
+): string {
+  const params = new URLSearchParams()
+  if (from) params.set("from", from)
+  if (to) params.set("to", to)
+  for (const partnerId of partnerIds) params.append("partnerId", partnerId)
+  const query = params.toString()
+  return `/admin/payments/review/export${query ? `?${query}` : ""}`
 }
 
 function monthLabel(ts: number): string {
@@ -65,10 +81,12 @@ export function FinancePackage({
   payments,
   from,
   to,
+  exportHref,
 }: {
   payments: PaymentLine[]
   from: string
   to: string
+  exportHref: string
 }) {
   const sortedPayments = [...payments].sort((a, b) => a.createdAt - b.createdAt)
   const emailRows = buildEmailRows(sortedPayments)
@@ -81,10 +99,14 @@ export function FinancePackage({
         <div>
           <h2 className="text-base font-semibold">Finance package</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Use this for the email body, and download the detailed Excel CSV attachment.
+            Use this for the email body, and download the detailed Excel attachment.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          <a className={cn(buttonVariants({ variant: "outline", size: "sm" }))} href={exportHref}>
+            <FileSpreadsheet className="size-3.5" />
+            Download Excel
+          </a>
           <ExportCsvButton filename={`partner-payments-${from || "all"}-${to || "all"}.csv`} rows={exportRows} />
           <ReportActions />
         </div>
