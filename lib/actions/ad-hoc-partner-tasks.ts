@@ -7,7 +7,7 @@
 // reuses the request partner lifecycle (pending → accepted → in_progress →
 // pending_signoff → closed), the magic-link token, photo proof, notifications,
 // and admin sign-off/payment (see signOffAdHocTask in tasks.ts).
-import { and, desc, eq, gte, isNull, lt, or, SQL } from "drizzle-orm"
+import { and, desc, eq, gte, isNull, lt, or, sql, SQL } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 import { db } from "@/lib/db"
@@ -220,7 +220,14 @@ export async function getAdminTasks(filters: {
     .leftJoin(requestTypes, eq(partnerTasks.taskTypeId, requestTypes.id))
     .leftJoin(customerContacts, eq(partnerTasks.contactId, customerContacts.id))
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(partnerTasks.createdAt))
+    // Chronological by the date the work actually happens (ad-hoc tasks carry
+    // their own scheduledAt; request tasks inherit the request delivery date).
+    // createdAt is only the tiebreak — sorting by it alone scattered tasks away
+    // from their date neighbours and buried ones waiting for sign-off.
+    .orderBy(
+      desc(sql`coalesce(${partnerTasks.scheduledAt}, ${requests.deliveryDate}, ${partnerTasks.createdAt})`),
+      desc(partnerTasks.createdAt)
+    )
 }
 
 export async function getTaskFilterOptions() {

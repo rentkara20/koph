@@ -71,6 +71,7 @@ export const navItems: readonly NavItem[] = [
   { key: "customers", href: "/admin/customers", icon: Users, group: "people" },
   { key: "suppliers", href: "/admin/suppliers", icon: Store, group: "people" },
   { key: "partners", href: "/admin/partners", icon: Truck, group: "people" },
+  { key: "partnerTasks", href: "/admin/partners/tasks", icon: ClipboardList, group: "people" },
 
   { key: "payments", href: "/admin/payments", icon: Coins, group: "money" },
   { key: "reports", href: "/admin/reports", icon: BarChart3, group: "money" },

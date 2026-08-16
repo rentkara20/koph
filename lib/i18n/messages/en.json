@@ -4,6 +4,7 @@
     "requests": "Jobs",
     "customers": "Customers",
     "partners": "Partners",
+    "partnerTasks": "Partner Tasks",
     "signatures": "Signatures",
     "payments": "Payments",
     "reports": "Reports",
