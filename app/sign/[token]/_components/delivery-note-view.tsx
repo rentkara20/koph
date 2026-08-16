@@ -275,9 +275,14 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
               items.map((item) => (
                 <tr key={item.id}>
                   <td style={{ fontFamily: "monospace" }}>{item.serialNumber ?? "—"}</td>
+                  {/* Specs only, printed once. The description IS the spec line
+                      the sales team types; brand/model are internal catalogue
+                      fields and repeat it, so they only stand in when the
+                      description is blank. */}
                   <td className="dn-thw">
-                    {item.description}
-                    {(item.brand || item.model) && ` — ${[item.brand, item.model].filter(Boolean).join(" ")}`}
+                    {item.description?.trim() ||
+                      [item.brand, item.model].filter(Boolean).join(" ") ||
+                      "—"}
                   </td>
                   <td>{item.quantity}</td>
                   <td style={{ color: item.condition ? CONDITION_COLOR[item.condition] : "#1A1A1A", fontWeight: 700 }}>
