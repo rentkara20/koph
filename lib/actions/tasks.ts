@@ -23,6 +23,7 @@ import {
   customerSignatures,
 } from "@/lib/db/schema"
 import { createId, generateToken } from "@/lib/utils/ids"
+import { parseRiyadhDate } from "@/lib/utils/format"
 import { logActivity } from "@/lib/utils/activity"
 import { notify } from "@/lib/utils/notify"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
@@ -253,6 +254,8 @@ export type CreateTaskData = {
   taskTypeId?: string
   executionMode?: "manual" | "api_courier"
   photoRequired?: boolean
+  // Date-only "YYYY-MM-DD" delivery/execution date, resolved in Asia/Riyadh.
+  scheduledDate?: string
   notes?: string
   // Explicit per-item allocation (used by createFollowUpDeliveryTask). When
   // omitted, the task claims all currently-remaining quantity on every item —
@@ -285,7 +288,9 @@ async function createTaskCore(
         contactId: resolveTaskContactId(data.contactId, requestContact?.receiverContactId ?? null),
         taskTypeId: data.taskTypeId || null,
         executionMode: data.executionMode ?? "manual",
-        photoRequired: data.photoRequired ?? true,
+        // Proof photo is never mandatory by default — Ops opts in per task.
+        photoRequired: data.photoRequired ?? false,
+        scheduledAt: parseRiyadhDate(data.scheduledDate),
         taskToken,
         taskTokenExpiresAt,
         status: "pending",
@@ -334,6 +339,12 @@ export async function createTask(
 
   const parsed = createTaskSchema.safeParse(data)
   if (!parsed.success) return { error: firstError(parsed.error) }
+
+  // Delivery date is mandatory on assignment — the partner and Ops both plan
+  // the trip from it, and an undated task never shows up on the schedule.
+  if (parseRiyadhDate(data.scheduledDate) == null) {
+    return { error: "Delivery date is required" }
+  }
 
   const created = await createTaskCore(requestId, data, session.user.id)
   if (created.error) return created

@@ -214,7 +214,7 @@ describe("signOffTask — which devices move", () => {
   test("legacy task with no reporting rows keeps delivering the whole request", async () => {
     const r = await seedRequestWithUnits(2)
     const { partnerId, contractId } = await seedPartnerWithContract()
-    const created = await createTask(r.requestId, { partnerId, contractId, photoRequired: false })
+    const created = await createTask(r.requestId, { scheduledDate: "2026-01-15", partnerId, contractId, photoRequired: false })
     expect(created.error).toBeUndefined()
     const token = created.taskToken as string
     await updateTaskByToken(token, "accept")

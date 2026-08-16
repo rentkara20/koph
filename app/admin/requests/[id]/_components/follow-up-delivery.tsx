@@ -17,6 +17,7 @@ import {
   acceptPartialDeliveryAsFinal,
 } from "@/lib/actions/tasks"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { orderContractsForServiceType, preselectedContractId } from "@/lib/domain/contract-preselect"
 
 type PartnerData = {
   id: string
@@ -27,6 +28,7 @@ type PartnerData = {
     contractName: string | null
     pricingModel: string | null
     unitPrice: number | null
+    serviceTypeId: string | null
   }[]
 }
 
@@ -45,9 +47,11 @@ type RemainingItem = {
 export function FollowUpDeliveryButton({
   requestId,
   partners,
+  requestTypeId,
 }: {
   requestId: string
   partners: PartnerData[]
+  requestTypeId: string | null
 }) {
   const router = useRouter()
   const t = useTranslations("followUpDelivery")
@@ -60,6 +64,9 @@ export function FollowUpDeliveryButton({
   const [notes, setNotes] = useState("")
 
   const selectedPartner = partners.find((p) => p.id === partnerId)
+  // Contracts matching this request's service type come first and the top one is
+  // preselected — see lib/domain/contract-preselect.ts for why.
+  const contractOptions = orderContractsForServiceType(selectedPartner?.contracts ?? [], requestTypeId)
 
   async function handleOpen() {
     setOpen(true)
@@ -72,8 +79,15 @@ export function FollowUpDeliveryButton({
 
   function handlePartnerChange(id: string) {
     setPartnerId(id)
-    // Never let a contract from the previous partner remain selected.
-    setContractId("")
+    // Never let a contract from the previous partner remain selected — jump
+    // straight to the new partner's matching contract, or "" when it has none.
+    const next = partners.find((p) => p.id === id)
+    setContractId(
+      preselectedContractId(
+        orderContractsForServiceType(next?.contracts ?? [], requestTypeId),
+        requestTypeId
+      )
+    )
   }
 
   async function handleSubmit() {
@@ -156,14 +170,15 @@ export function FollowUpDeliveryButton({
         </Select>
       </div>
 
-      {selectedPartner && selectedPartner.contracts.length > 0 && (
+      {contractOptions.length > 0 && (
         <div className="space-y-1.5">
           <Label className="text-xs">{t("contract")} <span className="text-xs text-muted-foreground">{t("contractHint")}</span></Label>
           <Select value={contractId} onChange={(e) => setContractId(e.target.value)}>
             <option value="">{t("noContract")}</option>
-            {selectedPartner.contracts.map((c) => (
+            {contractOptions.map((c) => (
               <option key={c.contractId} value={c.contractId!}>
-                {c.contractName} ({c.pricingModel?.replace(/_/g, " ")})
+                {c.contractName} ({c.pricingModel?.replace(/_/g, " ")}
+                {c.unitPrice != null ? ` — SAR ${c.unitPrice}` : ""})
               </option>
             ))}
           </Select>
@@ -190,10 +205,12 @@ export function PartialResolutionPanel({
   requestId,
   requestStatus,
   partners,
+  requestTypeId,
 }: {
   requestId: string
   requestStatus: string
   partners: PartnerData[]
+  requestTypeId: string | null
 }) {
   const router = useRouter()
   const t = useTranslations("followUpDelivery")
@@ -224,7 +241,7 @@ export function PartialResolutionPanel({
       <p className="text-sm font-medium">{t("resolveTitle")}</p>
       <Separator />
 
-      <FollowUpDeliveryButton requestId={requestId} partners={partners} />
+      <FollowUpDeliveryButton requestId={requestId} partners={partners} requestTypeId={requestTypeId} />
 
       <div className="flex flex-wrap gap-2">
         <Button size="sm" variant="outline" disabled={loading} onClick={() => handleResolve("rescheduled")}>

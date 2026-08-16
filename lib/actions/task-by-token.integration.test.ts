@@ -74,7 +74,7 @@ describe("getTaskByToken — Delivery Batching v2 P3", () => {
     const partnerId = createId()
     await db.insert(schema.partners).values({ id: partnerId, name: "Partner Legacy", status: "active" })
 
-    const created = await createTask(a.requestId, { partnerId })
+    const created = await createTask(a.requestId, { scheduledDate: "2026-01-15", partnerId })
     expect(created.error).toBeUndefined()
 
     const data = await getTaskByToken(created.taskToken as string)

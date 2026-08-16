@@ -279,6 +279,7 @@ export default async function RequestDetailPage({
                 receiverContactId={request.receiverContactId ?? null}
                 requestTypeSlug={requestType?.slug ?? null}
                 requestTypeId={requestType?.id ?? null}
+                plannedDate={requestType?.slug === "collection" ? request.collectionDate ?? null : request.deliveryDate ?? null}
                 taskServicesMap={taskServicesMap}
                 allServices={allServices}
                 batchSummaryByTaskId={batchSummaryByTaskId}
@@ -288,6 +289,7 @@ export default async function RequestDetailPage({
                   requestId={request.id}
                   requestStatus={request.status}
                   partners={partnersWithContracts}
+                  requestTypeId={requestType?.id ?? null}
                 />
               </div>
             </CardContent>

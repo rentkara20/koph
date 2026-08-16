@@ -17,8 +17,9 @@ import { Select } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { formatDate } from "@/lib/utils/format"
+import { formatDate, toDateInputValue } from "@/lib/utils/format"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { orderContractsForServiceType, preselectedContractId } from "@/lib/domain/contract-preselect"
 
 const TASK_STATUS_VARIANT: Record<string, "outline" | "info" | "warning" | "success" | "destructive" | "secondary"> = {
   pending: "outline",
@@ -393,6 +394,7 @@ export function TasksSection({
   receiverContactId,
   requestTypeSlug,
   requestTypeId,
+  plannedDate,
   taskServicesMap,
   allServices,
   batchSummaryByTaskId,
@@ -405,6 +407,8 @@ export function TasksSection({
   receiverContactId: string | null
   requestTypeSlug: string | null
   requestTypeId: string | null
+  // Request's delivery (or collection) date — prefills the mandatory task date.
+  plannedDate?: number | null
   taskServicesMap: Record<string, ServiceItem[]>
   allServices: ActiveService[]
   // Delivery Batching v2 P5 — present only for tasks that genuinely span more
@@ -424,23 +428,12 @@ export function TasksSection({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   const selectedPartner = partners.find((p) => p.id === selectedPartnerId)
+  const defaultDeliveryDate = toDateInputValue(plannedDate)
 
-  // Contracts matching this request's service type come first, and the top one
-  // is preselected: partners often hold several contracts at different rates
-  // (Delivery 40, Hardware Services 15) and an unordered list with no default
-  // made it easy to assign the wrong rate silently.
-  const contractOptions = selectedPartner
-    ? [...selectedPartner.contracts].sort((a, b) => {
-        const aMatch = requestTypeId != null && a.serviceTypeId === requestTypeId
-        const bMatch = requestTypeId != null && b.serviceTypeId === requestTypeId
-        if (aMatch !== bMatch) return aMatch ? -1 : 1
-        return (a.contractName ?? "").localeCompare(b.contractName ?? "")
-      })
-    : []
-  const defaultContractId =
-    requestTypeId != null && contractOptions[0]?.serviceTypeId === requestTypeId
-      ? contractOptions[0].contractId ?? ""
-      : ""
+  // Contracts matching this request's service type come first and the top one is
+  // preselected — see lib/domain/contract-preselect.ts for why.
+  const contractOptions = orderContractsForServiceType(selectedPartner?.contracts ?? [], requestTypeId)
+  const defaultContractId = preselectedContractId(contractOptions, requestTypeId)
 
   async function handleAssign(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -453,7 +446,7 @@ export function TasksSection({
         contractId: (fd.get("contractId") as string) || undefined,
         contactId: (fd.get("contactId") as string) || undefined,
         executionMode: ((fd.get("executionMode") as string) || "manual") as "manual" | "api_courier",
-        photoRequired: fd.get("photoRequired") === "on",
+        scheduledDate: (fd.get("scheduledDate") as string) || undefined,
         notes: (fd.get("notes") as string) || undefined,
       })
       if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setLoading(false); return }
@@ -722,10 +715,12 @@ export function TasksSection({
               </Select>
             </div>
 
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input type="checkbox" name="photoRequired" defaultChecked className="size-3.5 accent-primary" />
-              {t("photoRequiredToggle")}
-            </label>
+            <div className="space-y-1.5">
+              <Label className="text-xs">
+                {t("deliveryDate")} <span className="text-destructive">*</span>
+              </Label>
+              <Input type="date" name="scheduledDate" required defaultValue={defaultDeliveryDate} />
+            </div>
 
             <div className="space-y-1.5">
               <Label className="text-xs">{tCommon("notes")} <span className="text-xs text-muted-foreground">({tCommon("optional")})</span></Label>

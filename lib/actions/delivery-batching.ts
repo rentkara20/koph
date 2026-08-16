@@ -125,7 +125,8 @@ async function createBatchedDeliveryTaskCore(
         contactId: resolveTaskContactId(data.contactId, singleRequest?.receiverContactId ?? null),
         taskTypeId: data.taskTypeId || null,
         executionMode: data.executionMode ?? "manual",
-        photoRequired: data.photoRequired ?? true,
+        // Proof photo is never mandatory by default — Ops opts in per task.
+        photoRequired: data.photoRequired ?? false,
         taskToken,
         taskTokenExpiresAt,
         status: "pending",

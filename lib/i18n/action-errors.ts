@@ -47,6 +47,7 @@ const AR: Record<string, string> = {
   "Name is required": "الاسم مطلوب",
 
   // Tasks
+  "Delivery date is required": "تاريخ التسليم مطلوب",
   "Task not found": "المهمة غير موجودة",
   "Task is already cancelled": "المهمة ملغاة بالفعل",
   "Closed tasks cannot be cancelled": "لا يمكن إلغاء مهمة مغلقة",

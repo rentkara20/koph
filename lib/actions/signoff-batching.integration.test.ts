@@ -113,7 +113,7 @@ describe("Delivery Batching v2 P4 — signature + sign-off", () => {
     const a = await seedRequestWithItem(1, "Legacy Customer")
     const { partnerId, contractId } = await seedPartnerWithContract()
 
-    const created = await createTask(a.requestId, { partnerId, contractId, photoRequired: false })
+    const created = await createTask(a.requestId, { scheduledDate: "2026-01-15", partnerId, contractId, photoRequired: false })
     expect(created.error).toBeUndefined()
     const taskToken = created.taskToken as string
     const taskId = created.id as string

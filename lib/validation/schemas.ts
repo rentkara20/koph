@@ -165,6 +165,8 @@ export const createTaskSchema = z.object({
   taskTypeId: z.string().trim().max(60).optional(),
   executionMode: z.enum(["manual", "api_courier"]).optional(),
   photoRequired: z.boolean().optional(),
+  // Date-only (YYYY-MM-DD), resolved in Asia/Riyadh by the action layer.
+  scheduledDate: z.string().trim().max(20).optional(),
   notes: z.string().trim().max(1000).optional(),
 })
 

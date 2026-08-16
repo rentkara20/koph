@@ -83,7 +83,7 @@ const allocationsFor = (requestItemId: string) =>
 describe("task creation allocates remaining quantity by default", () => {
   test("first task on a fresh request claims full quantity", async () => {
     const { requestId, requestItemId, partnerId } = await seedRequest(3)
-    const res = await createTask(requestId, { partnerId })
+    const res = await createTask(requestId, { scheduledDate: "2026-01-15", partnerId })
     expect(res.error).toBeUndefined()
 
     const allocs = await allocationsFor(requestItemId)
@@ -96,10 +96,10 @@ describe("task creation allocates remaining quantity by default", () => {
 
   test("a second default-allocation task on the same request is rejected — nothing left", async () => {
     const { requestId, partnerId, partnerId2 } = await seedRequest(2)
-    const first = await createTask(requestId, { partnerId })
+    const first = await createTask(requestId, { scheduledDate: "2026-01-15", partnerId })
     expect(first.error).toBeUndefined()
 
-    const second = await createTask(requestId, { partnerId: partnerId2 })
+    const second = await createTask(requestId, { scheduledDate: "2026-01-15", partnerId: partnerId2 })
     expect(second.error).toMatch(/remaining/i)
   })
 })
@@ -107,7 +107,7 @@ describe("task creation allocates remaining quantity by default", () => {
 describe("createFollowUpDeliveryTask", () => {
   test("allocates only the requested remaining subset, never over-allocates", async () => {
     const { requestId, requestItemId, partnerId, partnerId2 } = await seedRequest(10)
-    const first = await createTask(requestId, { partnerId, items: [{ requestItemId, qty: 6 }] })
+    const first = await createTask(requestId, { scheduledDate: "2026-01-15", partnerId, items: [{ requestItemId, qty: 6 }] })
     expect(first.error).toBeUndefined()
 
     const remainingAfterFirst = await getRemainingQuantitiesForRequest(requestId)
@@ -169,7 +169,7 @@ describe("createFollowUpDeliveryTask", () => {
 describe("cancellation releases the allocation", () => {
   test("cancelling a task frees its allocated quantity for a new task", async () => {
     const { requestId, requestItemId, partnerId, partnerId2 } = await seedRequest(4)
-    const first = await createTask(requestId, { partnerId, items: [{ requestItemId, qty: 4 }] })
+    const first = await createTask(requestId, { scheduledDate: "2026-01-15", partnerId, items: [{ requestItemId, qty: 4 }] })
     expect(first.error).toBeUndefined()
     expect((await getRemainingQuantitiesForRequest(requestId))[0].remaining).toBe(0)
 
