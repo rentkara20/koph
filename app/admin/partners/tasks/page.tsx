@@ -39,11 +39,14 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
   const params = await searchParams
   const kind = (one(params.kind) as AdminTaskKindFilter | undefined) ?? "all"
   const partnerId = one(params.partnerId) ?? ""
-  const status = one(params.status) ?? ""
+  // Opens on the tasks the office actually has to act on. "all" is the explicit
+  // opt-out so an absent param stays distinguishable from a deliberate "any
+  // status" choice.
+  const status = one(params.status) ?? "pending_signoff"
   const date = one(params.date) ?? ""
 
   const [tasks, filterOptions, t, tStatus, tReason, tCommon] = await Promise.all([
-    getAdminTasks({ kind, partnerId, status, date }),
+    getAdminTasks({ kind, partnerId, status: status === "all" ? "" : status, date }),
     getTaskFilterOptions(),
     getTranslations("tasks"),
     getTranslations("tasks.status"),
@@ -99,7 +102,7 @@ export default async function TasksPage({ searchParams }: { searchParams: Search
           ))}
         </Select>
         <Select name="status" defaultValue={status} aria-label={tCommon("status")}>
-          <option value="">{t("filterAnyStatus")}</option>
+          <option value="all">{t("filterAnyStatus")}</option>
           {STATUS_FILTERS.map((s) => (
             <option key={s} value={s}>{tStatus(s as never)}</option>
           ))}
