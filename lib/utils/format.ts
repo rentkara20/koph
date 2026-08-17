@@ -33,6 +33,37 @@ export function formatDate(ts: number | null | undefined): string {
   })
 }
 
+// Locale-aware variant of formatDate, for list/table cells rendered inside an
+// RTL container. formatDate always emits "17 Aug 2026" — a mixed-direction run
+// (Latin month between two number runs) that the Unicode bidi algorithm
+// reorders to "Aug 2026 17" once the paragraph direction is RTL. Rendering the
+// month in Arabic makes the whole string one direction, so it reads correctly
+// with no bidi isolation wrapper.
+//
+// `calendar: "gregory"` is required: the ar-SA default calendar is islamic, and
+// the business runs on Gregorian dates. `numberingSystem: "latn"` keeps digits
+// identical to every other number in the app (request numbers, quantities).
+export function formatDateLocalized(ts: number | null | undefined, locale: string): string {
+  if (!ts) return "—"
+  if (locale !== "ar") return formatDate(ts)
+  return new Date(ts).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", {
+    timeZone: DISPLAY_TIME_ZONE,
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
+// Whole-day distance from today in the Riyadh calendar: negative = overdue,
+// 0 = today, 1 = tomorrow. Both sides are normalised to the UTC midnight of
+// their Riyadh calendar label, so the result is a pure calendar-day delta and
+// never depends on the time of day the page was rendered.
+export function riyadhDayDiff(ts: number | null | undefined, now: number = Date.now()): number | null {
+  if (!ts) return null
+  const dayStart = (ms: number) => Date.parse(`${toDateInputValue(ms)}T00:00:00Z`)
+  return Math.round((dayStart(ts) - dayStart(now)) / 86_400_000)
+}
+
 export function formatDateTime(ts: number | null | undefined): string {
   if (!ts) return "—"
   return new Date(ts).toLocaleString("en-GB", {

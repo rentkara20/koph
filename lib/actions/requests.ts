@@ -14,6 +14,7 @@ import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { resolveNextDeliveryPartNumber } from "@/lib/domain/delivery-part"
 import { validateRequestExceptionInput, type RequestExceptionInput } from "@/lib/domain/request-exception-actions"
 import { parseRiyadhDate } from "@/lib/utils/format"
+import { enrichRequestRows, isRequestView, requestViewCondition } from "@/lib/domain/request-list"
 
 export type ActionResult = { error?: string; id?: string }
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -234,10 +235,20 @@ export type RequestListItem = {
   quoteNumber: string | null
   status: string
   deliveryDate: number | null
+  collectionDate: number | null
   createdAt: number
   customerName: string | null
   typeName: string | null
   typeNameAr: string | null
+  // Enrichment for the list view — see enrichRequestRows. Every field is
+  // derived, never stored, so the list can never disagree with the detail page.
+  partnerNames: string[]
+  taskCount: number
+  itemCount: number
+  itemQuantity: number
+  hasPendingSignoff: boolean
+  hasSignedSignature: boolean
+  hasAnySignature: boolean
 }
 
 export type RequestListPage = {
@@ -253,6 +264,7 @@ const REQUESTS_PAGE_SIZE = 50
 export async function getRequests(filters?: {
   status?: string
   search?: string
+  view?: string
   page?: number
 }): Promise<RequestListPage> {
   const empty: RequestListPage = { rows: [], total: 0, page: 1, pageSize: REQUESTS_PAGE_SIZE, totalPages: 0 }
@@ -284,7 +296,8 @@ export async function getRequests(filters?: {
           like(requests.quoteNumber, `%${filters.search.trim()}%`),
           like(customers.name, `%${filters.search.trim()}%`)
         )
-      : undefined
+      : undefined,
+    isRequestView(filters?.view) ? requestViewCondition(filters.view) : undefined
   )
 
   const [rows, totalResult] = await Promise.all([
@@ -296,6 +309,7 @@ export async function getRequests(filters?: {
         quoteNumber: requests.quoteNumber,
         status: requests.status,
         deliveryDate: requests.deliveryDate,
+        collectionDate: requests.collectionDate,
         createdAt: requests.createdAt,
         customerName: customers.name,
         typeName: requestTypes.nameEn,
@@ -316,8 +330,14 @@ export async function getRequests(filters?: {
   ])
 
   const total = totalResult[0]?.value ?? 0
+  const enrichment = await enrichRequestRows(db, rows.map((r) => r.id))
+  const enriched: RequestListItem[] = rows.map((row) => ({
+    ...row,
+    ...enrichment.get(row.id)!,
+  }))
+
   return {
-    rows: rows as RequestListItem[],
+    rows: enriched,
     total,
     page,
     pageSize: REQUESTS_PAGE_SIZE,

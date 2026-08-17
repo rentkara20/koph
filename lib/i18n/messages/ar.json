@@ -248,7 +248,22 @@
     },
     "reopen": "إعادة فتح",
     "deleteItemConfirm": "هل تريد حذف هذا الصنف؟",
-    "accessoriesPlaceholder": "شاحن، حقيبة، محوّل…"
+    "accessoriesPlaceholder": "شاحن، حقيبة، محوّل…",
+    "partner": "الشريك",
+    "unassigned": "غير مُسند",
+    "deviceCount": "{count, plural, zero {بدون أجهزة} one {جهاز واحد} two {جهازان} few {# أجهزة} many {# جهازًا} other {# جهاز}}",
+    "views": {
+      "label": "عروض سريعة",
+      "unassigned": "غير مُسند",
+      "overdue": "متأخر",
+      "today": "اليوم",
+      "needs_signature": "يحتاج توقيع"
+    },
+    "due": {
+      "today": "· اليوم",
+      "tomorrow": "· غدًا",
+      "overdue": "· متأخر {days, plural, one {يوم واحد} two {يومان} few {# أيام} many {# يومًا} other {# يوم}}"
+    }
   },
   "tasks": {
     "title": "المهام",

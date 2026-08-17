@@ -248,7 +248,22 @@
     },
     "reopen": "Reopen",
     "deleteItemConfirm": "Delete this item?",
-    "accessoriesPlaceholder": "charger, case, adapter…"
+    "accessoriesPlaceholder": "charger, case, adapter…",
+    "partner": "Partner",
+    "unassigned": "Unassigned",
+    "deviceCount": "{count, plural, =0 {No devices} one {1 device} other {# devices}}",
+    "views": {
+      "label": "Quick views",
+      "unassigned": "Unassigned",
+      "overdue": "Overdue",
+      "today": "Today",
+      "needs_signature": "Needs signature"
+    },
+    "due": {
+      "today": "· today",
+      "tomorrow": "· tomorrow",
+      "overdue": "· {days, plural, one {1 day} other {# days}} late"
+    }
   },
   "tasks": {
     "title": "Tasks",
