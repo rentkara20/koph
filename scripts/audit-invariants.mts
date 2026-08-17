@@ -15,7 +15,10 @@ import { createClient } from "@libsql/client"
 import { drizzle } from "drizzle-orm/libsql"
 import { config } from "dotenv"
 import * as schema from "../lib/db/schema"
-import { findAssetKindLineTypeMismatches } from "../lib/db/invariants"
+import {
+  findAssetKindLineTypeMismatches,
+  findClosedTasksWithoutPayment,
+} from "../lib/db/invariants"
 
 const useProd = process.argv.includes("--prod")
 config({ path: useProd ? ".env.production.backup" : ".env.local", quiet: true })
@@ -44,6 +47,21 @@ if (kindMismatches.length === 0) {
     "  A rental unit stamped 'sale' cannot be collected back from the customer, and\n" +
       "  a sale unit stamped 'rental' re-enters the rental pool. Fix by re-deriving kind\n" +
       "  from the line: sold_product -> sale, rental_asset -> rental.\n"
+  )
+}
+
+const unpaidClosed = await findClosedTasksWithoutPayment(db)
+if (unpaidClosed.length === 0) {
+  console.log("✓ every closed partner task has a payment or a deliberate decision")
+} else {
+  violations += unpaidClosed.length
+  console.error(`✗ ${unpaidClosed.length} closed task(s) that owe the partner nothing:`)
+  console.table(unpaidClosed)
+  console.error(
+    "  The trip was done and closed, but no partner_payment row exists and no\n" +
+      "  'none'/'hold' decision was recorded — so the partner is silently never paid.\n" +
+      "  Usual cause: no partner contract to price against at sign-off time. Fix by\n" +
+      "  adding the contract and re-running the payment decision for these tasks.\n"
   )
 }
 

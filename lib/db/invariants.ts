@@ -6,9 +6,16 @@
 // query that must return zero rows, usable from a test (as a regression gate)
 // or against production (as an audit).
 
-import { and, eq, ne, sql } from "drizzle-orm"
+import { and, eq, isNull, ne, notInArray, or, sql } from "drizzle-orm"
 import type { drizzle } from "drizzle-orm/libsql"
-import { orderLines, orderUnits } from "@/lib/db/schema"
+import {
+  orderLines,
+  orderUnits,
+  partnerPaymentDecisions,
+  partnerPayments,
+  partners,
+  partnerTasks,
+} from "@/lib/db/schema"
 import type * as schema from "@/lib/db/schema"
 
 // Any libsql drizzle handle — the app's `db`, or a throwaway file DB in a test.
@@ -53,6 +60,59 @@ export async function findAssetKindLineTypeMismatches(db: Db): Promise<KindMisma
         ne(
           orderUnits.kind,
           sql`case when ${orderLines.type} = 'sold_product' then 'sale' else 'rental' end`
+        )
+      )
+    )
+}
+
+export type UnpaidClosedTask = {
+  id: string
+  partnerName: string | null
+  closedAt: number | null
+  decision: string | null
+}
+
+/**
+ * A closed partner task must end with either a payment row or a deliberate
+ * "don't pay" decision. Neither one present means the partner did the trip and
+ * nothing in the system owes them anything.
+ *
+ * Why this is a silent failure rather than a visible one: sign-off writes the
+ * decision record and the payment row in the same step, but the payment side
+ * needs a partner contract to price against. With no contract the decision is
+ * still recorded, the task still closes, the UI shows a completed job — and no
+ * payment line is ever created. Nothing errors. The money is simply never owed,
+ * and it surfaces only when a partner asks why an old trip was not in a batch.
+ *
+ * `none` and `hold` are deliberate calls, not stalls, so a task carrying either
+ * is out of scope. Supplier pickups close via warehouse receipt and are never
+ * paid through this path, so they are excluded too — including them would make
+ * the check fail permanently on correct data, which is how a check stops being
+ * run at all.
+ */
+export async function findClosedTasksWithoutPayment(db: Db): Promise<UnpaidClosedTask[]> {
+  return db
+    .select({
+      id: partnerTasks.id,
+      partnerName: partners.name,
+      closedAt: partnerTasks.closedAt,
+      decision: partnerPaymentDecisions.decision,
+    })
+    .from(partnerTasks)
+    .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
+    .leftJoin(partnerPayments, eq(partnerPayments.partnerTaskId, partnerTasks.id))
+    .leftJoin(partnerPaymentDecisions, eq(partnerPaymentDecisions.partnerTaskId, partnerTasks.id))
+    .where(
+      and(
+        eq(partnerTasks.status, "closed"),
+        notInArray(partnerTasks.kind, ["supplier_pickup"]),
+        isNull(partnerPayments.id),
+        // A missing decision row is itself a violation, so the null case must be
+        // kept rather than filtered out by the NOT IN — SQL's NOT IN is unknown,
+        // not true, when the left side is NULL.
+        or(
+          isNull(partnerPaymentDecisions.id),
+          notInArray(partnerPaymentDecisions.decision, ["none", "hold"])
         )
       )
     )
