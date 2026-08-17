@@ -6,6 +6,7 @@ import { db } from "@/lib/db"
 import {
   partners,
   partnerPayments,
+  partnerPaymentDecisions,
   partnerTasks,
   paymentBatches,
   requests,
@@ -180,6 +181,114 @@ export async function getBatchWithPayments(batchId: string) {
     .orderBy(desc(partnerPayments.createdAt))
 
   return { batch: { ...batch, statementToken }, payments }
+}
+
+// ─── Intervention queue ───────────────────────────────────────────────────────
+// Everything that is stuck waiting on an Ops decision, deliberately UNFILTERED
+// by date: the whole point is to surface the backlog that a month-scoped view
+// like /admin/payments/review structurally cannot show. Three distinct stalls:
+//   1. awaitingSignoff — tasks parked at pending_signoff/failed, no decision yet
+//   2. unpaidClosed    — task closed, no payment row, no deliberate none/hold
+//                        decision either (usually a missing partner contract:
+//                        sign-off records the decision but skips the payment)
+//   3. stalePayments   — payment approved but never batched, aging past the SLA
+// Only (1) is visible anywhere in the UI today; (2) is entirely silent.
+
+const STALE_PAYMENT_DAYS = 14
+
+export type InterventionQueue = {
+  key: "awaitingSignoff" | "unpaidClosed" | "stalePayments"
+  count: number
+  oldestAt: number | null
+  partners: string[]
+  href: string
+}
+
+export async function getPaymentInterventions(): Promise<InterventionQueue[]> {
+  const session = await getStaffSession()
+  if (!session) return []
+
+  const staleCutoff = Date.now() - STALE_PAYMENT_DAYS * 86_400_000
+
+  const [awaitingSignoff, unpaidClosed, stalePayments] = await Promise.all([
+    // Supplier pickups close via warehouse receipt, never via sign-off, so they
+    // can never sit in this queue — mirrors the canSignOff gate on the tasks page.
+    db
+      .select({
+        partnerName: partners.name,
+        count: count(partnerTasks.id),
+        oldestAt: sql<number | null>`MIN(COALESCE(${partnerTasks.completedAt}, ${partnerTasks.assignedAt}))`,
+      })
+      .from(partnerTasks)
+      .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
+      .where(
+        and(
+          inArray(partnerTasks.status, ["pending_signoff", "failed"]),
+          notInArray(partnerTasks.kind, ["supplier_pickup"])
+        )
+      )
+      .groupBy(partners.name),
+
+    db
+      .select({
+        partnerName: partners.name,
+        count: count(partnerTasks.id),
+        oldestAt: sql<number | null>`MIN(${partnerTasks.closedAt})`,
+      })
+      .from(partnerTasks)
+      .leftJoin(partners, eq(partnerTasks.partnerId, partners.id))
+      .leftJoin(partnerPayments, eq(partnerPayments.partnerTaskId, partnerTasks.id))
+      .leftJoin(partnerPaymentDecisions, eq(partnerPaymentDecisions.partnerTaskId, partnerTasks.id))
+      .where(
+        and(
+          eq(partnerTasks.status, "closed"),
+          notInArray(partnerTasks.kind, ["supplier_pickup"]),
+          sql`${partnerPayments.id} IS NULL`,
+          // A recorded "none"/"hold" is a deliberate call, not a stall.
+          sql`COALESCE(${partnerPaymentDecisions.decision}, '') NOT IN ('none', 'hold')`
+        )
+      )
+      .groupBy(partners.name),
+
+    db
+      .select({
+        partnerName: partners.name,
+        count: count(partnerPayments.id),
+        oldestAt: sql<number | null>`MIN(${partnerPayments.createdAt})`,
+      })
+      .from(partnerPayments)
+      .leftJoin(partners, eq(partnerPayments.partnerId, partners.id))
+      .where(
+        and(
+          inArray(partnerPayments.status, ["pending", "on_hold"]),
+          lte(partnerPayments.createdAt, staleCutoff)
+        )
+      )
+      .groupBy(partners.name),
+  ])
+
+  type Row = { partnerName: string | null; count: number; oldestAt: number | null }
+
+  const fold = (key: InterventionQueue["key"], rows: Row[], href: string): InterventionQueue => ({
+    key,
+    count: rows.reduce((sum, row) => sum + row.count, 0),
+    oldestAt: rows.reduce<number | null>(
+      (oldest, row) =>
+        row.oldestAt === null ? oldest : oldest === null ? row.oldestAt : Math.min(oldest, row.oldestAt),
+      null
+    ),
+    partners: rows
+      .filter((row) => row.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .map((row) => `${row.partnerName ?? "—"} (${row.count})`),
+    href,
+  })
+
+  return [
+    fold("awaitingSignoff", awaitingSignoff, "/admin/partners/tasks?status=pending_signoff"),
+    fold("unpaidClosed", unpaidClosed, "/admin/partners/tasks?status=closed"),
+    fold("stalePayments", stalePayments, "/admin/payments/review"),
+  ].filter((queue) => queue.count > 0)
 }
 
 // ─── Get partners + months with pending payments (for generate form) ──────────

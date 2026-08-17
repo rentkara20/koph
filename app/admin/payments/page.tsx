@@ -1,11 +1,12 @@
 import Link from "next/link"
 import { SlidersHorizontal } from "lucide-react"
-import { getPaymentBatches, getPartnersWithPendingPayments } from "@/lib/actions/payments"
+import { getPaymentBatches, getPartnersWithPendingPayments, getPaymentInterventions } from "@/lib/actions/payments"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
 import { GenerateBatchForm } from "./_components/generate-batch-form"
+import { InterventionCard } from "./_components/intervention-card"
 import { paymentBatchStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 import { cn } from "@/lib/utils"
 
@@ -17,9 +18,10 @@ const STATUS_LABEL: Record<string, string> = {
 }
 
 export default async function PaymentsPage() {
-  const [batches, pending] = await Promise.all([
+  const [batches, pending, interventions] = await Promise.all([
     getPaymentBatches(),
     getPartnersWithPendingPayments(),
+    getPaymentInterventions(),
   ])
 
   return (
@@ -40,6 +42,8 @@ export default async function PaymentsPage() {
           <GenerateBatchForm pending={pending} />
         </div>
       </div>
+
+      <InterventionCard queues={interventions} />
 
       <Card>
         <CardHeader>
