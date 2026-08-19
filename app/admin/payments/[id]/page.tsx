@@ -12,6 +12,7 @@ import { BatchActions } from "./_components/batch-actions"
 import { CopyStatementLink } from "./_components/copy-statement-link"
 import { PaymentLineActions } from "./_components/payment-line-actions"
 import { cn } from "@/lib/utils"
+import { formatDevice, INLINE_DEVICE_LIMIT } from "@/lib/domain/delivered-device"
 import { paymentBatchStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
 
 export default async function PaymentBatchPage({
@@ -119,6 +120,13 @@ export default async function PaymentBatchPage({
           period={batch.period}
           payments={payments.map((p) => ({
             requestNumber: p.requestNumber,
+            orderNumber: p.orderNumber,
+            customerName: p.customerName,
+            recipientName: p.recipientName,
+            devices: p.devices,
+            serviceType: p.serviceType,
+            serviceDescription: p.serviceDescription,
+            notes: p.notes,
             pricingModel: p.pricingModel,
             quantity: p.quantity,
             unitPrice: p.unitPrice,
@@ -142,6 +150,13 @@ export default async function PaymentBatchPage({
                 period={batch.period}
                 payments={payments.map((p) => ({
                   requestNumber: p.requestNumber,
+                  orderNumber: p.orderNumber,
+                  customerName: p.customerName,
+                  recipientName: p.recipientName,
+                  devices: p.devices,
+                  serviceType: p.serviceType,
+                  serviceDescription: p.serviceDescription,
+                  notes: p.notes,
                   pricingModel: p.pricingModel,
                   quantity: p.quantity,
                   unitPrice: p.unitPrice,
@@ -161,6 +176,10 @@ export default async function PaymentBatchPage({
               <thead className="border-b bg-muted/50">
                 <tr>
                   <th className="px-4 py-2.5 text-start font-medium text-muted-foreground">{t("request")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">{t("orderNo")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden md:table-cell">{t("customer")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden lg:table-cell">{t("recipient")}</th>
+                  <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden lg:table-cell">{t("devices")}</th>
                   <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">{t("pricing")}</th>
                   <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">{t("qty")}</th>
                   <th className="px-4 py-2.5 text-start font-medium text-muted-foreground hidden sm:table-cell">{t("unitSar")}</th>
@@ -181,6 +200,39 @@ export default async function PaymentBatchPage({
                         </Link>
                       ) : (
                         <span className="text-muted-foreground">—</span>
+                      )}
+                      {/* Narrow screens hide the dedicated columns — keep the
+                          reconciliation keys visible under the request number. */}
+                      <div className="md:hidden text-xs text-muted-foreground mt-0.5 space-y-0.5">
+                        <p>{[p.orderNumber, p.customerName].filter(Boolean).join(" · ") || "—"}</p>
+                        {p.recipientName && <p>{p.recipientName}</p>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-mono hidden md:table-cell">
+                      {p.orderNumber ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      {p.customerName ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
+                      {p.recipientName ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell text-xs">
+                      {p.devices.length === 0 ? (
+                        "—"
+                      ) : (
+                        <ul className="space-y-0.5">
+                          {p.devices.slice(0, INLINE_DEVICE_LIMIT).map((d, i) => (
+                            <li key={i}>{formatDevice(d)}</li>
+                          ))}
+                          {p.devices.length > INLINE_DEVICE_LIMIT && (
+                            <li className="italic">
+                              {t("moreDevices", {
+                                count: p.devices.length - INLINE_DEVICE_LIMIT,
+                              })}
+                            </li>
+                          )}
+                        </ul>
                       )}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell capitalize">
@@ -207,7 +259,17 @@ export default async function PaymentBatchPage({
               </tbody>
               <tfoot className="border-t bg-muted/50">
                 <tr>
-                  <td colSpan={4} className="px-4 py-2.5 text-right text-sm font-medium text-muted-foreground hidden sm:table-cell">
+                  {/* One cell per header cell, mirroring the same responsive
+                      visibility — a colSpan cannot track columns that drop out
+                      at a breakpoint without swallowing the total column. */}
+                  <td className="px-4 py-2.5" />
+                  <td className="px-4 py-2.5 hidden md:table-cell" />
+                  <td className="px-4 py-2.5 hidden md:table-cell" />
+                  <td className="px-4 py-2.5 hidden lg:table-cell" />
+                  <td className="px-4 py-2.5 hidden lg:table-cell" />
+                  <td className="px-4 py-2.5 hidden sm:table-cell" />
+                  <td className="px-4 py-2.5 hidden sm:table-cell" />
+                  <td className="px-4 py-2.5 text-right text-sm font-medium text-muted-foreground hidden sm:table-cell">
                     {t("total")}
                   </td>
                   <td className="px-4 py-2.5 font-semibold tabular-nums">

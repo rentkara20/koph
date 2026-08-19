@@ -9,9 +9,17 @@ import { approveBatch, markBatchSentToFinance, markBatchPaid } from "@/lib/actio
 import { Button, buttonVariants } from "@/components/ui/button"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { cn } from "@/lib/utils"
+import { formatDevice, INLINE_DEVICE_LIMIT } from "@/lib/domain/delivered-device"
 
 type Payment = {
   requestNumber: string | null
+  orderNumber: string | null
+  customerName: string | null
+  recipientName: string | null
+  serviceType: string | null
+  serviceDescription: string | null
+  notes: string | null
+  devices: { description: string; brand: string | null; model: string | null; serial: string | null; quantity: number }[]
   pricingModel: string
   quantity: number
   unitPrice: number
@@ -55,19 +63,52 @@ export function BatchActions({ batchId, status, partnerName, period, payments }:
   }
 
   function exportCsv() {
-    const headers = ["Request", "Pricing model", "Qty", "Unit price (SAR)", "Total (SAR)"]
+    // Same column order as the Excel export and finance's own monthly sheet.
+    const headers = [
+      "Service",
+      "Service description",
+      "Devices",
+      "Serial",
+      "Device",
+      "Client Quote",
+      "Customer",
+      "Recipient",
+      "Request",
+      "Pricing model",
+      "Qty",
+      "Unit price (SAR)",
+      "Notes",
+      "Total (SAR)",
+    ]
     const rows: string[][] = payments.map((p) => [
+      p.serviceType ?? "—",
+      p.serviceDescription ?? "",
+      p.devices.length.toString(),
+      // Past the limit the cell defers to the Excel export's Devices sheet
+      // rather than carrying a hundred serials in one CSV field.
+      p.devices.length > INLINE_DEVICE_LIMIT
+        ? `${p.devices.length} devices`
+        : p.devices.map((d) => d.serial).filter(Boolean).join(" | "),
+      p.devices.length > INLINE_DEVICE_LIMIT
+        ? `${p.devices.length} devices`
+        : p.devices.map(formatDevice).join(" | "),
+      p.orderNumber ?? "—",
+      p.customerName ?? "—",
+      p.recipientName ?? "—",
       p.requestNumber ?? "—",
       p.pricingModel.replace(/_/g, " "),
       p.quantity.toString(),
       p.unitPrice.toFixed(2),
+      p.notes ?? "",
       p.totalAmount.toFixed(2),
     ])
     const total = payments.reduce((s, p) => s + p.totalAmount, 0)
-    rows.push(["", "", "", "Total", total.toFixed(2)])
+    rows.push([...headers.slice(0, -2).map(() => ""), "Total", total.toFixed(2)])
 
+    // A device name or customer can contain a quote — doubling it keeps the
+    // field from terminating early and shifting every later column.
     const csv = [headers, ...rows]
-      .map((r) => r.map((c) => `"${c}"`).join(","))
+      .map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(","))
       .join("\n")
 
     const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" })

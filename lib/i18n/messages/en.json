@@ -766,8 +766,24 @@
       "lblTo": "Period to",
       "lblPartners": "Partners",
       "valueStart": "Start",
-      "valueToday": "Today"
-    }
+      "valueToday": "Today",
+      "sheetDevices": "Devices",
+      "colOrder": "Order no.",
+      "colRecipient": "Recipient",
+      "colDevices": "Devices delivered",
+      "colPaid": "Paid",
+      "colMonth": "Month",
+      "colCount": "Services count",
+      "valueYes": "Yes",
+      "valueNo": "No",
+      "colDeviceCount": "Devices",
+      "manyDevices": "{count} devices — see Devices sheet"
+    },
+    "orderNo": "Order no.",
+    "customer": "Customer",
+    "recipient": "Recipient",
+    "devices": "Devices",
+    "moreDevices": "+{count} more"
   },
   "statement": {
     "title": "Partner payment statement",

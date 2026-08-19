@@ -24,6 +24,17 @@ const EN: SheetLabels = {
   colDescription: "Description",
   colSerial: "Serial",
   colDevice: "Device",
+  colOrder: "Order no.",
+  colRecipient: "Recipient",
+  colDevices: "Devices delivered",
+  sheetDevices: "Devices",
+  colPaid: "Paid",
+  colDeviceCount: "Devices",
+  manyDevices: (count: number) => `${count} devices — see Devices sheet`,
+  colMonth: "Month",
+  colCount: "Services count",
+  valueYes: "Yes",
+  valueNo: "No",
   colPricingModel: "Pricing model",
   colQty: "Qty",
   colUnitPrice: "Unit (SAR)",
@@ -326,5 +337,99 @@ describe("safeFilePart", () => {
   it("falls back to a constant when nothing usable is left", () => {
     expect(safeFilePart("///")).toBe("export")
     expect(safeFilePart(null)).toBe("export")
+  })
+})
+
+describe("buildBatchWorkbook — delivery detail", () => {
+  it("writes order, customer, recipient and a device row per unit", async () => {
+    const workbook = buildBatchWorkbook(
+      {
+        partnerName: "Partner A",
+        period: "2026-07",
+        status: "draft",
+        generatedAt: 1_760_000_000_000,
+        payments: [
+          {
+            requestNumber: "KR-2026-00028",
+            orderNumber: "10693",
+            customerName: "Al Noor Co.",
+            recipientName: "Ahmed Salem",
+            devices: [
+              { description: "Laptop", brand: "Dell", model: "Latitude 5440", serial: "SN1", quantity: 1 },
+              { description: "Laptop", brand: "Dell", model: "Latitude 5440", serial: "SN2", quantity: 1 },
+            ],
+            pricingModel: "per_order",
+            quantity: 1,
+            unitPrice: 40,
+            totalAmount: 40,
+          },
+        ],
+      },
+      EN
+    )
+
+    const payments = workbook.getWorksheet(EN.sheetPayments)!
+    const header = payments.getRow(1).values as string[]
+    expect(header).toContain("Order no.")
+    expect(header).toContain("Recipient")
+    const line = payments.getRow(2)
+    expect(line.getCell("order").value).toBe("10693")
+    expect(line.getCell("customer").value).toBe("Al Noor Co.")
+    expect(line.getCell("recipient").value).toBe("Ahmed Salem")
+    expect(String(line.getCell("deviceSpecs").value)).toContain("Dell Latitude 5440 — SN1")
+    expect(line.getCell("deviceCount").value).toBe(2)
+    expect(String(line.getCell("serialNumber").value)).toBe("SN1\nSN2")
+
+    const devices = workbook.getWorksheet(EN.sheetDevices)!
+    // header + one row per physical device
+    expect(devices.rowCount).toBe(3)
+    expect(devices.getRow(2).getCell("serial").value).toBe("SN1")
+    expect(devices.getRow(3).getCell("serial").value).toBe("SN2")
+    expect(devices.getRow(2).getCell("order").value).toBe("10693")
+  })
+})
+
+describe("buildBatchWorkbook — large handovers", () => {
+  it("defers to the Devices sheet instead of an unreadable serial cell", async () => {
+    const devices = Array.from({ length: 100 }, (_, i) => ({
+      description: "Laptop",
+      brand: "Dell",
+      model: "Latitude 5440",
+      serial: `SN-${i + 1}`,
+      quantity: 1,
+    }))
+    const workbook = buildBatchWorkbook(
+      {
+        partnerName: "Partner A",
+        period: "2026-07",
+        status: "paid",
+        generatedAt: 1_760_000_000_000,
+        payments: [
+          {
+            requestNumber: "KR-2026-00030",
+            orderNumber: "10700",
+            customerName: "Bulk Co.",
+            recipientName: "Sara",
+            devices,
+            pricingModel: "per_item",
+            quantity: 100,
+            unitPrice: 5,
+            totalAmount: 500,
+          },
+        ],
+      },
+      EN
+    )
+
+    const line = workbook.getWorksheet(EN.sheetPayments)!.getRow(2)
+    expect(line.getCell("deviceCount").value).toBe(100)
+    expect(line.getCell("serialNumber").value).toBe("100 devices — see Devices sheet")
+    expect(line.getCell("paid").value).toBe("Yes")
+
+    // Every unit still has its own row, with the reconciliation keys on it.
+    const deviceSheet = workbook.getWorksheet(EN.sheetDevices)!
+    expect(deviceSheet.rowCount).toBe(101)
+    expect(deviceSheet.getRow(101).getCell("serial").value).toBe("SN-100")
+    expect(deviceSheet.getRow(101).getCell("order").value).toBe("10700")
   })
 })

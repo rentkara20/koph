@@ -12,6 +12,9 @@ import {
   customers,
   requestItems,
   requestTypes,
+  signatureRequests,
+  customerSignatures,
+  deliveryTaskItems,
   servicesCatalog,
   taskServices,
 } from "@/lib/db/schema"
@@ -160,7 +163,7 @@ export async function getBatchWithPayments(batchId: string) {
     statementToken = null
   }
 
-  const payments = await db
+  const rows = await db
     .select({
       id: partnerPayments.id,
       pricingModel: partnerPayments.pricingModel,
@@ -172,12 +175,112 @@ export async function getBatchWithPayments(batchId: string) {
       partnerTaskId: partnerPayments.partnerTaskId,
       requestId: partnerTasks.requestId,
       requestNumber: requests.requestNumber,
+      // Customer-facing order number (رقم الطلبية, e.g. 10693) — finance and
+      // the customer both reconcile by this, not by the internal KR-… number.
+      orderNumber: requests.quoteNumber,
+      customerName: customers.name,
+      // Same service vocabulary the finance review sheet uses, so a batch
+      // export and the review export describe a line identically.
+      serviceType: requestTypes.nameEn,
+      serviceDescription: sql<string>`COALESCE(
+        (
+          SELECT group_concat(${servicesCatalog.nameEn}, ', ')
+          FROM ${taskServices}
+          LEFT JOIN ${servicesCatalog} ON ${taskServices.serviceId} = ${servicesCatalog.id}
+          WHERE ${taskServices.partnerTaskId} = ${partnerTasks.id}
+        ),
+        CASE
+          WHEN ${requests.origin} IS NOT NULL OR ${requests.destination} IS NOT NULL
+          THEN 'from ' || COALESCE(${requests.origin}, '-') || ' to ' || COALESCE(${requests.destination}, '-')
+          ELSE ${requests.notes}
+        END,
+        ''
+      )`,
+      rawNotes: partnerPayments.notes,
     })
     .from(partnerPayments)
     .leftJoin(partnerTasks, eq(partnerPayments.partnerTaskId, partnerTasks.id))
     .leftJoin(requests, eq(partnerTasks.requestId, requests.id))
+    .leftJoin(customers, eq(requests.customerId, customers.id))
+    .leftJoin(requestTypes, eq(requests.typeId, requestTypes.id))
     .where(eq(partnerPayments.batchId, batchId))
     .orderBy(desc(partnerPayments.createdAt))
+
+  const requestIds = [...new Set(rows.map((r) => r.requestId).filter((v): v is string => !!v))]
+  const taskIds = [...new Set(rows.map((r) => r.partnerTaskId).filter((v): v is string => !!v))]
+
+  // Who physically received the shipment — the signed receiver acknowledgement.
+  const recipientByRequest = new Map<string, string>()
+  if (requestIds.length > 0) {
+    const signers = await db
+      .select({
+        requestId: signatureRequests.requestId,
+        fullName: customerSignatures.fullName,
+        signedAt: customerSignatures.signedAt,
+      })
+      .from(customerSignatures)
+      .innerJoin(
+        signatureRequests,
+        eq(customerSignatures.signatureRequestId, signatureRequests.id)
+      )
+      .where(inArray(signatureRequests.requestId, requestIds))
+      .orderBy(desc(customerSignatures.signedAt))
+    for (const signer of signers) {
+      // Ordered newest-first, so only keep the first name seen per request.
+      if (signer.requestId && !recipientByRequest.has(signer.requestId)) {
+        recipientByRequest.set(signer.requestId, signer.fullName)
+      }
+    }
+  }
+
+  // Devices actually handed over on this task. A batched trip can cover several
+  // requests, so the payment line's own request must filter the rows too —
+  // otherwise another customer's devices leak into this line.
+  type DeviceRow = {
+    partnerTaskId: string
+    requestId: string
+    description: string
+    brand: string | null
+    model: string | null
+    serial: string | null
+    quantity: number
+  }
+  const deviceRows: DeviceRow[] =
+    taskIds.length === 0
+      ? []
+      : await db
+          .select({
+            partnerTaskId: deliveryTaskItems.partnerTaskId,
+            requestId: requestItems.requestId,
+            description: requestItems.description,
+            brand: requestItems.brand,
+            model: requestItems.model,
+            serial: sql<string | null>`coalesce(${deliveryTaskItems.correctedSerial}, ${deliveryTaskItems.reportedSerial}, ${requestItems.serialNumber})`,
+            quantity: sql<number>`case when ${deliveryTaskItems.qtyDelivered} > 0 then ${deliveryTaskItems.qtyDelivered} else ${deliveryTaskItems.qtyPlanned} end`,
+          })
+          .from(deliveryTaskItems)
+          .innerJoin(requestItems, eq(deliveryTaskItems.requestItemId, requestItems.id))
+          .where(inArray(deliveryTaskItems.partnerTaskId, taskIds))
+
+  const payments = rows.map(({ rawNotes, ...row }) => {
+    const parsedNotes = parseFinanceNotes(rawNotes)
+    return {
+    ...row,
+    serviceType: parsedNotes.financeServiceType || row.serviceType,
+    serviceDescription: parsedNotes.financeServiceDescription || row.serviceDescription,
+    notes: parsedNotes.notes ?? null,
+    recipientName: row.requestId ? recipientByRequest.get(row.requestId) ?? null : null,
+    devices: deviceRows
+      .filter((d) => d.partnerTaskId === row.partnerTaskId && d.requestId === row.requestId)
+      .map((d) => ({
+        description: d.description,
+        brand: d.brand,
+        model: d.model,
+        serial: d.serial,
+        quantity: d.quantity,
+      })),
+    }
+  })
 
   return { batch: { ...batch, statementToken }, payments }
 }

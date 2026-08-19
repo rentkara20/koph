@@ -766,8 +766,24 @@
       "lblTo": "إلى تاريخ",
       "lblPartners": "عدد الشركاء",
       "valueStart": "من البداية",
-      "valueToday": "حتى اليوم"
-    }
+      "valueToday": "حتى اليوم",
+      "sheetDevices": "الأجهزة",
+      "colOrder": "رقم الطلبية",
+      "colRecipient": "اسم المستلم",
+      "colDevices": "الأجهزة المسلَّمة",
+      "colPaid": "مدفوع",
+      "colMonth": "الشهر",
+      "colCount": "عدد الخدمات",
+      "valueYes": "نعم",
+      "valueNo": "لا",
+      "colDeviceCount": "عدد الأجهزة",
+      "manyDevices": "{count} جهاز — راجع شيت الأجهزة"
+    },
+    "orderNo": "رقم الطلبية",
+    "customer": "العميل",
+    "recipient": "المستلم",
+    "devices": "الأجهزة",
+    "moreDevices": "و{count} جهاز آخر"
   },
   "statement": {
     "title": "كشف حساب مدفوعات الشريك",
