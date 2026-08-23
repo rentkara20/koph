@@ -1,7 +1,7 @@
 // Pure request-status derivation from the set of its partner tasks, extracted
 // from syncRequestStatus so the branch table can be unit-tested.
 
-export const ACTIVE_TASK_STATUSES = ["pending", "accepted", "in_progress", "pending_signoff"]
+export const ACTIVE_TASK_STATUSES = ["pending", "accepted", "in_progress", "pending_signoff"] as const
 export const MANUAL_REQUEST_STATUSES = ["on_hold", "cancelled", "rescheduled", "failed"]
 
 // Returns the next request status, or null if no change is warranted. Never
@@ -13,7 +13,7 @@ export function deriveRequestStatus(
   if (MANUAL_REQUEST_STATUSES.includes(currentStatus)) return null
   if (taskStatuses.length === 0) return null
 
-  const active = taskStatuses.filter((s) => ACTIVE_TASK_STATUSES.includes(s))
+  const active = taskStatuses.filter((s) => (ACTIVE_TASK_STATUSES as readonly string[]).includes(s))
   const closed = taskStatuses.filter((s) => s === "closed")
   const inProgress = taskStatuses.filter((s) => ["in_progress", "pending_signoff"].includes(s))
 

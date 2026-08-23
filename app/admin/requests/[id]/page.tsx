@@ -5,6 +5,8 @@ import { ArrowLeft } from "lucide-react"
 import { getCustomerDeliveryOptions, getRequest, deleteRequest } from "@/lib/actions/requests"
 import { getTasksForRequest, getPartnersWithContracts, getBatchSummaryForTask } from "@/lib/actions/tasks"
 import { getSignatureRequestsForRequest, getDepositDefaultsForRequest } from "@/lib/actions/signatures"
+import { ACTIVE_TASK_STATUSES } from "@/lib/domain/request-status"
+import { OFFICE_PICKUP_BLOCKED_STATUSES } from "@/lib/domain/office-pickup"
 import { appBaseUrl } from "@/lib/utils/public-url"
 import { buildDeliveryNoteName } from "@/lib/utils/city-iata"
 import { getTaskServicesForRequest } from "@/lib/actions/task-services"
@@ -18,6 +20,7 @@ import { RequestStatusActions } from "./_components/request-status-actions"
 import { DeleteButton } from "@/components/delete-button"
 import { CopyButton } from "./_components/copy-button"
 import { TasksSection } from "./_components/tasks-section"
+import { OfficePickupCard } from "./_components/office-pickup-card"
 import { PartialResolutionPanel } from "./_components/follow-up-delivery"
 import { SignaturesSection } from "./_components/signatures-section"
 import { ItemsSection } from "./_components/items-section"
@@ -294,6 +297,33 @@ export default async function RequestDetailPage({
               </div>
             </CardContent>
           </Card>
+
+          {/* Office handover — the counter counterpart of a partner task sign-off.
+              Only offered where it is actually possible: delivery-shaped work
+              that is still open and has devices linked. */}
+          {["delivery", "installation", "swap"].includes(requestType?.slug ?? "") &&
+            !OFFICE_PICKUP_BLOCKED_STATUSES.includes(
+              request.status as (typeof OFFICE_PICKUP_BLOCKED_STATUSES)[number],
+            ) &&
+            items.some((i) => i.orderUnitId) && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    {t("officePickup")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <OfficePickupCard
+                    requestId={request.id}
+                    deviceCount={items.filter((i) => i.orderUnitId).length}
+                    hasOpenTask={tasks.some((task) =>
+                      (ACTIVE_TASK_STATUSES as readonly string[]).includes(task.status),
+                    )}
+                    hasSignature={signatures.length > 0}
+                  />
+                </CardContent>
+              </Card>
+            )}
 
           {/* Signatures */}
           <Card>

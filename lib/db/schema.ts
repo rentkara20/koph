@@ -233,6 +233,25 @@ export const requests = sqliteTable("request", {
     .notNull()
     .default("draft"),
   // Pre-fill default for signature requests created from this request
+  // How the devices reach the customer. "partner_delivery" is a courier trip,
+  // closed by signing off that partner's task. "customer_pickup" is the customer
+  // collecting from a KARA office: there is no trip, no partner and nothing to
+  // pay, so it is closed directly by completeOfficePickup.
+  //
+  // This exists because request status is otherwise derived ONLY from partner
+  // tasks (deriveRequestStatus returns null when a request has none), so a
+  // request fulfilled over the counter could never leave "draft" — its devices
+  // stayed "assigned" while physically with the customer, and the order under-
+  // reported what it had delivered. Order 10693 sat at 13 of 100 devices for
+  // exactly this reason.
+  fulfilmentMode: text("fulfilment_mode", { enum: ["partner_delivery", "customer_pickup"] })
+    .notNull()
+    .default("partner_delivery"),
+  // Who at KARA handed the devices over the counter, and when. Set only for a
+  // customer_pickup: it is the counterpart of the partner task's sign-off, and
+  // the only record of a human being accountable for that handover.
+  pickupHandedOverBy: text("pickup_handed_over_by").references(() => users.id, { onDelete: "set null" }),
+  pickupHandedOverAt: integer("pickup_handed_over_at"),
   requireNationalId: integer("require_national_id", { mode: "boolean" })
     .notNull()
     .default(false),

@@ -263,7 +263,16 @@
       "today": "· today",
       "tomorrow": "· tomorrow",
       "overdue": "· {days, plural, one {1 day} other {# days}} late"
-    }
+    },
+    "officePickup": "Office handover",
+    "officePickupDescription": "The customer collected the devices from a KARA office in person — no partner, no trip and nothing to pay. Record the handover here and the request closes.",
+    "officePickupAction": "Record office handover",
+    "officePickupConfirm": "Confirm: {count} device(s) handed to the customer",
+    "officePickupDone": "Office handover recorded for {count} device(s)",
+    "officePickupNotes": "Note (optional)",
+    "officePickupNotesHint": "e.g. collected in person by Mohamed Gamal, Sun 3 Aug",
+    "officePickupNoSignature": "Note: no signed receipt exists on this request. You can proceed now and upload the signed paper note later from the signatures section — but a handover with no signature is written into every device's history.",
+    "officePickupBlockedByTask": "A partner task is still open on this request. Close or cancel it first — otherwise the devices are delivered twice and the partner is paid for a trip that never happened."
   },
   "tasks": {
     "title": "Tasks",
