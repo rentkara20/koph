@@ -7,6 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import * as schema from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
+import { eq } from "drizzle-orm"
 
 let dir: string
 let db: ReturnType<typeof drizzle<typeof schema>>
@@ -142,6 +143,67 @@ describe("getAvailableOrderUnitsCore", () => {
     const serials = units.map((u) => u.serialNumber)
     expect(serials).toContain("SERIAL-FREE-1")
     expect(serials).not.toContain("SERIAL-OTHER-1")
+  })
+
+  // The regression that forced two hand-written repoint scripts: a device
+  // returned from another customer sat in the warehouse yet no other order's
+  // picker could see it, because the picker filtered on the device's ORIGIN.
+  it("offers a device returned from another order without touching its origin", async () => {
+    const oldCustomerId = createId()
+    const oldOrderId = createId()
+    const oldLineId = createId()
+    const unitId = createId()
+    await db.insert(schema.customers).values({ id: oldCustomerId, name: "Previous Tenant" })
+    await db.insert(schema.orders).values({ id: oldOrderId, orderNumber: "50501", customerId: oldCustomerId })
+    await db.insert(schema.orderLines).values({
+      id: oldLineId, orderId: oldOrderId, type: "rental_asset", description: "Rented Laptop", quantity: 1,
+    })
+    await db.insert(schema.orderUnits).values({
+      id: unitId, orderId: oldOrderId, orderLineId: oldLineId,
+      serialNumber: "SERIAL-RETURNED-1", status: "in_stock", kind: "rental",
+    })
+    // It has been out and come back, so its origin has no claim left.
+    await db.insert(schema.assetEvents).values({
+      id: createId(), assetId: unitId, type: "returned", fromStatus: "delivered", toStatus: "returned",
+    })
+
+    const newCustomerId = createId()
+    const newOrderId = createId()
+    await db.insert(schema.customers).values({ id: newCustomerId, name: "Next Tenant" })
+    await db.insert(schema.orders).values({ id: newOrderId, orderNumber: "50502", customerId: newCustomerId })
+
+    const { getAvailableOrderUnitsCore } = await import("./orders")
+    const units = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, newOrderId))
+    expect(units.map((u) => u.serialNumber)).toContain("SERIAL-RETURNED-1")
+
+    // And the previous order still owns its history of the device.
+    const [row] = await db.select().from(schema.orderUnits).where(eq(schema.orderUnits.id, unitId))
+    expect(row.orderId).toBe(oldOrderId)
+    expect(row.orderLineId).toBe(oldLineId)
+  })
+
+  it("keeps a device committed to the order that bought it until it comes back", async () => {
+    const customerId = createId()
+    const orderId = createId()
+    const lineId = createId()
+    await db.insert(schema.customers).values({ id: customerId, name: "Waiting Customer" })
+    await db.insert(schema.orders).values({ id: orderId, orderNumber: "50503", customerId })
+    await db.insert(schema.orderLines).values({
+      id: lineId, orderId, type: "rental_asset", description: "Awaited Laptop", quantity: 1,
+    })
+    await db.insert(schema.orderUnits).values({
+      id: createId(), orderId, orderLineId: lineId,
+      serialNumber: "SERIAL-COMMITTED-1", status: "in_stock", kind: "rental",
+    })
+
+    const otherCustomerId = createId()
+    const otherOrderId = createId()
+    await db.insert(schema.customers).values({ id: otherCustomerId, name: "Other Customer" })
+    await db.insert(schema.orders).values({ id: otherOrderId, orderNumber: "50504", customerId: otherCustomerId })
+
+    const { getAvailableOrderUnitsCore } = await import("./orders")
+    const units = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, otherOrderId))
+    expect(units.map((u) => u.serialNumber)).not.toContain("SERIAL-COMMITTED-1")
   })
 })
 

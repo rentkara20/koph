@@ -137,3 +137,17 @@ export function actionForTransition(from: AssetStatus, to: AssetStatus): AssetAc
 export const AVAILABLE_ASSET_STATUSES: AssetStatus[] = ["in_stock"]
 // Statuses meaning the device is out with a customer.
 export const OUT_ASSET_STATUSES: AssetStatus[] = ["assigned", "delivered"]
+// Statuses in which a unit still occupies a slot on the order line it sits on.
+// Anything else (retired/sold/lost/returned-to-supplier) has left the fleet and
+// must not count against the line's quantity.
+export const OCCUPYING_ASSET_STATUSES: AssetStatus[] = [
+  "receiving_qc",
+  "in_stock",
+  "reserved",
+  "assigned",
+  "delivered",
+  "returned",
+  "maintenance",
+  "damaged",
+  "supplier_return_pending",
+]

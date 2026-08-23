@@ -1430,7 +1430,19 @@
     },
     "lineType": "Type",
     "lineTypeRental": "Rental asset",
-    "lineTypeSale": "Sold product"
+    "lineTypeSale": "Sold product",
+    "adoptStock": "Add devices from stock",
+    "adoptStockDescription": "Devices returned from customers stay in stock. Allocate them to this order here without changing where the device came from — the original order keeps its full record.",
+    "adoptStockLine": "Line",
+    "adoptStockRemaining": "{count} remaining",
+    "adoptStockEmpty": "No free stock available right now.",
+    "adoptStockFromOrder": "returned from order {order}",
+    "adoptStockStandalone": "standalone stock",
+    "adoptStockSubmitCount": "Add {count} device(s) to this order",
+    "adoptStockOverCapacity": "Selected quantity exceeds what is left on the line ({remaining}).",
+    "adoptStockDone": "{count} device(s) added to this order",
+    "adoptStockSubstitutes": "Other models ({count}) — equivalent or better substitute",
+    "adoptStockSubstitutesHint": "Substitutes are allowed and recorded. The device keeps its real name on the delivery note and in its own history."
   },
   "assets": {
     "title": "Assets",

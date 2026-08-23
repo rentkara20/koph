@@ -1430,7 +1430,19 @@
     },
     "lineType": "النوع",
     "lineTypeRental": "أصل إيجار",
-    "lineTypeSale": "منتج للبيع"
+    "lineTypeSale": "منتج للبيع",
+    "adoptStock": "إضافة أجهزة من المخزون",
+    "adoptStockDescription": "الأجهزة الراجعة من العملاء تبقى في المخزون. من هنا تخصّصها لهذه الطلبية بدون تغيير أصل الجهاز — الطلبية الأصلية تحتفظ بسجلها كاملًا.",
+    "adoptStockLine": "البند",
+    "adoptStockRemaining": "متبقٍ {count}",
+    "adoptStockEmpty": "لا يوجد مخزون حر متاح حاليًا.",
+    "adoptStockFromOrder": "راجع من طلبية {order}",
+    "adoptStockStandalone": "مخزون مستقل",
+    "adoptStockSubmitCount": "إضافة {count} جهاز للطلبية",
+    "adoptStockOverCapacity": "الكمية المختارة تتجاوز المتبقي على البند ({remaining}).",
+    "adoptStockDone": "تمت إضافة {count} جهاز للطلبية",
+    "adoptStockSubstitutes": "أصناف أخرى ({count}) — بديل بمواصفات مساوية أو أعلى",
+    "adoptStockSubstitutesHint": "اختيار بديل مسموح ومسجَّل. الجهاز يظهر باسمه الحقيقي في سند التسليم وسجل الجهاز."
   },
   "assets": {
     "title": "الأصول",

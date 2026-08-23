@@ -117,3 +117,78 @@ export async function findClosedTasksWithoutPayment(db: Db): Promise<UnpaidClose
       )
     )
 }
+
+export type AllocationDrift = {
+  id: string
+  assetTag: string | null
+  serialNumber: string | null
+  status: string
+  currentOrderId: string | null
+  currentRequestId: string | null
+}
+
+/**
+ * The current-allocation family moves as one: a device out with a customer is
+ * allocated to a request AND an order; a device in the warehouse is allocated to
+ * neither. A half-set allocation is how a device becomes invisible — present on
+ * no order's list, or double-counted on two.
+ *
+ * Why a cross-row check is needed: applyAssetTransition writes all four columns
+ * together, but a hand-written correction script (there have been several) can
+ * set one and not the rest. This is the gate that catches that before an
+ * operator does.
+ */
+export async function findAllocationDrift(db: Db): Promise<AllocationDrift[]> {
+  const rows = await db
+    .select({
+      id: orderUnits.id,
+      assetTag: orderUnits.assetTag,
+      serialNumber: orderUnits.serialNumber,
+      status: orderUnits.status,
+      currentOrderId: orderUnits.currentOrderId,
+      currentRequestId: orderUnits.currentRequestId,
+    })
+    .from(orderUnits)
+    .where(
+      or(
+        // Out with a customer but nothing says which order it is serving.
+        and(
+          sql`${orderUnits.status} in ('assigned', 'delivered')`,
+          isNull(orderUnits.currentOrderId),
+        ),
+        // Free in the warehouse but still holding an allocation.
+        and(
+          eq(orderUnits.status, "in_stock"),
+          sql`(${orderUnits.currentOrderId} is not null or ${orderUnits.currentRequestId} is not null)`,
+        ),
+      ),
+    )
+  return rows
+}
+
+export type OriginRewrite = {
+  id: string
+  serialNumber: string | null
+  orderId: string | null
+  orderLineId: string | null
+}
+
+/**
+ * A device's origin order and origin line must belong to each other. Rewriting
+ * order_id to lend a device out (the mistake that erased two orders' device
+ * history on 2026-08-23) leaves the pair inconsistent, so this catches any
+ * repeat — whether from a script or a future code path.
+ */
+export async function findOriginMismatches(db: Db): Promise<OriginRewrite[]> {
+  const rows = await db
+    .select({
+      id: orderUnits.id,
+      serialNumber: orderUnits.serialNumber,
+      orderId: orderUnits.orderId,
+      orderLineId: orderUnits.orderLineId,
+    })
+    .from(orderUnits)
+    .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+    .where(and(sql`${orderUnits.orderId} is not null`, ne(orderLines.orderId, orderUnits.orderId)))
+  return rows
+}

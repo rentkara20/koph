@@ -91,6 +91,8 @@ export async function applyAssetTransition(
       updatedAt: Date.now(),
       ...(plan.currentRequestId !== undefined ? { currentRequestId: plan.currentRequestId } : {}),
       ...(plan.currentCustomerId !== undefined ? { currentCustomerId: plan.currentCustomerId } : {}),
+      ...(plan.currentOrderId !== undefined ? { currentOrderId: plan.currentOrderId } : {}),
+      ...(plan.currentOrderLineId !== undefined ? { currentOrderLineId: plan.currentOrderLineId } : {}),
       ...(plan.location !== undefined ? { location: plan.location } : {}),
       ...(plan.retiredAt !== undefined ? { retiredAt: plan.retiredAt, retirementReason: plan.retirementReason } : {}),
     })

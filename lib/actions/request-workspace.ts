@@ -9,6 +9,7 @@
 import { and, desc, eq, inArray, isNull } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { assetDisplayNameSql } from "@/lib/db/asset-name"
+import { attributedToOrder } from "@/lib/db/asset-allocation-sql"
 import {
   activityLogs,
   attachments,
@@ -366,7 +367,11 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
       })
       .from(orderUnits)
       .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
-      .where(eq(orderUnits.orderId, orderId)),
+      // Every device attributed to this order (see asset-allocation-sql.ts):
+      // the ones it bought, plus the ones borrowed from free stock. A device on
+      // loan elsewhere still belongs on its own order's workspace — dropping it
+      // is what made devices look deleted.
+      .where(attributedToOrder(orderId)),
     poIds.length
       ? db
           .select({

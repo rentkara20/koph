@@ -20,6 +20,8 @@ import { OrderView } from "./_components/order-view"
 import { OrderEditForm } from "./_components/order-edit-form"
 import { UnitsSection } from "./_components/units-section"
 import { CancelOrderButton } from "./_components/cancel-order-button"
+import { AdoptStockSection } from "./_components/adopt-stock-section"
+import { getAdoptStockPanel } from "@/lib/actions/order-unit-adoption"
 
 // Request Mission Control (spec §1): sticky header with the 9-stage journey +
 // next actions, one tab of the request family visible at a time. The read
@@ -50,6 +52,7 @@ export default async function OrderDetailPage({
     tab === "overview" ? getCustomers() : [],
     tab === "devices" ? getSuppliers() : [],
   ])
+  const adoptPanel = tab === "devices" ? await getAdoptStockPanel(id) : null
   if (needsLegacyData && !data) notFound()
 
   return (
@@ -104,6 +107,16 @@ export default async function OrderDetailPage({
               <UnitsSection orderId={id} lines={data.lines} units={data.units} suppliers={supplierList} />
             </CardContent>
           </Card>
+          {adoptPanel && adoptPanel.lines.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{tOrders("adoptStock")}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AdoptStockSection orderId={id} lines={adoptPanel.lines} units={adoptPanel.units} />
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

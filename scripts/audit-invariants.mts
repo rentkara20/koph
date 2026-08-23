@@ -16,8 +16,10 @@ import { drizzle } from "drizzle-orm/libsql"
 import { config } from "dotenv"
 import * as schema from "../lib/db/schema"
 import {
+  findAllocationDrift,
   findAssetKindLineTypeMismatches,
   findClosedTasksWithoutPayment,
+  findOriginMismatches,
 } from "../lib/db/invariants"
 
 const useProd = process.argv.includes("--prod")
@@ -62,6 +64,36 @@ if (unpaidClosed.length === 0) {
       "  'none'/'hold' decision was recorded — so the partner is silently never paid.\n" +
       "  Usual cause: no partner contract to price against at sign-off time. Fix by\n" +
       "  adding the contract and re-running the payment decision for these tasks.\n"
+  )
+}
+
+const allocationDrift = await findAllocationDrift(db)
+if (allocationDrift.length === 0) {
+  console.log("✓ every asset's current allocation is complete or absent")
+} else {
+  violations += allocationDrift.length
+  console.error(`✗ ${allocationDrift.length} unit(s) with a half-set allocation:`)
+  console.table(allocationDrift)
+  console.error(
+    "  A device out with a customer must name the order it is serving, and a device\n" +
+      "  in stock must name none. A half-set allocation makes the device vanish from\n" +
+      "  its order's list or appear on two at once. Fix by re-running the transition\n" +
+      "  through applyAssetTransition rather than patching one column.\n"
+  )
+}
+
+const originMismatches = await findOriginMismatches(db)
+if (originMismatches.length === 0) {
+  console.log("✓ every asset's origin order matches its origin line")
+} else {
+  violations += originMismatches.length
+  console.error(`✗ ${originMismatches.length} unit(s) whose origin order and line disagree:`)
+  console.table(originMismatches)
+  console.error(
+    "  order_id and order_line_id record where the device ENTERED the fleet and must\n" +
+      "  never be rewritten — lending a device out is recorded in current_order_id.\n" +
+      "  A mismatch here means something rewrote the origin, which erases the\n" +
+      "  originating order's record of the device.\n"
   )
 }
 

@@ -4,7 +4,7 @@ import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-
 import { and, count, desc, eq, inArray, isNull, like, max, notInArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { activityLogs, customerContactLocations, customerContacts, customerLocations, customers, partnerTasks, requestItems, requests, requestTypes, signatureRequests } from "@/lib/db/schema"
+import { activityLogs, customerContactLocations, customerContacts, customerLocations, customers, orderLines, orderUnits, orders, partnerTasks, requestItems, requests, requestTypes, signatureRequests } from "@/lib/db/schema"
 import { createId, generateTrackingCode } from "@/lib/utils/ids"
 import { generateRequestNumber } from "@/lib/utils/request-number"
 import { logActivity } from "@/lib/utils/activity"
@@ -15,6 +15,7 @@ import { resolveNextDeliveryPartNumber } from "@/lib/domain/delivery-part"
 import { validateRequestExceptionInput, type RequestExceptionInput } from "@/lib/domain/request-exception-actions"
 import { parseRiyadhDate } from "@/lib/utils/format"
 import { enrichRequestRows, isRequestView, requestViewCondition } from "@/lib/domain/request-list"
+import { matchAllocationLine } from "@/lib/domain/asset-allocation"
 
 export type ActionResult = { error?: string; id?: string }
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
@@ -190,10 +191,50 @@ export async function createRequest(data: CreateRequestInput): Promise<ActionRes
       // They stay "delivered" until the collection task is signed off, which
       // moves them to "returned" (see signOffTask in lib/actions/tasks.ts).
       if (requestType?.slug !== "collection") {
+        // Record which order the devices are being lent out on, alongside the
+        // request and customer. This is the CURRENT allocation — the device's
+        // origin (order_unit.orderId) is never touched, so the order it was
+        // first sold on keeps its records even after the device is re-rented.
+        const [allocationOrder] = orderReference
+          ? await tx
+              .select({ id: orders.id })
+              .from(orders)
+              .where(and(eq(orders.orderNumber, orderReference), isNull(orders.deletedAt)))
+          : []
+        const allocationLines = allocationOrder
+          ? await tx
+              .select({ id: orderLines.id, description: orderLines.description, type: orderLines.type })
+              .from(orderLines)
+              .where(eq(orderLines.orderId, allocationOrder.id))
+          : []
+        const descriptionByUnitId = new Map(
+          data.items
+            .filter((item) => item.orderUnitId)
+            .map((item) => [item.orderUnitId as string, item.description]),
+        )
+
+        // A sale unit belongs on a sold_product line, a rental on a rental_asset
+        // one, so the match needs each unit's kind.
+        const pulledUnits = pulledUnitIds.length
+          ? await tx
+              .select({ id: orderUnits.id, kind: orderUnits.kind })
+              .from(orderUnits)
+              .where(inArray(orderUnits.id, pulledUnitIds))
+          : []
+        const kindByUnitId = new Map(pulledUnits.map((u) => [u.id, u.kind ?? "rental"]))
+
         for (const unitId of pulledUnitIds) {
           await applyAssetTransition(tx, unitId, "assign", {
             requestId: id,
             customerId: data.customerId,
+            orderId: allocationOrder?.id ?? null,
+            orderLineId: allocationOrder
+              ? matchAllocationLine(
+                  descriptionByUnitId.get(unitId),
+                  allocationLines,
+                  (kindByUnitId.get(unitId) ?? "rental") as "rental" | "sale",
+                )
+              : null,
             byUserId: session.user.id,
           })
         }

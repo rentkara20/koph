@@ -18,6 +18,7 @@ import {
   suppliers,
 } from "@/lib/db/schema"
 import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asset-name"
+import { attributedToOrder, servingOrder, unallocatedRentalStock } from "@/lib/db/asset-allocation-sql"
 import { deriveOrderJourney, type JourneyStage } from "@/lib/domain/order-journey"
 import { assetKindForOrderLineType } from "@/lib/domain/asset-status"
 import { createId } from "@/lib/utils/ids"
@@ -452,7 +453,7 @@ export async function saveOrderUnits(
     // same transaction — otherwise a crash between the unit commit and the
     // status write leaves orders.status permanently disagreeing with its units.
     const [orderRow] = await tx.select({ status: orders.status }).from(orders).where(eq(orders.id, orderId))
-    const finalUnits = await tx.select({ status: orderUnits.status }).from(orderUnits).where(eq(orderUnits.orderId, orderId))
+    const finalUnits = await tx.select({ status: orderUnits.status }).from(orderUnits).where(attributedToOrder(orderId))
     const nextStatus = deriveOrderStatus(
       finalUnits.map((u) => u.status),
       orderRow?.status ?? "draft"
@@ -484,7 +485,7 @@ export async function setOrderCancelled(id: string, cancelled: boolean): Promise
     await db.update(orders).set({ status: "cancelled", updatedAt: Date.now() }).where(eq(orders.id, id))
   } else {
     // Reopen: recompute from current units rather than guessing a status.
-    const units = await db.select({ status: orderUnits.status }).from(orderUnits).where(eq(orderUnits.orderId, id))
+    const units = await db.select({ status: orderUnits.status }).from(orderUnits).where(attributedToOrder(id))
     const nextStatus = deriveOrderStatus(units.map((u) => u.status), "draft")
     await db.update(orders).set({ status: nextStatus, updatedAt: Date.now() }).where(eq(orders.id, id))
   }
@@ -689,6 +690,12 @@ export async function getOrder(id: string) {
     .where(eq(orderLines.orderId, id))
     .orderBy(orderLines.createdAt)
 
+  // The order's OWN units, by origin — this feeds the units EDITOR, and
+  // saveOrderUnits only accepts units sitting on a line of this order. A device
+  // borrowed from free stock keeps its origin line (belonging to another order),
+  // so listing it here would make every save fail on "Invalid line reference".
+  // Borrowed devices are shown, read-only, by the workspace devices tab, which
+  // uses the serving rule instead.
   const units = await db
     .select()
     .from(orderUnits)
@@ -725,7 +732,7 @@ export async function getRequestsForOrder(orderId: string): Promise<LinkedReques
     .innerJoin(orderUnits, eq(requestItems.orderUnitId, orderUnits.id))
     .innerJoin(requests, eq(requestItems.requestId, requests.id))
     .leftJoin(requestTypes, eq(requests.typeId, requestTypes.id))
-    .where(and(eq(orderUnits.orderId, orderId), isNull(requests.deletedAt)))
+    .where(and(attributedToOrder(orderId), isNull(requests.deletedAt)))
     .orderBy(desc(requests.createdAt))
 
   const byId = new Map<string, LinkedRequest>()
@@ -782,11 +789,13 @@ export async function getOrderJourney(orderId: string): Promise<JourneyStage[] |
         .where(inArray(purchaseOrders.procurementCaseId, caseIds))
     : []
 
-  // Asset units registered against the order + how many have been delivered.
+  // Asset units attributed to the order + how many have been delivered. The
+  // union of origin and allocation, so an order never loses devices it bought
+  // just because they are on loan (which would recompute its journey to zero).
   const unitRows = await db
     .select({ status: orderUnits.status })
     .from(orderUnits)
-    .where(eq(orderUnits.orderId, orderId))
+    .where(attributedToOrder(orderId))
 
   // Delivery requests that pulled units from this order.
   const linkedRequests = await getRequestsForOrder(orderId)
@@ -912,7 +921,7 @@ export async function getDeliveredOrderUnitsCore(tx: Tx, orderId: string, orderN
       .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
       .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
       .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
-      .where(and(eq(orderUnits.orderId, orderId), eq(orderUnits.status, "delivered"))),
+      .where(and(servingOrder(orderId), eq(orderUnits.status, "delivered"))),
     tx
       .selectDistinct(selection)
       .from(orderUnits)
@@ -953,7 +962,7 @@ export async function getDeliveredOrderUnitsCore(tx: Tx, orderId: string, orderN
 }
 
 export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
-  const [directUnits, purchasedUnits, freeStockUnits] = await Promise.all([
+  const [directUnits, purchasedUnits, returnedStockUnits, freeStockUnits] = await Promise.all([
     tx
       .select({
         unitId: orderUnits.id,
@@ -968,7 +977,15 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
       .from(orderUnits)
       .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
       .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
-      .where(and(eq(orderUnits.orderId, orderId), eq(orderUnits.status, "in_stock"))),
+      .where(
+        and(
+          // Origin OR current allocation: a device lent to this order from
+          // elsewhere is this order's to use, and a device that originated here
+          // but is currently out on another order is not.
+          or(eq(orderUnits.orderId, orderId), eq(orderUnits.currentOrderId, orderId)),
+          eq(orderUnits.status, "in_stock"),
+        ),
+      ),
     tx
       .select({
         unitId: orderUnits.id,
@@ -985,6 +1002,26 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
       .innerJoin(sourcingRequests, eq(procurementCases.sourcingRequestId, sourcingRequests.id))
       .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
       .where(and(eq(sourcingRequests.orderId, orderId), eq(orderUnits.status, "in_stock"))),
+    // Returned / unallocated stock: any rental unit sitting in the warehouse
+    // with no current allocation. A device that went out on another order and
+    // came back belongs here — its origin (orderUnits.orderId) records where it
+    // entered the fleet and is deliberately NOT a filter, because filtering on
+    // it is what used to hide returned devices from every other order and force
+    // hand-written repoint scripts.
+    tx
+      .select({
+        unitId: orderUnits.id,
+        serialNumber: orderUnits.serialNumber,
+        description: assetDisplayNameSql(orderLines.description, purchaseOrderLines.itemDescription),
+        brand: assetBrandSql(orderLines.brand, purchaseOrderLines.brand),
+        model: assetModelSql(orderLines.model, purchaseOrderLines.model),
+        supplierName: suppliers.name,
+      })
+      .from(orderUnits)
+      .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
+      .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
+      .where(unallocatedRentalStock()),
     // Free stock: units received against a PO whose procurement chain does not
     // resolve to ANY customer order (manual POs / order-less sourcing). These
     // are unallocated inventory, so any order may draw from them. Units whose
@@ -1012,7 +1049,10 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
       ),
   ])
 
+  // Later writes win: the order's own rows carry the richest naming, so they
+  // overwrite the same unit picked up by a broader branch.
   const byId = new Map(freeStockUnits.map((unit) => [unit.unitId, unit]))
+  for (const unit of returnedStockUnits) byId.set(unit.unitId, unit)
   for (const unit of directUnits) byId.set(unit.unitId, unit)
   for (const unit of purchasedUnits) byId.set(unit.unitId, unit)
   return [...byId.values()].sort((a, b) => a.description.localeCompare(b.description))

@@ -10,12 +10,20 @@ export interface TransitionContext {
   customerId?: string | null
   notes?: string | null
   location?: string | null
+  // Which order (and which of its lines) the device is being lent out on. Set
+  // together with requestId/customerId when a request pulls the device. This is
+  // the CURRENT allocation, never the device's origin — see the currentOrderId
+  // comment on order_unit in lib/db/schema.ts.
+  orderId?: string | null
+  orderLineId?: string | null
 }
 
 export interface AssetFieldUpdate {
   status: AssetStatus
   currentRequestId?: string | null
   currentCustomerId?: string | null
+  currentOrderId?: string | null
+  currentOrderLineId?: string | null
   location?: string
   retiredAt?: number
   retirementReason?: string | null
@@ -55,12 +63,19 @@ export function planAssetFieldUpdate(
   const status = assetStatusAfter(action)
   const update: AssetFieldUpdate = { status }
 
+  // The whole "current allocation" family moves as one unit: a device is out
+  // with a customer, on a request, against an order line — or it is free of all
+  // three. Setting or clearing them in separate places is how they drift.
   if (action === "assign") {
     update.currentRequestId = context.requestId ?? null
     update.currentCustomerId = context.customerId ?? null
+    update.currentOrderId = context.orderId ?? null
+    update.currentOrderLineId = context.orderLineId ?? null
   } else if (CLEARS_ASSIGNMENT.has(action)) {
     update.currentRequestId = null
     update.currentCustomerId = null
+    update.currentOrderId = null
+    update.currentOrderLineId = null
   }
 
   if (RESETS_LOCATION.has(action)) {

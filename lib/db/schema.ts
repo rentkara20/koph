@@ -1146,9 +1146,23 @@ export const orderUnits = sqliteTable(
       .notNull()
       .default("in_stock"),
     location: text("location").notNull().default("main_warehouse"),
-    // Where the asset currently is when out of the warehouse.
+    // ─── Current allocation (the "where is it now" family) ──────────────────
+    // These say who the device is serving RIGHT NOW. They are set by the assign
+    // transition and cleared by return/restock/unassign — all through the one
+    // chokepoint (applyAssetTransition), so there is no second place to keep
+    // them in sync.
+    //
+    // Crucially they are distinct from orderId/orderLineId above, which record
+    // the device's ORIGIN — where it entered the fleet — and must never be
+    // rewritten. A rental device is sold on order A, comes back, and is then
+    // rented out on order B: order A stays its origin forever (so order A's own
+    // history is intact) while currentOrderId points at B. Overwriting the
+    // origin to lend a device out erases the first order's records; that is the
+    // bug these columns exist to prevent.
     currentRequestId: text("current_request_id").references(() => requests.id, { onDelete: "set null" }),
     currentCustomerId: text("current_customer_id"),
+    currentOrderId: text("current_order_id").references(() => orders.id, { onDelete: "set null" }),
+    currentOrderLineId: text("current_order_line_id").references(() => orderLines.id, { onDelete: "set null" }),
     retiredAt: integer("retired_at"),
     retirementReason: text("retirement_reason"),
     notes: text("notes"),
@@ -1166,6 +1180,8 @@ export const orderUnits = sqliteTable(
       .on(sql`lower(trim(${t.serialNumber}))`)
       .where(sql`${t.serialNumber} IS NOT NULL AND trim(${t.serialNumber}) <> ''`),
     index("order_unit_current_customer_idx").on(t.currentCustomerId),
+    index("order_unit_current_order_idx").on(t.currentOrderId),
+    index("order_unit_current_order_line_idx").on(t.currentOrderLineId),
     uniqueIndex("order_unit_asset_tag_idx").on(t.assetTag),
     // At most one origin (an asset may have neither — a standalone/back-filled
     // unit created via CSV import — but never both at once).

@@ -4,22 +4,53 @@ import { eventTypeForAction, planAssetFieldUpdate } from "./asset-transition-pla
 const NOW = 1_800_000_000_000
 
 describe("planAssetFieldUpdate", () => {
-  test("assign sets requestId/customerId from context", () => {
-    const plan = planAssetFieldUpdate("assign", { requestId: "r1", customerId: "c1" }, NOW)
-    expect(plan).toEqual({ status: "assigned", currentRequestId: "r1", currentCustomerId: "c1" })
+  test("assign sets the whole current-allocation family from context", () => {
+    const plan = planAssetFieldUpdate(
+      "assign",
+      { requestId: "r1", customerId: "c1", orderId: "o1", orderLineId: "ol1" },
+      NOW,
+    )
+    expect(plan).toEqual({
+      status: "assigned",
+      currentRequestId: "r1",
+      currentCustomerId: "c1",
+      currentOrderId: "o1",
+      currentOrderLineId: "ol1",
+    })
+  })
+
+  // The order the device is lent out on is the CURRENT allocation. Its origin
+  // (order_unit.orderId) is never part of a transition plan — rewriting it to
+  // lend a device out erases the originating order's records.
+  test("assign records the order allocation without any notion of origin", () => {
+    const plan = planAssetFieldUpdate("assign", { orderId: "o1" }, NOW)
+    expect(plan.currentOrderId).toBe("o1")
+    expect(plan.currentOrderLineId).toBeNull()
+    expect("orderId" in plan).toBe(false)
+    expect("orderLineId" in plan).toBe(false)
   })
 
   test("assign with no context clears to null rather than leaving undefined", () => {
     const plan = planAssetFieldUpdate("assign", {}, NOW)
     expect(plan.currentRequestId).toBeNull()
     expect(plan.currentCustomerId).toBeNull()
+    expect(plan.currentOrderId).toBeNull()
+    expect(plan.currentOrderLineId).toBeNull()
   })
 
   for (const action of ["restock", "unassign", "return", "repair_done"] as const) {
     test(`${action} clears assignment fields`, () => {
-      const plan = planAssetFieldUpdate(action, { requestId: "r1", customerId: "c1" }, NOW)
+      const plan = planAssetFieldUpdate(
+        action,
+        { requestId: "r1", customerId: "c1", orderId: "o1", orderLineId: "ol1" },
+        NOW,
+      )
       expect(plan.currentRequestId).toBeNull()
       expect(plan.currentCustomerId).toBeNull()
+      // The device is free again: no order is holding it, so any order's picker
+      // may offer it without a repoint.
+      expect(plan.currentOrderId).toBeNull()
+      expect(plan.currentOrderLineId).toBeNull()
     })
   }
 
@@ -27,6 +58,8 @@ describe("planAssetFieldUpdate", () => {
     const plan = planAssetFieldUpdate("deliver", { requestId: "r1", customerId: "c1" }, NOW)
     expect(plan.currentRequestId).toBeUndefined()
     expect(plan.currentCustomerId).toBeUndefined()
+    expect(plan.currentOrderId).toBeUndefined()
+    expect(plan.currentOrderLineId).toBeUndefined()
   })
 
   test("restock/repair_done reset location to main_warehouse by default", () => {
