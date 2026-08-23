@@ -128,15 +128,24 @@ export type AllocationDrift = {
 }
 
 /**
- * The current-allocation family moves as one: a device out with a customer is
- * allocated to a request AND an order; a device in the warehouse is allocated to
- * neither. A half-set allocation is how a device becomes invisible — present on
- * no order's list, or double-counted on two.
+ * Contradictions inside the current-allocation family.
  *
- * Why a cross-row check is needed: applyAssetTransition writes all four columns
- * together, but a hand-written correction script (there have been several) can
- * set one and not the rest. This is the gate that catches that before an
- * operator does.
+ * The legal states are:
+ *   • in the warehouse, unspoken for — no request, no order
+ *   • in the warehouse, reserved for an order — order set, no request yet
+ *     (this is what lending free stock to an order line does)
+ *   • out with a customer — request AND order both set
+ *
+ * So exactly two shapes are impossible, and both make a device misreport where
+ * it physically is:
+ *   • a warehouse device attached to a live request
+ *   • a device out with a customer that names no request
+ *
+ * "Out with a customer but naming no ORDER" is deliberately NOT here: that is
+ * the legacy state of every device delivered before the allocation columns
+ * existed, and it is cleared by scripts/backfill-current-allocation.mts. Listing
+ * it as a violation would make this audit cry wolf on a healthy database, and an
+ * audit that always fails is an audit nobody runs.
  */
 export async function findAllocationDrift(db: Db): Promise<AllocationDrift[]> {
   const rows = await db
@@ -151,19 +160,42 @@ export async function findAllocationDrift(db: Db): Promise<AllocationDrift[]> {
     .from(orderUnits)
     .where(
       or(
-        // Out with a customer but nothing says which order it is serving.
+        and(
+          // Only the states where the device is physically in the warehouse and
+          // could therefore be double-booked. Terminal states (sold/retired/lost)
+          // have left the fleet, and the request they last travelled on is
+          // harmless history there — flagging it would bury the real cases.
+          sql`${orderUnits.status} in ('in_stock', 'returned')`,
+          sql`${orderUnits.currentRequestId} is not null`,
+        ),
         and(
           sql`${orderUnits.status} in ('assigned', 'delivered')`,
-          isNull(orderUnits.currentOrderId),
-        ),
-        // Free in the warehouse but still holding an allocation.
-        and(
-          eq(orderUnits.status, "in_stock"),
-          sql`(${orderUnits.currentOrderId} is not null or ${orderUnits.currentRequestId} is not null)`,
+          isNull(orderUnits.currentRequestId),
         ),
       ),
     )
   return rows
+}
+
+export type PendingAllocationBackfill = { outWithoutOrder: number }
+
+/**
+ * How many devices are out with a customer but do not yet name the order they
+ * are serving — i.e. how much of the allocation backfill is still outstanding.
+ * Informational, not a violation: it is the pre-backfill legacy state, and it
+ * only means order rollups still read those devices by origin.
+ */
+export async function countPendingAllocationBackfill(db: Db): Promise<PendingAllocationBackfill> {
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(orderUnits)
+    .where(
+      and(
+        sql`${orderUnits.status} in ('assigned', 'delivered')`,
+        isNull(orderUnits.currentOrderId),
+      ),
+    )
+  return { outWithoutOrder: Number(row?.n ?? 0) }
 }
 
 export type OriginRewrite = {

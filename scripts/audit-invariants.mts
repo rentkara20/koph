@@ -16,6 +16,7 @@ import { drizzle } from "drizzle-orm/libsql"
 import { config } from "dotenv"
 import * as schema from "../lib/db/schema"
 import {
+  countPendingAllocationBackfill,
   findAllocationDrift,
   findAssetKindLineTypeMismatches,
   findClosedTasksWithoutPayment,
@@ -75,10 +76,20 @@ if (allocationDrift.length === 0) {
   console.error(`✗ ${allocationDrift.length} unit(s) with a half-set allocation:`)
   console.table(allocationDrift)
   console.error(
-    "  A device out with a customer must name the order it is serving, and a device\n" +
-      "  in stock must name none. A half-set allocation makes the device vanish from\n" +
-      "  its order's list or appear on two at once. Fix by re-running the transition\n" +
-      "  through applyAssetTransition rather than patching one column.\n"
+    "  A warehouse device must not be attached to a live request, and a device out\n" +
+      "  with a customer must name one. Either shape makes the device misreport where\n" +
+      "  it physically is. Fix by re-running the transition through\n" +
+      "  applyAssetTransition rather than patching one column.\n"
+  )
+}
+
+const pending = await countPendingAllocationBackfill(db)
+if (pending.outWithoutOrder > 0) {
+  console.log(
+    `\ni ${pending.outWithoutOrder} device(s) out with a customer do not name the order they serve.\n` +
+      "  Not a violation: this is the state before the allocation backfill, and those\n" +
+      "  orders still read their devices by origin. Run\n" +
+      "  scripts/backfill-current-allocation.mts to fill them in."
   )
 }
 
