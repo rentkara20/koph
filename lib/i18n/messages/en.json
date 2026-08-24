@@ -1648,7 +1648,8 @@
       "qtyEntry": "Enter the received quantity",
       "receiveQty": "Receive quantity",
       "noSerialHint": "This item has no serial — confirm the received count.",
-      "savedQty": "{count} units received"
+      "savedQty": "{count} units received",
+      "markNoSerial": "This item has no serial number"
     },
     "remaining": "{received} / {ordered} received",
     "fullyReceived": "Fully received",

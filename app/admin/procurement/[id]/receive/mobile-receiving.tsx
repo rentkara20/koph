@@ -6,7 +6,11 @@ import { useTranslations } from "next-intl"
 import { ArrowLeft, Camera, CheckCircle2, Keyboard, Loader2, RefreshCw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { receivePurchaseOrderLine, receivePurchaseOrderLineQty } from "@/lib/actions/procurement"
+import {
+  receivePurchaseOrderLine,
+  receivePurchaseOrderLineQty,
+  setPurchaseOrderLineRequiresSerial,
+} from "@/lib/actions/procurement"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { deriveReceivingContinuation } from "@/lib/domain/receiving-continuation"
 import { WorkflowContinuationCard } from "@/components/workflow-continuation-card"
@@ -163,6 +167,33 @@ export function MobileReceiving({
     })
   }, [lines, pickupTaskId, selectedLineId, t])
 
+  // The warehouse operator standing at the shelf is the one who can see that an
+  // item has no serial plate, so the flag is correctable here and not only on
+  // the desktop purchase-order page. Local state is patched directly: a
+  // router.refresh() would not reach this component's useState(initialLines).
+  const toggleRequiresSerial = useCallback((next: boolean) => {
+    if (!selectedLineId || submittingRef.current) return
+    submittingRef.current = true
+    setStatus(null)
+    startTransition(async () => {
+      const result = await setPurchaseOrderLineRequiresSerial({
+        purchaseOrderLineId: selectedLineId,
+        requiresSerial: next,
+      })
+      if (result.error) {
+        setStatus({ kind: "error", text: translateActionError(result.error) })
+        submittingRef.current = false
+        return
+      }
+      setLines((current) =>
+        current.map((l) => (l.id === selectedLineId ? { ...l, requiresSerial: next } : l))
+      )
+      setSerial("")
+      setQty("1")
+      submittingRef.current = false
+    })
+  }, [selectedLineId])
+
   async function startCamera() {
     setCameraError(null)
     const Detector = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector
@@ -291,6 +322,19 @@ export function MobileReceiving({
             <div className={`rounded-xl p-3 text-sm font-medium ${status.kind === "success" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}>
               {status.text}
             </div>
+          )}
+
+          {selectedLine && selectedLine.received === 0 && (
+            <label className="flex items-center gap-2 rounded-xl border bg-card p-4 text-sm">
+              <input
+                type="checkbox"
+                checked={!selectedLine.requiresSerial}
+                disabled={pending}
+                onChange={(event) => toggleRequiresSerial(!event.target.checked)}
+                className="size-5"
+              />
+              {t("markNoSerial")}
+            </label>
           )}
 
           {selectedLine && !selectedLine.requiresSerial ? (

@@ -1648,7 +1648,8 @@
       "qtyEntry": "أدخل الكمية المستلمة",
       "receiveQty": "استلام الكمية",
       "noSerialHint": "هذا الصنف بدون رقم تسلسلي — أكّد الكمية المستلمة.",
-      "savedQty": "تم استلام {count} وحدة"
+      "savedQty": "تم استلام {count} وحدة",
+      "markNoSerial": "هذا الصنف بدون رقم تسلسلي"
     },
     "remaining": "تم استلام {received} من {ordered}",
     "fullyReceived": "تم الاستلام بالكامل",
