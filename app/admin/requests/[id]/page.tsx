@@ -23,6 +23,7 @@ import { TasksSection } from "./_components/tasks-section"
 import { OfficePickupCard } from "./_components/office-pickup-card"
 import { PartialResolutionPanel } from "./_components/follow-up-delivery"
 import { SignaturesSection } from "./_components/signatures-section"
+import { groupIdenticalItems } from "@/lib/domain/item-grouping"
 import { ItemsSection } from "./_components/items-section"
 import { ReceiverSection } from "./_components/receiver-section"
 import { LogisticsSection } from "./_components/logistics-section"
@@ -257,7 +258,9 @@ export default async function RequestDetailPage({
           <Card>
             <CardHeader>
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                {t("items")} ({items.length})
+                {/* Grouped line count matches the table below, which collapses
+                    interchangeable accessories into one quantity line. */}
+                {t("items")} ({groupIdenticalItems(items).length})
               </CardTitle>
             </CardHeader>
             <CardContent className="p-0">

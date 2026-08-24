@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { groupIdenticalItems } from "@/lib/domain/item-grouping"
 
 type Item = {
   id: string
@@ -26,10 +27,15 @@ function ItemEditRow({
   item,
   onSave,
   onCancel,
+  // A grouped line stands for N stored rows of quantity 1 each; its quantity is
+  // the row count, so it cannot be typed here — units are added or removed by
+  // editing the individual devices, not by retyping a total.
+  quantityLocked = false,
 }: {
   item: Partial<Item> & { description: string; quantity: number }
   onSave: (data: Item) => void
   onCancel: () => void
+  quantityLocked?: boolean
 }) {
   const t = useTranslations("requests")
   const tCommon = useTranslations("common")
@@ -76,6 +82,7 @@ function ItemEditRow({
               min={1}
               value={quantity}
               onChange={(e) => setQuantity(e.target.value)}
+              disabled={quantityLocked}
               className="h-7 text-xs"
             />
           </div>
@@ -145,31 +152,66 @@ export function ItemsSection({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [error, setError] = useState("")
 
-  async function handleSaveEdit(data: Item) {
+  // A grouped line is N stored rows, so an edit fans out to all of them. Each
+  // keeps quantity 1 — order-linked rows are pinned there by
+  // request_item_order_unit_qty_chk — and only a single-row line takes the typed
+  // quantity.
+  async function handleSaveEdit(data: Item, groupedIds: string[] = [data.id]) {
     setError("")
-    const result = await updateRequestItem(data.id, {
+    const isGroup = groupedIds.length > 1
+    const fields = {
       description: data.description,
       brand: data.brand ?? undefined,
       model: data.model ?? undefined,
       serialNumber: data.serialNumber ?? undefined,
-      quantity: data.quantity,
       accessories: data.accessories ?? undefined,
       notes: data.notes ?? undefined,
-    })
-    if (result.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); return }
+    }
+
+    for (const id of groupedIds) {
+      const result = await updateRequestItem(id, {
+        ...fields,
+        quantity: isGroup ? 1 : data.quantity,
+      })
+      if (result.error) {
+        setError(translateActionError(result.error))
+        toast.error(translateActionError(result.error))
+        router.refresh()
+        return
+      }
+    }
+
     toast.success(tToast("updated"))
-    setItems((prev) => prev.map((i) => (i.id === data.id ? data : i)))
+    const ids = new Set(groupedIds)
+    setItems((prev) =>
+      prev.map((i) =>
+        ids.has(i.id)
+          ? { ...i, ...fields, brand: data.brand, model: data.model, serialNumber: data.serialNumber, accessories: data.accessories, notes: data.notes, quantity: isGroup ? 1 : data.quantity }
+          : i
+      )
+    )
     setEditingId(null)
   }
 
-  async function handleDelete(itemId: string) {
+  // Deleting a grouped line removes every stored row behind it — the line is
+  // what the operator sees, so a partial delete would leave a confusing remnant.
+  async function handleDelete(itemId: string, groupedIds: string[] = [itemId]) {
     if (!confirm(t("deleteItemConfirm"))) return
     setDeletingId(itemId)
     try {
-      const result = await deleteRequestItem(itemId, requestId)
-      if (result?.error) { setError(translateActionError(result.error)); toast.error(translateActionError(result.error)); setDeletingId(null); return }
+      for (const id of groupedIds) {
+        const result = await deleteRequestItem(id, requestId)
+        if (result?.error) {
+          setError(translateActionError(result.error))
+          toast.error(translateActionError(result.error))
+          setDeletingId(null)
+          router.refresh()
+          return
+        }
+      }
       toast.success(tToast("deleted"))
-      setItems((prev) => prev.filter((i) => i.id !== itemId))
+      const ids = new Set(groupedIds)
+      setItems((prev) => prev.filter((i) => !ids.has(i.id)))
     } catch {
       toast.error(tToast("genericError"))
     } finally {
@@ -214,12 +256,13 @@ export function ItemsSection({
           </tr>
         </thead>
         <tbody className="divide-y">
-          {items.map((item) =>
+          {groupIdenticalItems(items).map((item) =>
             editingId === item.id ? (
               <ItemEditRow
                 key={item.id}
                 item={item}
-                onSave={handleSaveEdit}
+                quantityLocked={item.groupedIds.length > 1}
+                onSave={(data) => handleSaveEdit(data, item.groupedIds)}
                 onCancel={() => setEditingId(null)}
               />
             ) : (
@@ -247,7 +290,7 @@ export function ItemsSection({
                       <Pencil className="size-3.5" />
                     </button>
                     <button
-                      onClick={() => handleDelete(item.id)}
+                      onClick={() => handleDelete(item.id, item.groupedIds)}
                       disabled={deletingId === item.id}
                       className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       title={tCommon("delete")}
