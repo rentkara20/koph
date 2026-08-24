@@ -386,7 +386,12 @@ export async function createPurchaseOrderFromCase(
 
 const receiveLineSchema = z.object({
   purchaseOrderLineId: z.string().trim().min(1),
-  serialNumber: z.string().trim().min(1).max(120),
+  // Optional because not every purchased item carries a serial: cables,
+  // adapters and other accessories are received by quantity. The per-line
+  // `requiresSerial` flag (captured at PO creation) decides whether a serial
+  // is mandatory — enforced in receivePurchaseOrderLineCore, mirroring
+  // receiveAccessoryStock in lib/actions/accessories.ts.
+  serialNumber: z.string().trim().min(1).max(120).optional(),
   assetTag: z.string().trim().max(40).optional(),
   // Present when the unit arrived via a supplier-pickup task: attributes the
   // receipt to that task's line (qtyReceived ≤ qtyPickedUp) and auto-closes
@@ -409,6 +414,12 @@ export async function receivePurchaseOrderLineCore(
     .where(eq(purchaseOrderLines.id, d.purchaseOrderLineId))
   if (!line) throw new Error("Purchase order line not found")
   if (line.status === "cancelled") throw new Error("Cannot receive a cancelled line")
+  // Serialized lines must identify the exact unit; non-serialized lines are
+  // received by count and mint serial-less assets (order_unit.serialNumber is
+  // nullable, and its unique index only covers non-blank serials).
+  if (line.requiresSerial && !d.serialNumber) {
+    throw new Error("Serial number required for this line")
+  }
 
   // Atomic guarded increment FIRST: two concurrent receives of the same line
   // must not both pass a stale `qtyReceived < qtyOrdered` check and each mint
@@ -700,6 +711,103 @@ export async function receivePurchaseOrderLine(
   revalidatePath("/admin/procurement")
   revalidatePath("/admin/assets")
   return { id: assetId }
+}
+
+// ─── Receive a non-serialized line by quantity ───────────────────────────────
+// Accessories (cables, adapters, bags) have no serial to scan, so the warehouse
+// confirms a count instead of N individual units. Each unit still becomes its
+// own serial-less asset so costing, QC and delivery keep working unchanged —
+// this is only a bulk entry affordance over receivePurchaseOrderLineCore, which
+// stays the single receiving code path. Serialized lines are rejected so the
+// per-unit identity of real devices can never be bypassed.
+
+const receiveLineQtySchema = z.object({
+  purchaseOrderLineId: z.string().trim().min(1),
+  qty: z.number().int().min(1).max(500),
+  pickupTaskId: z.string().trim().min(1).optional(),
+})
+
+export async function receivePurchaseOrderLineQty(
+  input: z.infer<typeof receiveLineQtySchema>
+): Promise<ActionResult & { received?: number }> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = receiveLineQtySchema.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [line] = await tx
+        .select({ requiresSerial: purchaseOrderLines.requiresSerial })
+        .from(purchaseOrderLines)
+        .where(eq(purchaseOrderLines.id, parsed.data.purchaseOrderLineId))
+      if (!line) throw new Error("Purchase order line not found")
+      if (line.requiresSerial) throw new Error("Serial number required for this line")
+
+      for (let i = 0; i < parsed.data.qty; i++) {
+        await receivePurchaseOrderLineCore(
+          tx,
+          {
+            purchaseOrderLineId: parsed.data.purchaseOrderLineId,
+            pickupTaskId: parsed.data.pickupTaskId,
+          },
+          session.user.id
+        )
+      }
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to receive line" }
+  }
+
+  revalidatePath("/admin/procurement")
+  revalidatePath("/admin/assets")
+  return { received: parsed.data.qty }
+}
+
+// ─── Flip a line's serial requirement ────────────────────────────────────────
+// requiresSerial is captured on manual PO creation but defaults to true for POs
+// minted from a sourcing case, so an accessory line arrives flagged as
+// serialized and cannot be received. Ops correct it here. Only allowed while
+// nothing has been received on the line, so the flag can never contradict units
+// already minted under the old rule.
+
+const setLineRequiresSerialSchema = z.object({
+  purchaseOrderLineId: z.string().trim().min(1),
+  requiresSerial: z.boolean(),
+})
+
+export async function setPurchaseOrderLineRequiresSerial(
+  input: z.infer<typeof setLineRequiresSerialSchema>
+): Promise<ActionResult> {
+  const session = await getSessionWithRole("admin", "finance")
+  if (!session) return { error: "Unauthorized" }
+
+  const parsed = setLineRequiresSerialSchema.safeParse(input)
+  if (!parsed.success) return { error: "Invalid input" }
+
+  try {
+    await db.transaction(async (tx) => {
+      const [line] = await tx
+        .select({ qtyReceived: purchaseOrderLines.qtyReceived, status: purchaseOrderLines.status })
+        .from(purchaseOrderLines)
+        .where(eq(purchaseOrderLines.id, parsed.data.purchaseOrderLineId))
+      if (!line) throw new Error("Purchase order line not found")
+      if (line.status === "cancelled") throw new Error("Cannot receive a cancelled line")
+      if (line.qtyReceived > 0) {
+        throw new Error("Cannot change the serial requirement after receiving started")
+      }
+      await tx
+        .update(purchaseOrderLines)
+        .set({ requiresSerial: parsed.data.requiresSerial, updatedAt: Date.now() })
+        .where(eq(purchaseOrderLines.id, parsed.data.purchaseOrderLineId))
+    })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to update line" }
+  }
+
+  revalidatePath("/admin/procurement")
+  return {}
 }
 
 // ─── PO lifecycle milestones (paid / ready for pickup) ───────────────────────

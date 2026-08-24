@@ -1644,7 +1644,11 @@
       "createDeliveryJobHint": "The devices are ready. Continue directly to a delivery job for this customer order.",
       "reviewInventoryHint": "Receiving is complete. Review the devices now available in inventory.",
       "backToPo": "Back to purchase order",
-      "finishReceiving": "Finish receiving"
+      "finishReceiving": "Finish receiving",
+      "qtyEntry": "Enter the received quantity",
+      "receiveQty": "Receive quantity",
+      "noSerialHint": "This item has no serial — confirm the received count.",
+      "savedQty": "{count} units received"
     },
     "remaining": "{received} / {ordered} received",
     "fullyReceived": "Fully received",
@@ -1744,7 +1748,11 @@
     },
     "intakeKind": "Destination",
     "intakeKindRental": "Rental asset",
-    "intakeKindSale": "Product for sale"
+    "intakeKindSale": "Product for sale",
+    "receiveQty": "Receive quantity",
+    "qtyReceivedCount": "{count} units received",
+    "noSerialHint": "No serial — received by quantity",
+    "serialModeUpdated": "Serial requirement updated"
   },
   "warranty": {
     "title": "Warranty Center",

@@ -1644,7 +1644,11 @@
       "createDeliveryJobHint": "الأجهزة جاهزة. انتقل مباشرة إلى إنشاء مهمة توصيل لهذا الطلب.",
       "reviewInventoryHint": "اكتمل الاستلام. راجع الأجهزة التي أصبحت متاحة في المخزون.",
       "backToPo": "الرجوع لأمر الشراء",
-      "finishReceiving": "إنهاء الاستلام"
+      "finishReceiving": "إنهاء الاستلام",
+      "qtyEntry": "أدخل الكمية المستلمة",
+      "receiveQty": "استلام الكمية",
+      "noSerialHint": "هذا الصنف بدون رقم تسلسلي — أكّد الكمية المستلمة.",
+      "savedQty": "تم استلام {count} وحدة"
     },
     "remaining": "تم استلام {received} من {ordered}",
     "fullyReceived": "تم الاستلام بالكامل",
@@ -1744,7 +1748,11 @@
     },
     "intakeKind": "الوجهة",
     "intakeKindRental": "أصل إيجار",
-    "intakeKindSale": "منتج للبيع"
+    "intakeKindSale": "منتج للبيع",
+    "receiveQty": "استلام الكمية",
+    "qtyReceivedCount": "تم استلام {count} وحدة",
+    "noSerialHint": "بدون سيريال — الاستلام بالكمية",
+    "serialModeUpdated": "تم تحديث متطلب السيريال"
   },
   "warranty": {
     "title": "مركز الضمان",

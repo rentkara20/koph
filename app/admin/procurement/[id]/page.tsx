@@ -15,6 +15,7 @@ import {
 } from "@/lib/domain/procurement-fulfilment"
 import { ReceiveLineForm } from "./_components/receive-line-form"
 import { CancelLineForm } from "./_components/cancel-line-form"
+import { LineSerialModeToggle } from "./_components/line-serial-mode-toggle"
 import { PoMilestoneActions } from "./_components/po-milestone-actions"
 import { CreatePickupForm } from "./_components/create-pickup-form"
 import { QcButtons } from "./_components/qc-buttons"
@@ -93,6 +94,9 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
     taskLinesByTask.set(tl.pickupTaskId, arr)
   }
   const lineDescById = new Map(lines.map((l) => [l.id, l.itemDescription]))
+  // Accessory lines (requiresSerial=false) are received by quantity, so the
+  // receive form must know which mode a line is in.
+  const lineRequiresSerialById = new Map(lines.map((l) => [l.id, l.requiresSerial]))
   const qcSummary = summarizeQcAssets(assets)
   const failedAsset = assets.find((asset) => isQcFailedStatus(asset.status))
   const deliverableCount = assets.filter((asset) => asset.status === "in_stock").length
@@ -224,6 +228,10 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
                 </div>
               </div>
 
+              {!cancelled && line.qtyReceived === 0 && po.status !== "cancelled" && (
+                <LineSerialModeToggle purchaseOrderLineId={line.id} requiresSerial={line.requiresSerial} />
+              )}
+
               {canCancel && <CancelLineForm purchaseOrderLineId={line.id} />}
 
               {lineAssets.length > 0 && (
@@ -317,7 +325,12 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
                       </div>
                       {inTransit && remainingToReceive > 0 && (
                         <div className="mt-2">
-                          <ReceiveLineForm purchaseOrderLineId={tl.purchaseOrderLineId} pickupTaskId={tk.id} />
+                          <ReceiveLineForm
+                            purchaseOrderLineId={tl.purchaseOrderLineId}
+                            pickupTaskId={tk.id}
+                            requiresSerial={lineRequiresSerialById.get(tl.purchaseOrderLineId) ?? true}
+                            remaining={remainingToReceive}
+                          />
                         </div>
                       )}
                     </li>
@@ -338,7 +351,11 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
             .map((l) => (
               <div key={l.id} className="flex flex-wrap items-center gap-2 rounded-lg border p-2.5">
                 <span className="text-xs">{l.itemDescription}</span>
-                <ReceiveLineForm purchaseOrderLineId={l.id} />
+                <ReceiveLineForm
+                  purchaseOrderLineId={l.id}
+                  requiresSerial={l.requiresSerial}
+                  remaining={l.qtyOrdered - l.qtyReceived}
+                />
               </div>
             ))}
         </div>

@@ -343,3 +343,104 @@ describe("receive guards a cancelled line", () => {
     expect(after.length).toBe(before.length)
   })
 })
+
+// ─── Non-serialized lines (accessories) ─────────────────────────────────────
+// Cables, adapters and other accessories carry no serial. The line's
+// requiresSerial flag — captured at PO creation but previously never read —
+// decides whether a serial is mandatory, so an all-accessory PO can reach
+// qtyReceived == qtyOrdered and unblock the order's receiving stage.
+
+async function seedNonSerialPo(qtyOrdered: number) {
+  const supplierId = createId()
+  const poId = createId()
+  const lineId = createId()
+  const procurementCaseId = createId()
+  await db.insert(schema.suppliers).values({ id: supplierId, name: "ACC_SUPPLIER" })
+  await db.insert(schema.procurementCases).values({ id: procurementCaseId, source: "system_manual" })
+  await db.insert(schema.purchaseOrders).values({
+    id: poId,
+    supplierId,
+    poNumber: "PO-ACC-" + lineId.slice(-8),
+    status: "ordered",
+    procurementCaseId,
+  })
+  await db.insert(schema.purchaseOrderLines).values({
+    id: lineId,
+    purchaseOrderId: poId,
+    itemDescription: "HDMI cable",
+    qtyOrdered,
+    requiresSerial: false,
+  })
+  return { poId, lineId }
+}
+
+describe("receiving a non-serialized line", () => {
+  test("mints a serial-less asset and increments qtyReceived", async () => {
+    const { receivePurchaseOrderLineCore } = await import("./procurement")
+    const { lineId } = await seedNonSerialPo(1)
+
+    let assetId = ""
+    await db.transaction(async (tx) => {
+      const result = await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineId }, "u1")
+      assetId = result.assetId
+    })
+
+    const [unit] = await db.select().from(schema.orderUnits).where(eq(schema.orderUnits.id, assetId))
+    expect(unit.serialNumber).toBeNull()
+    expect(unit.assetTag).toBeTruthy()
+    const [line] = await db
+      .select()
+      .from(schema.purchaseOrderLines)
+      .where(eq(schema.purchaseOrderLines.id, lineId))
+    expect(line.qtyReceived).toBe(1)
+  })
+
+  test("multiple serial-less units on the same line fully receive it", async () => {
+    const { receivePurchaseOrderLineCore } = await import("./procurement")
+    const { poId, lineId } = await seedNonSerialPo(6)
+
+    for (let i = 0; i < 6; i++) {
+      await db.transaction(async (tx) => {
+        await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineId }, "u1")
+      })
+    }
+
+    const [line] = await db
+      .select()
+      .from(schema.purchaseOrderLines)
+      .where(eq(schema.purchaseOrderLines.id, lineId))
+    expect(line.qtyReceived).toBe(6)
+    const [po] = await db.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, poId))
+    expect(po.status).toBe("received")
+  })
+
+  test("still rejects over-receiving beyond the ordered quantity", async () => {
+    const { receivePurchaseOrderLineCore } = await import("./procurement")
+    const { lineId } = await seedNonSerialPo(1)
+
+    await db.transaction(async (tx) => {
+      await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineId }, "u1")
+    })
+    await expect(
+      db.transaction(async (tx) => {
+        await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineId }, "u1")
+      })
+    ).rejects.toThrow("Cannot receive more than ordered")
+  })
+
+  test("a serialized line still requires a serial", async () => {
+    const { receivePurchaseOrderLineCore } = await import("./procurement")
+    const { lineId } = await seedPurchaseOrder(1)
+
+    await expect(
+      db.transaction(async (tx) => {
+        await receivePurchaseOrderLineCore(tx, { purchaseOrderLineId: lineId }, "u1")
+      })
+    ).rejects.toThrow("Serial number required for this line")
+    const [line] = await db
+      .select()
+      .from(schema.purchaseOrderLines)
+      .where(eq(schema.purchaseOrderLines.id, lineId))
+    expect(line.qtyReceived).toBe(0)
+  })
+})

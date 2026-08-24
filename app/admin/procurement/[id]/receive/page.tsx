@@ -22,6 +22,7 @@ export default async function MobileReceivingPage({
       model: line.model,
       ordered: line.qtyOrdered,
       received: line.qtyReceived,
+      requiresSerial: line.requiresSerial,
     }))
 
   return (

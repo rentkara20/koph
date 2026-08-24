@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl"
 import { ArrowLeft, Camera, CheckCircle2, Keyboard, Loader2, RefreshCw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { receivePurchaseOrderLine } from "@/lib/actions/procurement"
+import { receivePurchaseOrderLine, receivePurchaseOrderLineQty } from "@/lib/actions/procurement"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { deriveReceivingContinuation } from "@/lib/domain/receiving-continuation"
 import { WorkflowContinuationCard } from "@/components/workflow-continuation-card"
@@ -18,6 +18,8 @@ type Line = {
   model: string | null
   ordered: number
   received: number
+  // Accessory lines carry no serial: received by quantity instead of scanning.
+  requiresSerial: boolean
 }
 
 type BarcodeDetectorLike = {
@@ -50,6 +52,7 @@ export function MobileReceiving({
     initialLines.find((line) => line.received < line.ordered)?.id ?? ""
   )
   const [serial, setSerial] = useState("")
+  const [qty, setQty] = useState("1")
   const [status, setStatus] = useState<{ kind: "success" | "error"; text: string } | null>(null)
   const [scanning, setScanning] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -63,6 +66,14 @@ export function MobileReceiving({
   const totalOrdered = lines.reduce((sum, line) => sum + line.ordered, 0)
   const totalReceived = lines.reduce((sum, line) => sum + line.received, 0)
   const hasRemaining = lines.some((line) => line.received < line.ordered)
+  // Quantity receipts must stay within what is still outstanding on the line —
+  // an out-of-range entry disables the button instead of failing server-side.
+  const parsedQty = Number.parseInt(qty, 10)
+  const qtyValid =
+    Boolean(selectedLine) &&
+    Number.isInteger(parsedQty) &&
+    parsedQty >= 1 &&
+    parsedQty <= (selectedLine ? selectedLine.ordered - selectedLine.received : 0)
   const continuation = deriveReceivingContinuation({
     purchaseOrderId,
     qcPending: qcRequired ? 1 : 0,
@@ -113,6 +124,44 @@ export function MobileReceiving({
       submittingRef.current = false
     })
   }, [pickupTaskId, selectedLineId, t])
+
+  // Quantity receipt for non-serialized lines (cables, adapters): the warehouse
+  // confirms a count and each unit still becomes its own serial-less asset.
+  const receiveQty = useCallback((rawQty: string) => {
+    const parsed = Number.parseInt(rawQty, 10)
+    if (!selectedLineId || submittingRef.current) return
+    const line = lines.find((l) => l.id === selectedLineId)
+    if (!line) return
+    const remaining = line.ordered - line.received
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > remaining) return
+    submittingRef.current = true
+    setStatus(null)
+    startTransition(async () => {
+      const result = await receivePurchaseOrderLineQty({
+        purchaseOrderLineId: selectedLineId,
+        qty: parsed,
+        pickupTaskId,
+      })
+      if (result.error) {
+        setStatus({ kind: "error", text: translateActionError(result.error) })
+        submittingRef.current = false
+        return
+      }
+      setLines((current) => {
+        const updated = current.map((l) =>
+          l.id === selectedLineId ? { ...l, received: Math.min(l.ordered, l.received + parsed) } : l
+        )
+        const currentLine = updated.find((l) => l.id === selectedLineId)
+        if (currentLine && currentLine.received >= currentLine.ordered) {
+          setSelectedLineId(updated.find((l) => l.received < l.ordered)?.id ?? "")
+        }
+        return updated
+      })
+      setStatus({ kind: "success", text: t("savedQty", { count: parsed }) })
+      setQty("1")
+      submittingRef.current = false
+    })
+  }, [lines, pickupTaskId, selectedLineId, t])
 
   async function startCamera() {
     setCameraError(null)
@@ -244,6 +293,34 @@ export function MobileReceiving({
             </div>
           )}
 
+          {selectedLine && !selectedLine.requiresSerial ? (
+            /* Non-serialized line: confirm a count, no scanning. */
+            <section className="space-y-3 rounded-2xl border bg-card p-4">
+              <div className="text-sm font-medium">{t("qtyEntry")}</div>
+              <p className="text-xs text-muted-foreground">{t("noSerialHint")}</p>
+              <Input
+                type="number"
+                min={1}
+                max={selectedLine.ordered - selectedLine.received}
+                value={qty}
+                onChange={(event) => setQty(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") receiveQty(qty)
+                }}
+                dir="ltr"
+                className="h-12 text-base"
+                disabled={pending}
+              />
+              <Button
+                className="h-12 w-full text-base"
+                onClick={() => receiveQty(qty)}
+                disabled={pending || !qtyValid}
+              >
+                {pending ? <Loader2 className="size-5 animate-spin" /> : <CheckCircle2 className="size-5" />}
+                {pending ? t("saving") : t("receiveQty")}
+              </Button>
+            </section>
+          ) : (
           <section className="space-y-3 rounded-2xl border bg-card p-4">
             <div className="flex items-center gap-2 text-sm font-medium">
               <Keyboard className="size-4" />
@@ -268,15 +345,19 @@ export function MobileReceiving({
               {pending ? t("saving") : t("saveDevice")}
             </Button>
           </section>
+          )}
         </>
       )}
 
       {hasRemaining && (
         <div className="fixed inset-x-0 bottom-0 z-20 space-y-2 border-t bg-background/95 p-3 backdrop-blur sm:static sm:rounded-xl sm:border">
+          {/* Barcode scanning only makes sense for serialized lines. */}
+          {selectedLine?.requiresSerial !== false && (
           <Button className="h-12 w-full text-base" onClick={scanning ? stopCamera : startCamera} disabled={pending || !selectedLine}>
             {scanning ? <X className="size-5" /> : cameraError ? <RefreshCw className="size-5" /> : <Camera className="size-5" />}
             {scanning ? t("stopCamera") : t("scanCamera")}
           </Button>
+          )}
           {/* Explicit exit for a partial receipt (shipment split, shift ended) —
               the operator isn't forced to scan every remaining unit right now. */}
           <Button

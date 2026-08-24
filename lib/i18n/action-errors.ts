@@ -123,6 +123,8 @@ const AR: Record<string, string> = {
   "Invalid action for current warranty status": "إجراء غير صالح لحالة الضمان الحالية",
   "Accessory item not found": "الملحق غير موجود",
   "Serial number required for this item": "هذا الصنف يتطلب رقماً تسلسلياً",
+  "Serial number required for this line": "هذا البند يتطلب رقماً تسلسلياً",
+  "Cannot change the serial requirement after receiving started": "لا يمكن تغيير متطلب الرقم التسلسلي بعد بدء الاستلام",
   "Not enough stock for this accessory": "الكمية المتوفرة غير كافية لهذا الملحق",
   "A specific unit is required for this accessory": "يتطلب هذا الملحق تحديد وحدة معينة",
   "Accessory unit not found": "وحدة الملحق غير موجودة",
