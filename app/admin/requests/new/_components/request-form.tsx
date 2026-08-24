@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { buildRequestItemsFromOrderUnits } from "@/lib/domain/request-import"
+import { buildRequestItemsFromOrderUnits, expandRequestItemsByUnit } from "@/lib/domain/request-import"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { translateActionError } from "@/lib/i18n/action-errors"
@@ -39,7 +39,10 @@ type ItemRow = {
   quantity: number
   accessories: string
   notes: string
-  orderUnitId?: string
+  // Every order unit this row stands for. Identical non-serialized units
+  // (accessories) collapse into ONE row of quantity N; submission expands it
+  // back to one request_item per unit.
+  orderUnitIds?: string[]
 }
 
 let nextItemId = 1
@@ -231,20 +234,13 @@ export function RequestForm({
     if (!lookup) return
     const chosen = lookup.units.filter((u) => selectedUnits.has(u.unitId))
     if (chosen.length === 0) return
-    const newItems: ItemRow[] = chosen.map((u) => ({
+    const newItems: ItemRow[] = buildRequestItemsFromOrderUnits(chosen).map((item) => ({
       id: nextItemId++,
-      description: u.description,
-      brand: u.brand ?? "",
-      model: u.model ?? "",
-      serialNumber: u.serialNumber ?? "",
-      quantity: 1,
-      accessories: "",
-      notes: "",
-      orderUnitId: u.unitId,
+      ...item,
     }))
     // Drop the initial blank row when present, then append imported units.
     setItems((prev) => {
-      const kept = prev.filter((i) => i.description.trim() || i.orderUnitId)
+      const kept = prev.filter((i) => i.description.trim() || i.orderUnitIds?.length)
       return [...kept, ...newItems]
     })
     // Remove consumed units from the picker so they cannot be added twice.
@@ -267,7 +263,7 @@ export function RequestForm({
         if (item.id !== id) return item
         // Order-linked rows track one physical device each; never let a stray
         // quantity edit reach the server and trip the DB check constraint.
-        if (field === "quantity" && item.orderUnitId) return item
+        if (field === "quantity" && item.orderUnitIds?.length) return item
         return { ...item, [field]: value }
       })
     )
@@ -297,16 +293,20 @@ export function RequestForm({
         timeWindow: (fd.get("timeWindow") as string) || undefined,
         requireNationalId: fd.get("requireNationalId") === "on",
         notes: (fd.get("notes") as string) || undefined,
-        items: validItems.map((i) => ({
-          description: i.description,
-          brand: i.brand || undefined,
-          model: i.model || undefined,
-          serialNumber: i.serialNumber || undefined,
-          quantity: i.quantity,
-          accessories: i.accessories || undefined,
-          notes: i.notes || undefined,
-          orderUnitId: i.orderUnitId,
-        })),
+        // A grouped accessory row becomes one quantity-1 item per unit, which
+        // is what the DB stores (request_item_order_unit_qty_chk).
+        items: expandRequestItemsByUnit(
+          validItems.map((i) => ({
+            description: i.description,
+            brand: i.brand || undefined,
+            model: i.model || undefined,
+            serialNumber: i.serialNumber || undefined,
+            quantity: i.quantity,
+            accessories: i.accessories || undefined,
+            notes: i.notes || undefined,
+            orderUnitIds: i.orderUnitIds,
+          }))
+        ),
       })
 
       if (result.error) {
@@ -332,7 +332,7 @@ export function RequestForm({
           <div className="min-w-0 space-y-1">
             <p className="text-sm font-semibold">{t("orderImported", { orderNumber: lookup.orderNumber })}</p>
             <p className="text-sm text-green-800">
-              {t("unitsAddedAutomatically", { count: items.filter((item) => item.orderUnitId).length })}
+              {t("unitsAddedAutomatically", { count: items.reduce((sum, item) => sum + (item.orderUnitIds?.length ?? 0), 0) })}
             </p>
           </div>
         </div>
@@ -645,11 +645,11 @@ export function RequestForm({
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 {t("itemNumber", { number: idx + 1 })}
-                {item.orderUnitId && (
+                {item.orderUnitIds?.length ? (
                   <Badge variant="info" className="text-[10px]">
                     {t("fromOrder")}
                   </Badge>
-                )}
+                ) : null}
               </span>
               {items.length > 1 && (
                 <button
@@ -688,9 +688,9 @@ export function RequestForm({
                   type="number"
                   min={1}
                   value={item.quantity}
-                  // An order-linked row is one serialized device, so its
-                  // quantity is fixed at 1 (see request_item_order_unit_qty_chk).
-                  disabled={Boolean(item.orderUnitId)}
+                  // An order-linked row's quantity IS its unit count — change it
+                  // by selecting more or fewer units in the picker above.
+                  disabled={Boolean(item.orderUnitIds?.length)}
                   onChange={(e) => updateItem(item.id, "quantity", parseInt(e.target.value) || 1)}
                 />
               </div>

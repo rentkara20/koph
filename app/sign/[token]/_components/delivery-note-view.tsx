@@ -7,6 +7,7 @@ import {
   DEPOSIT_REFUND_TERMS_AR,
   type DepositSettlement,
 } from "@/lib/domain/deposit-note"
+import { groupIdenticalItems } from "@/lib/domain/item-grouping"
 
 function fmt(ts: number | null | undefined): string {
   return ts ? formatDate(ts) : "—"
@@ -185,6 +186,10 @@ const SETTLEMENT_COPY: Record<DepositSettlement, { en: string; ar: string }> = {
 
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
   const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName, depositNote, collectedBy } = data
+  // One stored row per physical device, but a customer-facing note reads as
+  // "Adapter, qty 5" — so interchangeable (non-serialized, identical) rows are
+  // collapsed for print only. Serialized devices always keep their own line.
+  const printedItems = groupIdenticalItems(items)
   const totalQty = items.reduce((s, i) => s + i.quantity, 0)
   // Only render the deposit block when opted in AND it carries content.
   const depositLines = depositNote?.lines ?? []
@@ -269,10 +274,10 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
             </tr>
           </thead>
           <tbody>
-            {items.length === 0 ? (
+            {printedItems.length === 0 ? (
               <tr><td colSpan={4} style={{ textAlign: "center", color: "#999" }}>No items</td></tr>
             ) : (
-              items.map((item) => (
+              printedItems.map((item) => (
                 <tr key={item.id}>
                   <td style={{ fontFamily: "monospace" }}>{item.serialNumber ?? "—"}</td>
                   {/* Specs only, printed once. The description IS the spec line

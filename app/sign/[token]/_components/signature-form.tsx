@@ -11,10 +11,12 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { SignatureCanvas, type SignatureCanvasHandle } from "./signature-canvas"
 import { translateActionError } from "@/lib/i18n/action-errors"
+import { groupIdenticalItems } from "@/lib/domain/item-grouping"
 
 type SignItem = {
   id: string
   description: string
+  serialNumber: string | null
   quantity: number
 }
 
@@ -40,8 +42,12 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
   const [fullName, setFullName] = useState("")
   const [nationalId, setNationalId] = useState("")
   const [mobile, setMobile] = useState("")
+  // The signer inspects interchangeable accessories as one line ("5 adapters"),
+  // not five identical rows, so the picker groups them and the chosen condition
+  // is applied to every stored row behind the group on submit.
+  const groupedItems = groupIdenticalItems(items)
   const [conditions, setConditions] = useState<Record<string, Condition>>(
-    () => Object.fromEntries(items.map((i) => [i.id, "good" as Condition]))
+    () => Object.fromEntries(groupedItems.map((i) => [i.id, "good" as Condition]))
   )
   const [consentAccepted, setConsentAccepted] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -84,10 +90,12 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
       mobile: mobile.trim() || undefined,
       nationalId: nationalId.trim() || undefined,
       signatureData: canvasRef.current?.toDataURL() ?? "",
-      itemConditions: items.map((i) => ({
-        requestItemId: i.id,
-        condition: conditions[i.id] ?? "good",
-      })),
+      itemConditions: groupedItems.flatMap((group) =>
+        group.groupedIds.map((requestItemId) => ({
+          requestItemId,
+          condition: conditions[group.id] ?? "good",
+        }))
+      ),
     })
     setLoading(false)
 
@@ -177,11 +185,11 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
         </div>
 
         {/* Per-item condition */}
-        {items.length > 0 && (
+        {groupedItems.length > 0 && (
           <div className="space-y-2">
             <Label className="text-sm">{t("itemsCondition")}</Label>
             <ul className="divide-y rounded-lg border border-border">
-              {items.map((item) => (
+              {groupedItems.map((item) => (
                 <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
                   <span className="min-w-0 flex-1 truncate text-sm">
                     {item.description}

@@ -253,7 +253,12 @@ export default async function SignPage({
                 items={
                   sig.signatoryRole === "authorized"
                     ? []
-                    : items.map((i) => ({ id: i.id, description: i.description, quantity: i.quantity }))
+                    : items.map((i) => ({
+                        id: i.id,
+                        description: i.description,
+                        serialNumber: i.serialNumber,
+                        quantity: i.quantity,
+                      }))
                 }
               />
             )}
