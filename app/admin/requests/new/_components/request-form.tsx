@@ -263,7 +263,13 @@ export function RequestForm({
 
   function updateItem(id: number, field: keyof ItemRow, value: string | number) {
     setItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
+      prev.map((item) => {
+        if (item.id !== id) return item
+        // Order-linked rows track one physical device each; never let a stray
+        // quantity edit reach the server and trip the DB check constraint.
+        if (field === "quantity" && item.orderUnitId) return item
+        return { ...item, [field]: value }
+      })
     )
   }
 
@@ -309,8 +315,10 @@ export function RequestForm({
         return
       }
       router.push(`/admin/requests/${result.id}`)
-    } catch {
-      setError("An unexpected error occurred")
+    } catch (err) {
+      // Surface the real reason when the server threw instead of returning an
+      // error envelope — a bare "unexpected error" gives the user nothing to act on.
+      setError(translateActionError(err instanceof Error && err.message ? err.message : "An unexpected error occurred"))
       setLoading(false)
     }
   }
@@ -680,6 +688,9 @@ export function RequestForm({
                   type="number"
                   min={1}
                   value={item.quantity}
+                  // An order-linked row is one serialized device, so its
+                  // quantity is fixed at 1 (see request_item_order_unit_qty_chk).
+                  disabled={Boolean(item.orderUnitId)}
                   onChange={(e) => updateItem(item.id, "quantity", parseInt(e.target.value) || 1)}
                 />
               </div>

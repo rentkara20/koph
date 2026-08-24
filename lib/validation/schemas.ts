@@ -68,7 +68,14 @@ export const itemInputSchema = z.object({
   notes: z.string().trim().max(1000).optional(),
   // Set when the item was pulled from an order unit (device instance).
   orderUnitId: z.string().trim().max(60).optional(),
-})
+}).refine(
+  // Mirrors the request_item_order_unit_qty_chk DB constraint: one serialized
+  // order unit is exactly one physical device, so quantity>1 is meaningless
+  // there and would make serial tracking on delivery ambiguous. Caught here so
+  // the UI gets a readable message instead of a raw SQLITE_CONSTRAINT throw.
+  (item) => !item.orderUnitId || item.quantity === 1,
+  { message: "An item imported from an order must have quantity 1", path: ["quantity"] }
+)
 
 // ─── Suppliers ───────────────────────────────────────────────────────────────
 

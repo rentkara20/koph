@@ -9,6 +9,7 @@
 const AR: Record<string, string> = {
   "Unauthorized": "غير مصرّح لك بهذا الإجراء",
   "Not found": "غير موجود",
+  "An unexpected error occurred": "حدث خطأ غير متوقع",
   "Too many attempts. Please wait a minute and try again.":
     "محاولات كثيرة. انتظر دقيقة وحاول مرة أخرى.",
 
@@ -37,6 +38,7 @@ const AR: Record<string, string> = {
   "Customer location not found": "موقع العميل غير موجود",
   "Customer location does not belong to this customer": "هذا الموقع لا يتبع العميل المحدد",
   "Receiver does not belong to this customer": "المستلم لا يتبع العميل المحدد",
+  "An item imported from an order must have quantity 1": "البند المستورد من الطلبية لازم كميته 1 — استورد وحدة لكل جهاز",
   "Failed to create customer location": "تعذر إنشاء موقع العميل",
   "Failed to update customer location": "تعذر تحديث موقع العميل",
   "Failed to set default customer location": "تعذر تعيين موقع العميل الافتراضي",
