@@ -345,7 +345,7 @@ export async function getProcurementCaseLineItems(
   const rows = await db
     .select({
       id: commercialEvaluationLines.id,
-      itemDescription: sourcingRequestItems.customerDescription,
+      itemDescription: sourcingRequestItems.supplierDescription,
       partNumber: sourcingRequestItems.partNumber,
       quantity: sourcingRequestItems.quantity,
       unitPrice: supplierQuotationLines.unitPrice,
