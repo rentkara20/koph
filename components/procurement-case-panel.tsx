@@ -18,6 +18,7 @@ import { translateActionError } from "@/lib/i18n/action-errors"
 import type { ProcurementCase } from "@/lib/db/schema"
 import type { ProcurementCaseLineItem } from "@/lib/actions/procurement-case"
 import { procurementCaseStatusVariant as CASE_STATUS_VARIANT } from "@/lib/domain/status-variant"
+import { CopyTextButton } from "@/components/copy-text-button"
 
 export function ProcurementCasePanel({
   procurementCase,
@@ -138,8 +139,11 @@ export function ProcurementCasePanel({
           {sourceRequests && sourceRequests.length > 0 && (
             <p className="text-sm">
               {t("referenceNumber")}:{" "}
-              <span className="font-mono font-medium" dir="ltr">
-                {sourceRequests.map((r) => r.externalRef ?? r.title ?? r.id).join(", ")}
+              <span className="inline-flex items-center gap-1.5 font-mono font-medium" dir="ltr">
+                <span className="select-all">
+                  {sourceRequests.map((r) => r.externalRef ?? r.title ?? r.id).join(", ")}
+                </span>
+                <CopyTextButton value={sourceRequests.map((r) => r.externalRef ?? r.title ?? r.id).join(", ")} />
               </span>
             </p>
           )}
@@ -161,11 +165,32 @@ export function ProcurementCasePanel({
                 <tbody>
                   {lineItems.map((item) => (
                     <tr key={item.id} className="border-t">
-                      <td className="p-1">{item.itemDescription}</td>
-                      <td className="p-1 font-mono" dir="ltr">
-                        {item.partNumber ?? "—"}
+                      <td className="p-1">
+                        <span className="flex items-start gap-1.5">
+                          <span className="select-all">{item.itemDescription}</span>
+                          <CopyTextButton value={item.itemDescription} className="mt-0.5" />
+                        </span>
                       </td>
-                      <td className="p-1">{item.supplierName ?? "—"}</td>
+                      <td className="p-1 font-mono" dir="ltr">
+                        {item.partNumber ? (
+                          <span className="flex items-center gap-1.5">
+                            <span className="select-all">{item.partNumber}</span>
+                            <CopyTextButton value={item.partNumber} />
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="p-1">
+                        {item.supplierName ? (
+                          <span className="flex items-center gap-1.5">
+                            <span className="select-all">{item.supplierName}</span>
+                            <CopyTextButton value={item.supplierName} />
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="p-1" dir="ltr">
                         {item.quantity}
                       </td>
