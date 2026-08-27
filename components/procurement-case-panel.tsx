@@ -195,7 +195,14 @@ export function ProcurementCasePanel({
                         {item.quantity}
                       </td>
                       <td className="p-1" dir="ltr">
-                        {item.unitPrice != null ? `${item.unitPrice} ${item.currency}` : "—"}
+                        {item.unitPrice != null ? (
+                          <span className="flex items-center gap-1.5">
+                            <span className="select-all">{`${item.unitPrice} ${item.currency}`}</span>
+                            <CopyTextButton value={String(item.unitPrice)} />
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="p-1" dir="ltr">
                         {item.taxRate != null ? `${item.taxRate}%` : "—"}
