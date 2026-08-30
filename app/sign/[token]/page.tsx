@@ -11,6 +11,7 @@ import { DeliveryNoteView } from "./_components/delivery-note-view"
 import { DownloadButton } from "./_components/download-button"
 import { SignHeader } from "./_components/sign-header"
 import { TrustBand } from "./_components/trust-band"
+import { DepositSummaryCard } from "./_components/deposit-summary-card"
 import { TerminalState, type TerminalKind } from "./_components/terminal-state"
 import { Certificate } from "./_components/certificate"
 import { signatureStatusVariant as STATUS_VARIANT } from "@/lib/domain/status-variant"
@@ -208,6 +209,12 @@ export default async function SignPage({
                 </p>
               )}
             </section>
+
+            {/* Refundable security deposit — shown before signing so the
+                customer reads the amount they are agreeing to. */}
+            {deliveryNote?.depositNote && (
+              <DepositSummaryCard depositNote={deliveryNote.depositNote} />
+            )}
 
             {/* Document meta */}
             {(request?.quoteNumber || customer?.name || request?.movementDate) && (
