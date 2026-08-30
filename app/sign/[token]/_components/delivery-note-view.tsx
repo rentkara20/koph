@@ -487,5 +487,5 @@ const DN_STYLES = `
 .dn-sig-img{display:inline-block;width:auto;height:auto;max-width:100%;max-height:70px;object-fit:contain;}
 .dn-sig-blank{margin-top:8px;min-height:80px;border-top:1px dashed #e0dcea;}
 .dn-footer{text-align:center;padding:10px 16px 12px;border-top:2px solid #60B5D1;font-size:10px;color:#512B83;font-weight:700;line-height:1.8;}
-@media print{@page{margin:8mm;size:A4;}.dn-root{width:100%;}}
+@media print{@page{margin:8mm;size:A4;}.dn-root{width:100%;}.dn-dep-box{overflow:visible;}.dn-dep-tbl tr,.dn-dep-terms,.dn-dep-settle,.dn-dep-note{break-inside:avoid;page-break-inside:avoid;}.dn-dep-hdr,.dn-dep-tbl th,.dn-dep-tot td{-webkit-print-color-adjust:exact;print-color-adjust:exact;}}
 `
