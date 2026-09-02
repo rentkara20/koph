@@ -83,6 +83,45 @@ describe("deriveNextActions", () => {
     expect(job!.href).toBe("/admin/requests/new?orderNumber=10669")
   })
 
+  it("rule 12: undelivered units still in receiving → createDeliveryJob at soon", () => {
+    const actions = deriveNextActions({
+      ...EMPTY,
+      units: { ...EMPTY.units, total: 30, inStock: 0, delivered: 12, qcPending: 18 },
+    })
+    const job = actions.find((a) => a.key === "createDeliveryJob")
+    expect(job).toBeDefined()
+    expect(job!.urgency).toBe("soon")
+  })
+
+  it("rule 12 suppressed when every unit is delivered, returned or retired", () => {
+    const actions = deriveNextActions({
+      ...EMPTY,
+      units: { ...EMPTY.units, total: 4, inStock: 0, delivered: 2, returned: 1, retired: 1 },
+    })
+    expect(actions.map((a) => a.key)).not.toContain("createDeliveryJob")
+  })
+
+  it("supplier pickup and customer delivery both survive the ops track squeeze", () => {
+    const primary = primaryActionsPerTrack([
+      {
+        key: "assignSupplierPickup",
+        ownerRole: "ops",
+        href: "/admin/procurement/po1",
+        urgency: "soon",
+        entityRef: { type: "purchase_order", id: "po1" },
+      },
+      {
+        key: "createDeliveryJob",
+        ownerRole: "ops",
+        track: "ops:delivery",
+        href: "/admin/requests/new?orderNumber=10669",
+        urgency: "soon",
+        entityRef: { type: "order", id: "order1" },
+      },
+    ])
+    expect(primary.map((a) => a.key).sort()).toEqual(["assignSupplierPickup", "createDeliveryJob"])
+  })
+
   it("rule 12 suppressed while an open delivery job exists", () => {
     const keys = keysOf({
       ...EMPTY,

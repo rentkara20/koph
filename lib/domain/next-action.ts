@@ -13,6 +13,12 @@ export type NextAction = {
   /** Stable id, doubles as the i18n key under workspace.nextActions. */
   key: string
   ownerRole: NextActionOwnerRole
+  /**
+   * Header slot this action competes for. Defaults to `ownerRole`. Ops runs two
+   * independent tracks at once (supplier-side pickup vs customer-side delivery),
+   * so those carry explicit tracks and both stay visible.
+   */
+  track?: string
   /** i18n key explaining an external blocker (e.g. awaiting ERP), if any. */
   blockedBy?: string
   /** Deep link the button navigates to (pre-filled where the form supports it). */
@@ -259,16 +265,23 @@ export function deriveNextActions(facts: WorkspaceFacts): NextAction[] {
     }
   }
 
-  // 12 — in-stock units with no open delivery job covering them.
+  // 12 — units the customer has not received yet, with no open delivery job
+  // covering them. In-stock units are deliverable right now; units still in
+  // receiving/QC are not, but the action stays visible so ops can prepare the
+  // delivery request (the form accepts manual items) instead of waiting for
+  // the warehouse before the button appears at all.
   const hasOpenDeliveryJob = facts.jobs.some(
     (j) => j.kind === "delivery" && OPEN_JOB_STATUSES.has(j.status)
   )
-  if (facts.units.inStock > 0 && !hasOpenDeliveryJob) {
+  const undeliveredUnits =
+    facts.units.total - facts.units.delivered - facts.units.returned - facts.units.retired
+  if (undeliveredUnits > 0 && !hasOpenDeliveryJob) {
     actions.push({
       key: "createDeliveryJob",
       ownerRole: "ops",
+      track: "ops:delivery",
       href: `/admin/requests/new?orderNumber=${orderRef}`,
-      urgency: "now",
+      urgency: facts.units.inStock > 0 ? "now" : "soon",
       entityRef: { type: "order", id: orderId },
     })
   }
@@ -385,11 +398,12 @@ const URGENCY_RANK: Record<NextActionUrgency, number> = { now: 0, soon: 1, sched
 
 /** Highest-urgency action per owner track — what the sticky header surfaces. */
 export function primaryActionsPerTrack(actions: NextAction[]): NextAction[] {
-  const byTrack = new Map<NextActionOwnerRole, NextAction>()
+  const byTrack = new Map<string, NextAction>()
   for (const action of actions) {
-    const current = byTrack.get(action.ownerRole)
+    const track = action.track ?? action.ownerRole
+    const current = byTrack.get(track)
     if (!current || URGENCY_RANK[action.urgency] < URGENCY_RANK[current.urgency]) {
-      byTrack.set(action.ownerRole, action)
+      byTrack.set(track, action)
     }
   }
   return [...byTrack.values()]
