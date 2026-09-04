@@ -22,6 +22,7 @@ import { eq } from "drizzle-orm"
 import { config } from "dotenv"
 import * as schema from "../lib/db/schema"
 import { createId, generateSecureToken } from "../lib/utils/ids"
+import { assertSafeSeedTarget } from "../lib/domain/seed-target-guard"
 
 config({ path: ".env.local", quiet: true })
 
@@ -33,15 +34,19 @@ if (!url) {
   process.exit(2)
 }
 
-// Hard stop: the production database is named koph / koph-prod on Turso. A QA
-// signature written there would be indistinguishable from a real one.
-const PROD_MARKERS = ["koph-prod", "koph-production"]
-if (PROD_MARKERS.some((m) => url.includes(m))) {
-  console.error(`Refusing to seed what looks like production: ${url.replace(/\/\/.*@/, "//***@")}`)
+// Hard stop. The rule lives in lib/domain/seed-target-guard.ts with its own
+// tests, and it is an allowlist, not a blocklist: a remote database must
+// positively identify itself as preview/staging/qa/test. The production
+// database's name is not visible from this machine, so guessing it would have
+// been the one mistake that cannot be undone.
+try {
+  assertSafeSeedTarget(url)
+} catch (error) {
+  console.error(`${(error as Error).message}\n  target: ${url.replace(/\/\/.*@/, "//***@")}`)
   process.exit(2)
 }
 if (process.env.ALLOW_PROD_SEED) {
-  console.error("ALLOW_PROD_SEED is not honoured. Seed fixtures never go to production.")
+  console.error("ALLOW_PROD_SEED is deliberately not honoured. Seed fixtures never go to production.")
   process.exit(2)
 }
 
