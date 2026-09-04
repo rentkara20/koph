@@ -156,3 +156,46 @@ Action-level behaviour | Verified by grep, not memory: exactly **one** `insert(s
 Gates after all fixes: `tsc` clean · `next build` ✓ · `eslint` 0 errors · **807 tests / 109 files**.
 
 Still unverified in a browser: the geo permission prompt, and that refusing it does not obstruct signing.
+
+
+---
+
+## 10. QA results — 2026-09-04
+
+The isolated preview **database** is not created yet (the `turso` CLI on this machine is not logged in, and the tokens available are database tokens, not platform tokens — creating it needs one interactive login). But the QA itself did not have to wait for it: a **fresh local database**, migrated `0000 → 0047` from scratch, sidesteps the `local.db` drift in issue #4 entirely.
+
+Fixture: `scripts/seed-preview.mts`. It refuses to run against anything whose URL looks like production, ignores an `ALLOW_PROD_SEED` override entirely, prefixes every row with `QA-` and uses `.invalid` email addresses, so a fixture row can never be mistaken for a real customer in a dispute.
+
+### Verified in a real browser, at a 375×812 mobile viewport, writing to a real database
+
+| Check | Result |
+|---|---|
+Courier opens the task link on a phone-sized viewport | Renders: customer, suggested route, devices with serial, photos, sign control |
+Full signing walk-through (outcome → signer details → pad → confirm) | Completed twice, once per geo path |
+**Geo refused** | `getCurrentPosition` called **exactly once**, at confirm. **The signature completed** — task moved to "تم التسليم — بانتظار اعتماد الإدارة". Stored: `geo_unavailable_reason = "denied"`, coordinates null |
+**Geo accepted** | Stored: `geo_latitude 24.7136`, `geo_longitude 46.6753`, `geo_accuracy 12.5`, reason null |
+Geo requested only at the signing moment | `__geoCalls` stayed 0 through the whole form and pad, became 1 on confirm |
+Channel recorded | `agent_device` on both |
+`sent_at` | null on both — correct, agent_device dispatches nothing |
+`require_national_id` | 1, from the channel policy rather than a hardcode |
+`created_by_agent_id` | populated, with `initiated_by = partner` — the gap this work identified |
+`verification_id`, `audit_data_hash`, `snapshot` | all present |
+`signed_at_tz` | `Asia/Riyadh` |
+
+### Missing-public-URL behaviour, checked against a real production build
+
+Built with `APP_BASE_URL` and `NEXT_PUBLIC_APP_URL` empty, then served the **same** task page twice:
+
+| | absolute `/sign/` links rendered | page |
+|---|---|---|
+`APP_BASE_URL` set | **2** | 200 |
+`APP_BASE_URL` empty | **0**, and zero relative `href="/sign/..."` — no broken link is offered | 200, content and signed state intact |
+
+So the control is withheld rather than shipped broken, and the page does not crash. Note what this does **not** show: the withheld state is silent — nothing tells the admin why the control vanished. That remains the follow-up.
+
+### `legacy_unknown` is unselectable
+Nothing in `app/` references the signature channel at all (the `channel` hits there are `communication_log`'s whatsapp/outlook/mailto/copy), so there is no picker to expose it. The core's input type is `SignatureChannel`, which excludes it, and the only path that could carry it — stage-2 inheritance — narrows through `assignableChannel()`.
+
+### Still owed
+- The isolated **preview deployment** on Vercel, which needs the Turso database above, and therefore one `turso auth login`.
+- A signature from a **physical handset** rather than a mobile-sized viewport. Touch, the real permission dialog, and the on-glass signature pad are exactly the things a viewport cannot stand in for.
