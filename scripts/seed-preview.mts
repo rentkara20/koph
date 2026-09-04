@@ -57,7 +57,11 @@ console.log(`seeding ${url.replace(/\/\/.*@/, "//***@")}\n`)
 const QA_ADMIN_EMAIL = "qa-admin@preview.invalid"
 const QA_CUSTOMER = "QA- Preview Customer (not a real customer)"
 const QA_PARTNER = "QA- Preview Courier"
-const QA_REQUEST_NUMBER = "QA-REQ-0001"
+// A signed fixture cannot be signed again, so QA needs a fresh, unsigned
+// request per walk-through. `QA_SEQ=0002 npx tsx scripts/seed-preview.mts`
+// creates one; the shared customer/partner/config rows are reused as-is.
+const QA_SEQ = (process.env.QA_SEQ ?? "0001").trim()
+const QA_REQUEST_NUMBER = `QA-REQ-${QA_SEQ}`
 
 async function main() {
   // ── config rows the flow reads
@@ -154,7 +158,7 @@ async function main() {
       trackingCode: `QA${createId().slice(0, 6).toUpperCase()}`,
       typeId: deliveryType.id,
       customerId: customer.id,
-      quoteNumber: "QA-Q-0001",
+      quoteNumber: `QA-Q-${QA_SEQ}`,
       status: "in_progress",
     })
     await db.insert(schema.requestItems).values([
@@ -162,7 +166,7 @@ async function main() {
         id: createId(),
         requestId: id,
         description: "QA- Laptop 14in",
-        serialNumber: "QA-SN-0001",
+        serialNumber: `QA-SN-${QA_SEQ}`,
         quantity: 1,
       },
       { id: createId(), requestId: id, description: "QA- Charger", quantity: 2 },
