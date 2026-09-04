@@ -15,10 +15,32 @@
 export const SIGNATURE_CHANNELS = ["agent_device", "customer_link", "email_link"] as const
 export type SignatureChannel = (typeof SIGNATURE_CHANNELS)[number]
 
+/**
+ * The channel of a row that predates the column. Readable and reportable, but
+ * never assignable to a new signature request — hence its separation from
+ * SIGNATURE_CHANNELS, which is the set a caller may choose from.
+ */
+export const LEGACY_SIGNATURE_CHANNEL = "legacy_unknown" as const
+
+export const STORED_SIGNATURE_CHANNELS = [...SIGNATURE_CHANNELS, LEGACY_SIGNATURE_CHANNEL] as const
+export type StoredSignatureChannel = (typeof STORED_SIGNATURE_CHANNELS)[number]
+
 export const DEFAULT_SIGNATURE_CHANNEL: SignatureChannel = "agent_device"
 
 export function isSignatureChannel(value: unknown): value is SignatureChannel {
   return typeof value === "string" && (SIGNATURE_CHANNELS as readonly string[]).includes(value)
+}
+
+/**
+ * Narrows a stored channel to one that can be assigned to a NEW request.
+ *
+ * The case this exists for: stage-2 authorised signoff inherits its parent's
+ * channel, and a parent may be a legacy row. Inheriting "legacy_unknown" would
+ * either crash policy resolution or propagate an unrecorded value onto a fresh
+ * request, so it resolves to the default channel instead.
+ */
+export function assignableChannel(value: string | null | undefined): SignatureChannel {
+  return isSignatureChannel(value) ? value : DEFAULT_SIGNATURE_CHANNEL
 }
 
 /**
@@ -80,12 +102,14 @@ export type SignaturePolicyOverrides = Partial<SignatureChannelPolicy>
  * does, so an admin toggling one field cannot silently reset the others.
  */
 export function resolveSignaturePolicy(
-  channel: SignatureChannel,
+  channel: StoredSignatureChannel,
   stored?: Partial<Record<SignatureChannel, SignaturePolicyOverrides>> | null,
   overrides?: SignaturePolicyOverrides | null
 ): SignatureChannelPolicy {
-  const base = SYSTEM_DEFAULT_CHANNEL_POLICIES[channel]
-  const merged = { ...base, ...pruneUndefined(stored?.[channel]), ...pruneUndefined(overrides) }
+  // A legacy row has no policy of its own; fall back to the default channel's.
+  const key = assignableChannel(channel)
+  const base = SYSTEM_DEFAULT_CHANNEL_POLICIES[key]
+  const merged = { ...base, ...pruneUndefined(stored?.[key]), ...pruneUndefined(overrides) }
   return {
     ...merged,
     ttlHours: merged.ttlHours > 0 ? merged.ttlHours : base.ttlHours,

@@ -312,6 +312,38 @@ describe("existing flows after the unification", () => {
     expect(row.verificationId).toBeTruthy()
   })
 
+  test("stage-2 off a LEGACY parent does not inherit the unrecorded channel", async () => {
+    const { requestId, customerId } = await seedRequest("Legacy Parent Customer")
+    await db.insert(schema.customerContacts).values({
+      id: createId(),
+      customerId,
+      name: "مخوّل",
+      mobile: "0555111444",
+      isAuthorizedSignatory: true,
+    })
+    const parent = await createSignatureRequestCore(db, {
+      channel: "agent_device",
+      requestId,
+      customerId,
+      documentName: "Legacy note",
+      initiatedBy: "admin",
+      initiatorId: ADMIN_ID,
+      status: "sent",
+    })
+    // Simulate a row that predates the channel column, as the migration marks
+    // every pre-existing row.
+    await db
+      .update(schema.signatureRequests)
+      .set({ status: "signed", channel: "legacy_unknown" })
+      .where(eq(schema.signatureRequests.id, parent.id))
+
+    const stage2 = await requestAuthorizedSignoff(parent.id)
+    expect(stage2.error).toBeUndefined()
+    const row = await loadRequest(stage2.id as string)
+    // A fresh request must carry a real channel, never "unrecorded".
+    expect(row.channel).toBe("agent_device")
+  })
+
   test("stage-2 is not duplicated on a second call", async () => {
     const { requestId, customerId } = await seedRequest("Corporate Customer 2")
     await db.insert(schema.customerContacts).values({

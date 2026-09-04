@@ -46,7 +46,7 @@ import {
 import { getAffectedRequestIds, loadTaskBatchGroup, getTasksForRequest } from "@/lib/actions/tasks"
 import { createSignatureRequestCore } from "@/lib/actions/signature-request-core"
 import { getSignatureChannelPolicies } from "@/lib/actions/settings"
-import { toSigningGeoColumns, type SigningGeo } from "@/lib/domain/signature-channel"
+import { assignableChannel, toSigningGeoColumns, type SigningGeo } from "@/lib/domain/signature-channel"
 
 // Terminal task statuses — a signature request should never bind itself to a
 // task that's already closed/rejected/failed/cancelled (no active trip left
@@ -884,7 +884,9 @@ export async function requestAuthorizedSignoff(
   // escalating to the authorised signatory never quietly relaxes the
   // verification the receiver's note was signed under.
   const { id, token: secureToken } = await createSignatureRequestCore(db, {
-    channel: receiver.channel,
+    // A legacy parent has no recorded channel; stage 2 must not inherit an
+    // unrecorded value, so it resolves to the default rather than propagating it.
+    channel: assignableChannel(receiver.channel),
     requestId: receiver.requestId,
     partnerTaskId: receiver.partnerTaskId,
     initiatedBy: "admin",

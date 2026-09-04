@@ -590,9 +590,18 @@ export const signatureRequests = sqliteTable("signature_request", {
   createdByAgentId: text("created_by_agent_id").references(() => partners.id, { onDelete: "set null" }),
   // Delivery channel — HOW this request reached the signer. A delivery
   // dimension, never a code path: one signing core, one snapshot, one issuance.
-  // See lib/domain/signature-channel.ts. Existing rows are all agent_device,
-  // which is what the default asserts.
-  channel: text("channel", { enum: ["agent_device", "customer_link", "email_link"] })
+  // See lib/domain/signature-channel.ts.
+  //
+  // "legacy_unknown" is for rows that predate this column and is never
+  // assignable to a new request. Labelling them agent_device would have been a
+  // guess dressed as a fact: the admin surface could already send a signing
+  // link to a customer, and production carries 13 prepared "remote_signature"
+  // comms rows, so some historical signatures were not collected on a
+  // courier's device. In a system whose product is proof, an unrecorded value
+  // says "unrecorded".
+  channel: text("channel", {
+    enum: ["agent_device", "customer_link", "email_link", "legacy_unknown"],
+  })
     .notNull()
     .default("agent_device"),
   customerId: text("customer_id")

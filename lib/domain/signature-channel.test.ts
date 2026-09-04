@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest"
 import {
   DEFAULT_SIGNATURE_CHANNEL,
+  LEGACY_SIGNATURE_CHANNEL,
+  STORED_SIGNATURE_CHANNELS,
+  assignableChannel,
   SIGNATURE_CHANNELS,
   SYSTEM_DEFAULT_CHANNEL_POLICIES,
   isSignatureChannel,
@@ -32,6 +35,40 @@ describe("signature channels", () => {
     expect(SYSTEM_DEFAULT_CHANNEL_POLICIES.email_link.ttlHours).toBeGreaterThan(
       SYSTEM_DEFAULT_CHANNEL_POLICIES.customer_link.ttlHours
     )
+  })
+})
+
+describe("legacy_unknown — rows that predate the column", () => {
+  test("it is stored and reportable, but never assignable", () => {
+    expect([...STORED_SIGNATURE_CHANNELS]).toContain(LEGACY_SIGNATURE_CHANNEL)
+    // The assignable set is what a caller may choose from, and it excludes it.
+    expect([...SIGNATURE_CHANNELS]).not.toContain(LEGACY_SIGNATURE_CHANNEL as never)
+    expect(isSignatureChannel(LEGACY_SIGNATURE_CHANNEL)).toBe(false)
+  })
+
+  test("assignableChannel narrows a legacy or unknown value to the default", () => {
+    expect(assignableChannel(LEGACY_SIGNATURE_CHANNEL)).toBe("agent_device")
+    expect(assignableChannel(null)).toBe("agent_device")
+    expect(assignableChannel(undefined)).toBe("agent_device")
+    expect(assignableChannel("something_else")).toBe("agent_device")
+  })
+
+  test("assignableChannel passes a real channel through untouched", () => {
+    expect(assignableChannel("email_link")).toBe("email_link")
+  })
+
+  test("resolving a policy for a legacy row falls back instead of crashing", () => {
+    // Reached when stage-2 signoff inherits a legacy parent's channel.
+    expect(resolveSignaturePolicy(LEGACY_SIGNATURE_CHANNEL)).toEqual(
+      SYSTEM_DEFAULT_CHANNEL_POLICIES.agent_device
+    )
+  })
+
+  test("a stored policy keyed by the default channel still applies to a legacy row", () => {
+    const resolved = resolveSignaturePolicy(LEGACY_SIGNATURE_CHANNEL, {
+      agent_device: { requireNationalId: false },
+    })
+    expect(resolved.requireNationalId).toBe(false)
   })
 })
 
