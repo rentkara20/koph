@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { CheckCircle2, ChevronRight, PenLine, X } from "lucide-react"
 import { signOnSiteByTaskToken, signOnSiteForRequestGroup } from "@/lib/actions/signatures"
+import { captureSigningGeo } from "@/lib/utils/signing-geo"
 import { verifyDeliveryOtp } from "@/lib/actions/otp"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -130,6 +131,9 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   async function handleConfirm(data: string) {
     setSaving(true)
     setError("")
+    // Asked for only at the moment of signing, and never allowed to hold the
+    // signature up: on a refusal or a dead GPS this resolves with a reason.
+    const geo = await captureSigningGeo()
     const payload = {
       fullName: fullName.trim(),
       nationalId: nationalId.trim(),
@@ -138,6 +142,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
       deliveryOutcome: outcome ?? undefined,
       remarks: remarks.trim() || undefined,
       signatureData: data,
+      geo,
     }
     const result = requestId
       ? await signOnSiteForRequestGroup(taskToken, requestId, payload)

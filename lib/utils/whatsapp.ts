@@ -3,9 +3,11 @@
 // sender's own WhatsApp. Message templates are the single source of truth so
 // admin and partner surfaces send consistent wording.
 
-import { appBaseUrl } from "@/lib/utils/public-url"
+import { requirePublicBaseUrl } from "@/lib/utils/public-url"
 
-const appUrl = () => appBaseUrl()
+// These messages go out to customers and partners, so they are held to the
+// same standard as a signing link: a wrong origin is worse than an error.
+const appUrl = () => requirePublicBaseUrl()
 
 /**
  * Normalises a Saudi mobile number to bare international digits for wa.me.

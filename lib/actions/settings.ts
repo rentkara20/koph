@@ -19,6 +19,13 @@ import {
   type WarrantyRequestMessageTemplates,
 } from "@/lib/domain/message-templates"
 import { ENGLISH_FONT_OPTIONS, type EnglishFontFamily } from "@/lib/domain/fonts"
+import {
+  isSignatureChannel,
+  type SignatureChannel,
+  type SignaturePolicyOverrides,
+} from "@/lib/domain/signature-channel"
+
+type StoredChannelPolicies = Partial<Record<SignatureChannel, SignaturePolicyOverrides>>
 
 export type SettingsActionResult = { error?: string }
 
@@ -45,6 +52,52 @@ async function setSetting(key: string, value: unknown, userId: string): Promise<
       target: appSettings.key,
       set: { value: JSON.stringify(value), updatedBy: userId, updatedAt: Date.now() },
     })
+}
+
+// ─── Signature channel policies ────────────────────────────────────────────
+// The channel drives the verification policy, because channels have different
+// threat models (see lib/domain/signature-channel.ts). Stored per channel as a
+// partial override of the system defaults, so a channel that has never been
+// touched follows the code default rather than a stale copy of it.
+
+export async function getSignatureChannelPolicies(): Promise<StoredChannelPolicies> {
+  return getSetting<StoredChannelPolicies>("signatureChannelPolicies", {})
+}
+
+export async function readSignatureChannelPoliciesForAdmin(): Promise<StoredChannelPolicies | null> {
+  const session = await getStaffSession()
+  if (!session) return null
+  return getSignatureChannelPolicies()
+}
+
+export async function updateSignatureChannelPolicy(
+  channel: string,
+  policy: SignaturePolicyOverrides
+): Promise<SettingsActionResult> {
+  const session = await getSessionWithRole("admin")
+  if (!session) return { error: "Unauthorized" }
+  if (!isSignatureChannel(channel)) return { error: "Unknown signature channel" }
+
+  const clean: SignaturePolicyOverrides = {}
+  for (const key of ["requireNationalId", "otpEnabled", "expiryEnabled", "reminderEnabled"] as const) {
+    if (typeof policy[key] === "boolean") clean[key] = policy[key]
+  }
+  if (policy.ttlHours !== undefined) {
+    const n = Number(policy.ttlHours)
+    if (!Number.isFinite(n) || n < 1 || n > 24 * 30) {
+      return { error: "Link lifetime must be between 1 and 720 hours" }
+    }
+    clean.ttlHours = Math.round(n)
+  }
+
+  const stored = await getSignatureChannelPolicies()
+  await setSetting(
+    "signatureChannelPolicies",
+    { ...stored, [channel]: { ...stored[channel], ...clean } },
+    session.user.id
+  )
+  revalidatePath("/admin/settings")
+  return {}
 }
 
 // ─── Outbound message templates ────────────────────────────────────────────

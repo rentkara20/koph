@@ -584,6 +584,17 @@ export const signatureRequests = sqliteTable("signature_request", {
     .notNull()
     .default("admin"),
   initiatorId: text("initiator_id").references(() => users.id),
+  // Which agent created this request when initiatedBy = "partner". A partner is
+  // NOT a user row, so initiatorId is always null on partner-initiated requests
+  // and cannot answer "who started this".
+  createdByAgentId: text("created_by_agent_id").references(() => partners.id, { onDelete: "set null" }),
+  // Delivery channel — HOW this request reached the signer. A delivery
+  // dimension, never a code path: one signing core, one snapshot, one issuance.
+  // See lib/domain/signature-channel.ts. Existing rows are all agent_device,
+  // which is what the default asserts.
+  channel: text("channel", { enum: ["agent_device", "customer_link", "email_link"] })
+    .notNull()
+    .default("agent_device"),
   customerId: text("customer_id")
     .notNull()
     .references(() => customers.id),
@@ -614,6 +625,15 @@ export const signatureRequests = sqliteTable("signature_request", {
   otpVerifiedAt: integer("otp_verified_at"),
   expiryEnabled: integer("expiry_enabled", { mode: "boolean" }).notNull().default(false),
   expiresAt: integer("expires_at"),
+  // Dispatch/open timestamps. Both are derivable from signature_event, but the
+  // send → open → sign latency of a remote channel is a list-screen metric, so
+  // they are denormalised here. sentAt stays null for agent_device (nothing is
+  // dispatched — the courier opens the page on their own device).
+  sentAt: integer("sent_at"),
+  openedAt: integer("opened_at"),
+  // Why a signer declined to sign at all. Distinct from refusing the DELIVERY,
+  // which is customer_signature.deliveryOutcome = "refused" + remarks.
+  rejectionReason: text("rejection_reason"),
   reminderEnabled: integer("reminder_enabled", { mode: "boolean" }).notNull().default(false),
   reminderSentAt: integer("reminder_sent_at"),
   // Optional per-device price/deposit block on the delivery note (opt-in per
@@ -641,6 +661,7 @@ export const signatureRequests = sqliteTable("signature_request", {
   index("signature_request_request_idx").on(t.requestId),
   index("signature_request_partner_task_request_idx").on(t.partnerTaskId, t.requestId),
   index("signature_request_parent_idx").on(t.parentSignatureRequestId),
+  index("signature_request_channel_status_idx").on(t.channel, t.status),
 ])
 
 // ─── Signature events (open tracking) ───────────────────────────────────────
@@ -705,6 +726,16 @@ export const customerSignatures = sqliteTable("customer_signature", {
   signedAtTz: text("signed_at_tz").notNull().default("Asia/Riyadh"),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
+  // Geolocation at the moment of signing — best effort. A refused or
+  // unavailable fix NEVER blocks a signature, but silence is not acceptable
+  // either: when there are no coordinates, geoUnavailableReason says why, so
+  // "the signer declined" is distinguishable from "we never asked".
+  geoLatitude: real("geo_latitude"),
+  geoLongitude: real("geo_longitude"),
+  geoAccuracy: real("geo_accuracy"),
+  geoUnavailableReason: text("geo_unavailable_reason", {
+    enum: ["denied", "unavailable", "timeout", "unsupported", "error"],
+  }),
   auditDataHash: text("audit_data_hash"),
 }, (t) => [index("customer_signature_signature_request_idx").on(t.signatureRequestId)])
 

@@ -19,7 +19,7 @@ import {
   requestTypes,
   orderUnits,
 } from "@/lib/db/schema"
-import { createId, generateSecureToken, generateVerificationId } from "@/lib/utils/ids"
+import { createId, generateVerificationId } from "@/lib/utils/ids"
 import { publicUrl } from "@/lib/utils/public-url"
 import {
   buildSignatureSnapshot,
@@ -44,6 +44,9 @@ import {
   firstError,
 } from "@/lib/validation/schemas"
 import { getAffectedRequestIds, loadTaskBatchGroup, getTasksForRequest } from "@/lib/actions/tasks"
+import { createSignatureRequestCore } from "@/lib/actions/signature-request-core"
+import { getSignatureChannelPolicies } from "@/lib/actions/settings"
+import { toSigningGeoColumns, type SigningGeo } from "@/lib/domain/signature-channel"
 
 // Terminal task statuses — a signature request should never bind itself to a
 // task that's already closed/rejected/failed/cancelled (no active trip left
@@ -193,10 +196,6 @@ export async function createSignatureRequest(
   const [req] = await db.select().from(requests).where(eq(requests.id, requestId))
   if (!req) return { error: "Request not found" }
 
-  const secureToken = generateSecureToken()
-  const verificationId = generateVerificationId()
-  const id = createId()
-
   // Bind to the request's own active task when one exists — required so the
   // per-request OTP/stage-unlock gate (isDeliveryStageUnlocked) can find this
   // row for a batched task, which scopes its lookup by (partnerTaskId,
@@ -204,19 +203,22 @@ export async function createSignatureRequest(
   const tasksForRequest = await getTasksForRequest(requestId)
   const activeTask = tasksForRequest.find((t) => !TERMINAL_TASK_STATUSES.includes(t.status))
 
-  await db.insert(signatureRequests).values({
-    id,
+  const { id, token: secureToken } = await createSignatureRequestCore(db, {
+    // Admin-composed notes are signed on the courier's device today. When a
+    // remote channel ships, this becomes a caller choice — no other change.
+    channel: "agent_device",
     requestId,
     partnerTaskId: activeTask?.id ?? null,
     initiatedBy: "admin",
     initiatorId: session.user.id,
     customerId: req.customerId,
-    documentName: data.documentName.trim(),
-    secureToken,
-    verificationId,
-    requireNationalId: data.requireNationalId ?? false,
+    documentName: data.documentName,
     depositNote: depositNoteJson,
     status: "draft",
+    // The admin form owns this flag explicitly, so it overrides the channel
+    // default rather than being silently upgraded by it.
+    policyOverrides: { requireNationalId: data.requireNationalId ?? false },
+    storedPolicies: await getSignatureChannelPolicies(),
   })
 
   await logActivity({
@@ -546,9 +548,12 @@ export async function recordSignatureOpened(
 
   if (!sig || sig.status !== "sent") return
 
+  const openedAt = Date.now()
   await db
     .update(signatureRequests)
-    .set({ status: "opened", updatedAt: Date.now() })
+    // openedAt is denormalised from the signature_event below purely so the
+    // send → open → sign latency of a remote channel is a list-screen read.
+    .set({ status: "opened", openedAt, updatedAt: openedAt })
     .where(eq(signatureRequests.id, sig.id))
 
   await db.insert(signatureEvents).values({
@@ -578,6 +583,12 @@ export async function submitSignature(
       receivedQuantity?: number
       notes?: string
     }[]
+    /**
+     * Where the signature was given. Best effort — a denied, unsupported or
+     * failed lookup carries its reason instead of coordinates and NEVER blocks
+     * the signature. Omitted entirely (an older client) records "unsupported".
+     */
+    geo?: SigningGeo
   }
 ): Promise<SignatureActionResult> {
   if (!checkRateLimit(`sig-submit:${token}`, 10)) {
@@ -707,6 +718,7 @@ export async function submitSignature(
       ipAddress,
       userAgent,
       auditDataHash,
+      ...toSigningGeoColumns(data.geo),
     })
 
     await tx.insert(signatureEvents).values({
@@ -868,10 +880,11 @@ export async function requestAuthorizedSignoff(
     return { error: "No authorised signatory is flagged for this customer" }
   }
 
-  const id = createId()
-  const secureToken = generateSecureToken()
-  await db.insert(signatureRequests).values({
-    id,
+  // Stage 2 inherits the parent's channel and its national-ID requirement, so
+  // escalating to the authorised signatory never quietly relaxes the
+  // verification the receiver's note was signed under.
+  const { id, token: secureToken } = await createSignatureRequestCore(db, {
+    channel: receiver.channel,
     requestId: receiver.requestId,
     partnerTaskId: receiver.partnerTaskId,
     initiatedBy: "admin",
@@ -881,9 +894,9 @@ export async function requestAuthorizedSignoff(
     parentSignatureRequestId: receiver.id,
     signatoryContactId: authorizedContact.id,
     documentName: receiver.documentName,
-    secureToken,
-    requireNationalId: receiver.requireNationalId,
     status: "sent",
+    policyOverrides: { requireNationalId: receiver.requireNationalId },
+    storedPolicies: await getSignatureChannelPolicies(),
   })
 
   if (receiver.requestId) {
@@ -948,6 +961,12 @@ export async function signOnSiteByTaskToken(
       condition: "good" | "damaged" | "missing"
       receivedQuantity?: number
     }[]
+    /**
+     * Where the signature was given. Best effort — a denied, unsupported or
+     * failed lookup carries its reason instead of coordinates and NEVER blocks
+     * the signature. Omitted entirely (an older client) records "unsupported".
+     */
+    geo?: SigningGeo
   }
 ): Promise<SignatureActionResult> {
   if (!checkRateLimit(`sig-onsite:${taskToken}`, 10)) {
@@ -997,21 +1016,18 @@ export async function signOnSiteByTaskToken(
     if (existing && !TERMINAL_SIGNATURE_STATUSES.includes(existing.status) && !isTimeExpired) {
       sigReq = existing
     } else {
-      // Auto-create
-      const id = createId()
-      const secureToken = generateSecureToken()
-      const newVerificationId = generateVerificationId()
-      await db.insert(signatureRequests).values({
-        id,
+      // Auto-create through the one birth function. requireNationalId is no
+      // longer hardcoded here: it is the agent_device channel policy.
+      const { id } = await createSignatureRequestCore(db, {
+        channel: "agent_device",
         requestId: task.requestId,
         partnerTaskId: task.id,
         initiatedBy: "partner",
+        createdByAgentId: task.partnerId,
         customerId: req.customerId,
         documentName: "Delivery Note",
-        secureToken,
-        verificationId: newVerificationId,
-        requireNationalId: true,
         status: "sent",
+        storedPolicies: await getSignatureChannelPolicies(),
       })
       const [created] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
       sigReq = created
@@ -1100,6 +1116,7 @@ export async function signOnSiteByTaskToken(
       ipAddress,
       userAgent,
       auditDataHash,
+      ...toSigningGeoColumns(data.geo),
     })
 
     await tx.insert(signatureEvents).values({
@@ -1248,6 +1265,12 @@ export async function signOnSiteForRequestGroup(
       condition: "good" | "damaged" | "missing"
       receivedQuantity?: number
     }[]
+    /**
+     * Where the signature was given. Best effort — a denied, unsupported or
+     * failed lookup carries its reason instead of coordinates and NEVER blocks
+     * the signature. Omitted entirely (an older client) records "unsupported".
+     */
+    geo?: SigningGeo
   }
 ): Promise<SignatureActionResult> {
   if (!checkRateLimit(`sig-onsite-batch:${taskToken}:${requestId}`, 10)) {
@@ -1300,20 +1323,16 @@ export async function signOnSiteForRequestGroup(
     if (existing && !TERMINAL_SIGNATURE_STATUSES.includes(existing.status) && !isTimeExpired) {
       sigReq = existing
     } else {
-      const id = createId()
-      const secureToken = generateSecureToken()
-      const newVerificationId = generateVerificationId()
-      await db.insert(signatureRequests).values({
-        id,
+      const { id } = await createSignatureRequestCore(db, {
+        channel: "agent_device",
         requestId,
         partnerTaskId: task.id,
         initiatedBy: "partner",
+        createdByAgentId: task.partnerId,
         customerId: req.customerId,
         documentName: "Delivery Note",
-        secureToken,
-        verificationId: newVerificationId,
-        requireNationalId: true,
         status: "sent",
+        storedPolicies: await getSignatureChannelPolicies(),
       })
       const [created] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
       sigReq = created
@@ -1400,6 +1419,7 @@ export async function signOnSiteForRequestGroup(
         ipAddress,
         userAgent,
         auditDataHash,
+      ...toSigningGeoColumns(data.geo),
       })
 
       if (data.itemConditions?.length) {

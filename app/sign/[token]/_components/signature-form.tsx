@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Check, CircleAlert, Loader2 } from "lucide-react"
 import { submitSignature } from "@/lib/actions/signatures"
+import { captureSigningGeo } from "@/lib/utils/signing-geo"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
@@ -85,7 +86,9 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
     }
 
     setLoading(true)
+    const geo = await captureSigningGeo()
     const result = await submitSignature(token, {
+      geo,
       fullName: fullName.trim(),
       mobile: mobile.trim() || undefined,
       nationalId: nationalId.trim() || undefined,
