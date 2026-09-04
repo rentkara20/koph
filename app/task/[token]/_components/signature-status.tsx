@@ -3,14 +3,14 @@
 import { useTranslations } from "next-intl"
 import { CheckCircle2, Clock, ExternalLink, MessageCircle } from "lucide-react"
 import { formatDate } from "@/lib/utils/format"
-import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrlWithLink } from "@/lib/utils/whatsapp"
 import { renderMessageTemplate } from "@/lib/domain/message-templates"
 
 type Props = {
   status: string
   signedAt: number | null
   signerName: string | null
-  signLink: string
+  signLink: string | null
   contactMobile: string | null
   customerName: string | null
   requestNumber: string
@@ -31,12 +31,13 @@ export function SignatureStatus({
   const t = useTranslations("portal")
   const isSigned = status === "signed"
 
-  const waUrl = buildWhatsappUrl(
-    contactMobile,
+  // Null signLink = no public origin configured. The share control disappears
+  // instead of offering a message with a missing link in it.
+  const waUrl = buildWhatsappUrlWithLink(contactMobile, signLink, (link) =>
     renderMessageTemplate(messageTemplate, {
       customer_name: customerName ?? "",
       request_number: requestNumber,
-      sign_link: signLink,
+      sign_link: link,
     })
   )
 
@@ -54,7 +55,7 @@ export function SignatureStatus({
           <p className="text-xs text-green-700 pl-6">{formatDate(signedAt)}</p>
         )}
         <div className="pl-6 pt-1">
-          <a
+          {signLink && <a
             href={signLink}
             target="_blank"
             rel="noopener noreferrer"
@@ -62,7 +63,7 @@ export function SignatureStatus({
           >
             <ExternalLink className="size-3" />
             {t("viewSignedDoc")}
-          </a>
+          </a>}
         </div>
       </div>
     )
@@ -86,15 +87,17 @@ export function SignatureStatus({
             {t("sendViaWhatsapp")}
           </a>
         )}
-        <a
-          href={signLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
-        >
-          <ExternalLink className="size-3.5" />
-          {t("openSignLink")}
-        </a>
+        {signLink && (
+          <a
+            href={signLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+          >
+            <ExternalLink className="size-3.5" />
+            {t("openSignLink")}
+          </a>
+        )}
       </div>
     </div>
   )

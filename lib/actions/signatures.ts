@@ -20,7 +20,7 @@ import {
   orderUnits,
 } from "@/lib/db/schema"
 import { createId, generateVerificationId } from "@/lib/utils/ids"
-import { publicUrl } from "@/lib/utils/public-url"
+import { publicUrl, publicUrlOrNull } from "@/lib/utils/public-url"
 import {
   buildSignatureSnapshot,
   parseSignatureSnapshot,
@@ -940,7 +940,10 @@ export async function getSignatureForTaskToken(taskToken: string) {
   return {
     sigReq,
     sig: sig ?? null,
-    signLink: publicUrl(`/sign/${sigReq.secureToken}`),
+    // DISPLAY link (rendered on the partner's task page), so it degrades to
+    // null rather than throwing and taking the whole page down. The email
+    // dispatch path above keeps the throwing publicUrl().
+    signLink: publicUrlOrNull(`/sign/${sigReq.secureToken}`),
   }
 }
 
@@ -1234,7 +1237,7 @@ export async function getBatchSignaturesForTaskToken(taskToken: string): Promise
       requestNumber: req.requestNumber,
       sigReq,
       sig,
-      signLink: sigReq ? publicUrl(`/sign/${sigReq.secureToken}`) : null,
+      signLink: sigReq ? publicUrlOrNull(`/sign/${sigReq.secureToken}`) : null,
     }
   })
 }

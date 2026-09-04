@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vitest"
-import { normalizeSaudiMobile, buildWhatsappUrl, partnerPickupAssignmentMessage } from "./whatsapp"
+import {
+  normalizeSaudiMobile,
+  buildWhatsappUrl,
+  buildWhatsappUrlWithLink,
+  partnerPickupAssignmentMessage,
+} from "./whatsapp"
 
 describe("normalizeSaudiMobile", () => {
   test("normalizes local and international forms", () => {
@@ -38,5 +43,36 @@ describe("partnerPickupAssignmentMessage", () => {
   test("wa.me url is built from a normalized number", () => {
     const url = buildWhatsappUrl("0544909444", "hi")
     expect(url).toContain("https://wa.me/966544909444")
+  })
+})
+
+// ─── Link-bearing messages (added with the signature-channels work) ──────────
+// Message templates interpolate through Record<string, string | null> and
+// render a null as "", so an unresolved link would silently produce a message
+// with no link in it. buildWhatsappUrlWithLink is the seam that prevents that.
+describe("buildWhatsappUrlWithLink", () => {
+  test("returns null when the link is missing — no message is built at all", () => {
+    let called = false
+    const url = buildWhatsappUrlWithLink("0555000000", null, () => {
+      called = true
+      return "should never be built"
+    })
+    expect(url).toBeNull()
+    // The message factory must not even run: it is what would have embedded
+    // the empty link.
+    expect(called).toBe(false)
+  })
+
+  test("returns null when the mobile is missing, even with a good link", () => {
+    expect(buildWhatsappUrlWithLink(null, "https://karaops.com/task/t", (l) => l)).toBeNull()
+  })
+
+  test("builds the message with the resolved link when both are present", () => {
+    const url = buildWhatsappUrlWithLink(
+      "0555000000",
+      "https://karaops.com/task/t",
+      (link) => `open: ${link}`
+    )
+    expect(url).toBe(`https://wa.me/966555000000?text=${encodeURIComponent("open: https://karaops.com/task/t")}`)
   })
 })

@@ -24,26 +24,61 @@ export function appBaseUrl(): string {
 
 export class MissingBaseUrlError extends Error {}
 
-/**
- * The base URL for anything that will reach a customer or partner.
- *
- * In production an empty value throws: no link is strictly better than a wrong
- * link. Outside production it falls back to localhost so local development and
- * the test suite keep working.
- */
+// Two resolvers, because there are two different failure modes and they must
+// not be conflated:
+//
+//   DISPATCH  — the link is about to leave the building (an email body, a
+//               WhatsApp message). A wrong link here is unrecoverable once
+//               sent, so this throws. No link is better than a wrong link.
+//
+//   DISPLAY   — the link is being rendered into a screen (a "send" button on
+//               an admin page, a link shown on the partner's task page).
+//               Throwing here would turn one unset env var into a broken
+//               daily-operations screen, which is a worse outcome than a
+//               visibly disabled button. So this returns null and the caller
+//               renders an explicit "link not configured" state.
+//
+// Outside production both fall back to localhost, so local development and the
+// test suite behave normally.
+
+const DEV_FALLBACK = "http://localhost:3000"
+
+/** DISPATCH resolver — throws in production when no origin is configured. */
 export function requirePublicBaseUrl(): string {
   const base = appBaseUrl()
   if (base) return base
   if (process.env.NODE_ENV === "production") {
     throw new MissingBaseUrlError(
-      "APP_BASE_URL is not set — refusing to build a customer-facing link with no origin. Set APP_BASE_URL (and BETTER_AUTH_URL) in the deployment environment."
+      "APP_BASE_URL is not set — refusing to send a link with no origin. Set APP_BASE_URL (and BETTER_AUTH_URL) in the deployment environment."
     )
   }
-  return "http://localhost:3000"
+  return DEV_FALLBACK
 }
 
-/** Builds an absolute customer-facing URL from a path (e.g. `/sign/<token>`). */
+/** DISPLAY resolver — null in production when no origin is configured. */
+export function publicBaseUrlOrNull(): string | null {
+  const base = appBaseUrl()
+  if (base) return base
+  return process.env.NODE_ENV === "production" ? null : DEV_FALLBACK
+}
+
+function join(base: string, path: string): string {
+  return `${base}${path.startsWith("/") ? path : `/${path}`}`
+}
+
+/**
+ * Absolute URL for a link that is about to be SENT. Throws in production when
+ * no origin is configured — see the DISPATCH note above.
+ */
 export function publicUrl(path: string): string {
-  const p = path.startsWith("/") ? path : `/${path}`
-  return `${requirePublicBaseUrl()}${p}`
+  return join(requirePublicBaseUrl(), path)
+}
+
+/**
+ * Absolute URL for a link that is only being DISPLAYED. Null when no origin is
+ * configured, so the UI can show a disabled control instead of crashing.
+ */
+export function publicUrlOrNull(path: string): string | null {
+  const base = publicBaseUrlOrNull()
+  return base ? join(base, path) : null
 }

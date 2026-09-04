@@ -12,7 +12,7 @@ import {
   deleteSignatureRequest,
   requestAuthorizedSignoff,
 } from "@/lib/actions/signatures"
-import { buildWhatsappUrl, signLink } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrlWithLink, signLink } from "@/lib/utils/whatsapp"
 import { renderMessageTemplate } from "@/lib/domain/message-templates"
 import { useOperationalMessageTemplates } from "@/components/message-templates-provider"
 import { Button } from "@/components/ui/button"
@@ -288,23 +288,27 @@ export function SignaturesSection({
             const whatsappUrl = !isActive
               ? null
               : isAuthorizedRow
-                ? buildWhatsappUrl(
+                ? buildWhatsappUrlWithLink(
                     authorizedContact?.mobile,
-                    renderMessageTemplate(messageTemplates.authorizedSignoff, {
-                      customer_name: authorizedContact?.name ?? "",
-                      receiver_name: parentReceiver?.signerName ?? "-",
-                      request_number: requestNumber,
-                      delivery_date: parentReceiver?.signedAt ? formatDate(parentReceiver.signedAt) : "-",
-                      sign_link: signLink(sig.secureToken),
-                    })
+                    signLink(sig.secureToken),
+                    (link) =>
+                      renderMessageTemplate(messageTemplates.authorizedSignoff, {
+                        customer_name: authorizedContact?.name ?? "",
+                        receiver_name: parentReceiver?.signerName ?? "-",
+                        request_number: requestNumber,
+                        delivery_date: parentReceiver?.signedAt ? formatDate(parentReceiver.signedAt) : "-",
+                        sign_link: link,
+                      })
                   )
-                : buildWhatsappUrl(
+                : buildWhatsappUrlWithLink(
                     receiverContact?.mobile,
-                    renderMessageTemplate(messageTemplates.signatureRequest, {
-                      customer_name: receiverContact?.name ?? "",
-                      request_number: requestNumber,
-                      sign_link: signLink(sig.secureToken),
-                    })
+                    signLink(sig.secureToken),
+                    (link) =>
+                      renderMessageTemplate(messageTemplates.signatureRequest, {
+                        customer_name: receiverContact?.name ?? "",
+                        request_number: requestNumber,
+                        sign_link: link,
+                      })
                   )
             return (
               <div key={sig.id} className="rounded-lg border p-3 space-y-2">

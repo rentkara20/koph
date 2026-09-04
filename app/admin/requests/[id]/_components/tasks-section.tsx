@@ -6,7 +6,7 @@ import { useLocale, useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { Plus, Copy, Check, RefreshCw, X, Trash2, MessageCircle } from "lucide-react"
 import { createTask, signOffTask, cancelTask, regenerateTaskLink, deleteTask, rejectTaskProof } from "@/lib/actions/tasks"
-import { buildWhatsappUrl, taskLink } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrlWithLink, taskLink } from "@/lib/utils/whatsapp"
 import { renderMessageTemplate } from "@/lib/domain/message-templates"
 import { useOperationalMessageTemplates } from "@/components/message-templates-provider"
 import { addServiceToTask, removeServiceFromTask } from "@/lib/actions/task-services"
@@ -550,13 +550,15 @@ export function TasksSection({
                           .map((r) => (r.customerName ? `${r.requestNumber} (${r.customerName})` : r.requestNumber))
                           .join("، ")}`
                       : requestNumber
-                    const url = buildWhatsappUrl(
+                    const url = buildWhatsappUrlWithLink(
                       task.partnerMobile,
-                      renderMessageTemplate(messageTemplates.partnerAssignment, {
-                        partner_name: task.partnerName ?? "",
-                        request_number: requestNumberValue,
-                        task_link: taskLink(task.taskToken),
-                      })
+                      taskLink(task.taskToken),
+                      (link) =>
+                        renderMessageTemplate(messageTemplates.partnerAssignment, {
+                          partner_name: task.partnerName ?? "",
+                          request_number: requestNumberValue,
+                          task_link: link,
+                        })
                     )
                     if (!url) return null
                     return (

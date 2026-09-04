@@ -23,7 +23,7 @@ import { QcBulkActions } from "./_components/qc-bulk-actions"
 import { getSupplier } from "@/lib/actions/suppliers"
 import { getOperationalMessageTemplates } from "@/lib/actions/settings"
 import { renderMessageTemplate } from "@/lib/domain/message-templates"
-import { buildWhatsappUrl, taskLink } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrlWithLink, taskLink } from "@/lib/utils/whatsapp"
 import { getPurchaseOrder } from "@/lib/actions/procurement"
 import { deriveReceivingContinuation } from "@/lib/domain/receiving-continuation"
 import { isQcClear, isQcFailedStatus, summarizeQcAssets } from "@/lib/domain/qc-summary"
@@ -280,17 +280,21 @@ export default async function PurchaseOrderDetailPage({ params }: { params: Prom
         {pickupTasks.map((tk) => {
           const tls = taskLinesByTask.get(tk.id) ?? []
           const inTransit = tk.status === "picked_up"
-          const pickupMessage = renderMessageTemplate(messageTemplates.partnerPickup, {
-            partner_name: tk.partnerName ?? "",
-            po_number: po.poNumber,
-            supplier_name: supplier?.name ?? "",
-            pickup_address: supplier?.address ?? "",
-            pickup_contact: [supplier?.pickupContactName, supplier?.pickupContactMobile].filter(Boolean).join(" - "),
-            destination: tk.destinationLocation ?? "main_warehouse",
-            items: tls.map((line) => `${line.qtyPlanned}× ${lineDescById.get(line.purchaseOrderLineId) ?? ""}`).join("، "),
-            task_link: taskLink(tk.taskToken),
-          })
-          const pickupWhatsappUrl = buildWhatsappUrl(tk.partnerMobile, pickupMessage)
+          const pickupWhatsappUrl = buildWhatsappUrlWithLink(
+            tk.partnerMobile,
+            taskLink(tk.taskToken),
+            (link) =>
+              renderMessageTemplate(messageTemplates.partnerPickup, {
+                partner_name: tk.partnerName ?? "",
+                po_number: po.poNumber,
+                supplier_name: supplier?.name ?? "",
+                pickup_address: supplier?.address ?? "",
+                pickup_contact: [supplier?.pickupContactName, supplier?.pickupContactMobile].filter(Boolean).join(" - "),
+                destination: tk.destinationLocation ?? "main_warehouse",
+                items: tls.map((l) => `${l.qtyPlanned}× ${lineDescById.get(l.purchaseOrderLineId) ?? ""}`).join("، "),
+                task_link: link,
+              })
+          )
           return (
             <div key={tk.id} className="space-y-2 rounded-xl border bg-card p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">

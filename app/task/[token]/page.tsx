@@ -9,7 +9,7 @@ import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { isDeliveryStageUnlocked } from "@/lib/actions/otp"
 import { formatDate } from "@/lib/utils/format"
-import { buildWhatsappUrl } from "@/lib/utils/whatsapp"
+import { buildWhatsappUrlWithLink } from "@/lib/utils/whatsapp"
 import { getOperationalMessageTemplates } from "@/lib/actions/settings"
 import { renderMessageTemplate } from "@/lib/domain/message-templates"
 import { buildRequestRoutePlan, type RequestRoutePoint } from "@/lib/domain/request-route"
@@ -364,15 +364,17 @@ export default async function TaskPage({
                         </a>
                       )}
                       {c.mobile && (() => {
-                        const waUrl = buildWhatsappUrl(
+                        const waUrl = buildWhatsappUrlWithLink(
                           c.mobile,
-                          renderMessageTemplate(messageTemplates.customerEnRoute, {
-                            courier_name: partner?.contactPerson ?? partner?.name ?? "مندوب كارا",
-                            customer_name: c.name,
-                            request_number: request.requestNumber,
-                            items: itemsSummary,
-                            sign_link: sigData?.signLink ?? "",
-                          })
+                          sigData?.signLink ?? null,
+                          (link) =>
+                            renderMessageTemplate(messageTemplates.customerEnRoute, {
+                              courier_name: partner?.contactPerson ?? partner?.name ?? "مندوب كارا",
+                              customer_name: c.name,
+                              request_number: request.requestNumber,
+                              items: itemsSummary,
+                              sign_link: link,
+                            })
                         )
                         if (!waUrl) return null
                         return (

@@ -3,11 +3,14 @@
 // sender's own WhatsApp. Message templates are the single source of truth so
 // admin and partner surfaces send consistent wording.
 
-import { requirePublicBaseUrl } from "@/lib/utils/public-url"
+import { publicBaseUrlOrNull } from "@/lib/utils/public-url"
 
-// These messages go out to customers and partners, so they are held to the
-// same standard as a signing link: a wrong origin is worse than an error.
-const appUrl = () => requirePublicBaseUrl()
+// DISPLAY semantics on purpose: these builders run while an admin page or a
+// client component is rendering a "send on WhatsApp" control. A missing origin
+// must disable that control, not throw through the render — the link only
+// becomes a dispatch concern when the human actually opens WhatsApp, and by
+// then a null link means there was no button to press.
+const appUrl = () => publicBaseUrlOrNull()
 
 /**
  * Normalises a Saudi mobile number to bare international digits for wa.me.
@@ -34,6 +37,24 @@ export function buildWhatsappUrl(
   const number = normalizeSaudiMobile(mobile)
   if (!number) return null
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`
+}
+
+/**
+ * The only safe way to build a WhatsApp message that CONTAINS a link.
+ *
+ * Message templates interpolate through `Record<string, string | null>` and
+ * render a null as an empty string, so passing an unresolved link straight
+ * into a template silently produces a message with no link in it — a partner
+ * receiving "open your task:" followed by nothing. The compiler cannot catch
+ * that, so the check lives here: no link, no message, no button.
+ */
+export function buildWhatsappUrlWithLink(
+  mobile: string | null | undefined,
+  link: string | null,
+  message: (link: string) => string
+): string | null {
+  if (!link) return null
+  return buildWhatsappUrl(mobile, message(link))
 }
 
 // ─── Message templates (Arabic, KSA) ────────────────────────────────────────
@@ -133,5 +154,13 @@ export function authorizedSignoffMessage(opts: {
 
 // ─── Link builders ──────────────────────────────────────────────────────────
 
-export const taskLink = (token: string) => `${appUrl()}/task/${token}`
-export const signLink = (token: string) => `${appUrl()}/sign/${token}`
+// Null when no origin is configured. The return type is deliberately nullable
+// so every call site is forced by the compiler to decide what to render.
+export const taskLink = (token: string): string | null => {
+  const base = appUrl()
+  return base ? `${base}/task/${token}` : null
+}
+export const signLink = (token: string): string | null => {
+  const base = appUrl()
+  return base ? `${base}/sign/${token}` : null
+}
