@@ -139,3 +139,20 @@ New tests: `lib/domain/signature-channel.test.ts` (17) and `lib/actions/signatur
 ### Two things left open
 - **The local dev DB cannot take the migration — pre-existing drift, not this change.** `local.db` has 40 of 48 migrations in its ledger and fails at `0039_tired_exodus` with `duplicate column name: deposit_note`: the DDL was hand-applied locally without being recorded. The fresh-database chain `0000 → 0047` is proven clean by the test suite, which migrates from scratch on every run. Reconciling that dev DB (record the already-applied rows, or rebuild it) is a separate task and must not be pointed at production.
 - **No browser verification of the geo prompt yet**, because the dev DB above will not migrate. The capture path is unit-tested at both ends (browser-mapping helper and stored columns); the visual confirmation on a real phone is still owed.
+
+
+---
+
+## 9. Pre-deploy checklist findings — 2026-09-04
+
+| Item | Outcome |
+|---|---|
+Vercel production env | `APP_BASE_URL` is **absent**; `NEXT_PUBLIC_APP_URL` and `BETTER_AUTH_URL` are present. Values are **not readable via CLI** — `vercel env pull` returns every variable older than ~59 days as empty, including `TURSO_DATABASE_URL` which production provably needs, so they are sensitive vars the CLI cannot decrypt. Dashboard check still required. The guard does **not** fire in production today because `appBaseUrl()` falls back to `NEXT_PUBLIC_APP_URL`, and a test pins that case |
+Preview QA | 🔴 **Blocked.** The branch's preview build fails with `TURSO_DATABASE_URL is required in production`: Preview env vars are scoped to the single branch `feat/ad-hoc-partner-task`. Needs a separate preview/staging Turso DB — **not** the production credentials, or a real-phone signing test would write real signatures and move real assets |
+`requirePublicBaseUrl()` review | Concern justified; fixed in `05dff2c`. Split into DISPATCH (throws) and DISPLAY (null) resolvers, because the link builders run at render time on admin pages, client components and the partner's own task page. A nullable return alone was insufficient — templates render null as `""` — so `buildWhatsappUrlWithLink` is the unbypassable seam |
+Migration review | `ADD COLUMN` only, no rebuild, `drizzle-kit check` passes. **But the `agent_device` default was not historically correct** — production carries 13 prepared `remote_signature` comms rows, so some historical signatures came from a link the customer opened. Fixed in `986864e`: stored enum gains `legacy_unknown` (reportable, never assignable) and the migration marks every pre-existing row. Exposed and fixed a live bug: stage-2 signoff would have inherited `legacy_unknown` onto a new request and crashed policy resolution |
+Action-level behaviour | Verified by grep, not memory: exactly **one** `insert(signatureRequests)` in the codebase (inside the core), 4 call sites, `requireNationalId: true` surviving only in the two policy rows, `created_by_agent_id` set on both partner paths |
+
+Gates after all fixes: `tsc` clean · `next build` ✓ · `eslint` 0 errors · **807 tests / 109 files**.
+
+Still unverified in a browser: the geo permission prompt, and that refusing it does not obstruct signing.
