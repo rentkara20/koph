@@ -121,7 +121,9 @@ Backfill: every existing row is `agent_device` — which is true, and the defaul
 
 ## 8. Implementation status — 2026-09-04
 
-Executed in the order the CTO set. Local only, uncommitted; `tsc` clean, `next build` succeeds, **795 tests pass in 108 files** (up from 767/106 — 28 new).
+Executed in the order the CTO set. Committed in isolation on `feature/signature-channels-agent-device` as **63c1287** — 16 files, no overlap with the uncommitted `adopt-stock` work or any other pending change on `main`.
+
+Gates run against the commit's content alone (the adopt-stock edits were parked in a stash for the run and restored afterwards, so nothing outside the commit was propping it up): `tsc --noEmit` clean, `next build` compiled successfully with 61/61 static pages, `eslint` 0 errors (17 pre-existing warnings, none new), **789 tests in 108 files pass**. The full tree with the adopt-stock WIP also present reports 795 — the extra 6 belong to that unrelated work, not to this branch.
 
 | Step | Status | Where |
 |---|---|---|
