@@ -695,7 +695,21 @@
       "next": "التالي",
       "continueBtn": "متابعة",
       "mobilePlaceholder": "05XXXXXXXX",
-      "optional": "(اختياري)"
+      "optional": "(اختياري)",
+      "registeredRecipient": "المستلم المسجّل في الطلب",
+      "registeredHint": "للاطلاع فقط. المستلم يكتب بياناته بنفسه أدناه.",
+      "useRegistered": "استخدم البيانات المسجّلة",
+      "usePrevious": "استخدم بيانات التوقيع السابق في هذه الرحلة",
+      "reviewTitle": "مراجعة قبل التأكيد",
+      "reviewHint": "راجع بياناتك والأصناف والتوقيع. لن تتمكن من التعديل بعد التأكيد.",
+      "reviewSignature": "التوقيع",
+      "reviewItems": "الأصناف المستلمة",
+      "reviewOutcome": "نتيجة التسليم",
+      "redraw": "إعادة رسم التوقيع",
+      "backToDetails": "تعديل البيانات",
+      "finalConfirm": "تأكيد التسليم وإرسال التوقيع",
+      "notProvided": "غير محدد",
+      "padContinue": "متابعة للمراجعة"
     }
   },
   "payments": {

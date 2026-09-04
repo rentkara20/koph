@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { translateActionError } from "@/lib/i18n/action-errors"
 
-type Step = "otp" | "outcome" | "form" | "pad" | "done"
+type Step = "otp" | "outcome" | "form" | "pad" | "review" | "done"
 
 type DeliveryOutcome = "full_no_remarks" | "full_with_remarks" | "partial" | "refused"
 
@@ -37,17 +37,31 @@ type Props = {
   // whole-task one, so the signature never covers more than this one request.
   requestId?: string
   // Set only for a batched task — lets consecutive groups for the SAME
-  // customer prefill name/mobile/national ID instead of re-asking, without
-  // touching the per-request signature_request record (each group still
-  // signs and submits independently).
+  // customer reuse name/mobile/national ID on request, without touching the
+  // per-request signature_request record (each group still signs and submits
+  // independently).
   customerId?: string
+  // Shown back to the signer on the review step, so they confirm what they are
+  // signing for and not just that they drew something.
+  items?: SigningItem[]
 }
 
-// sessionStorage-only prefill cache, keyed by task+customer, so the same
-// person isn't asked to retype their details for every request in one trip.
-// Never persisted server-side or reused across a different customerId — each
+export type SigningItem = {
+  id: string
+  description: string
+  brand?: string | null
+  model?: string | null
+  serialNumber?: string | null
+  quantity: number
+}
+
+// sessionStorage-only cache of what THIS signer typed earlier in this trip,
+// keyed by task+customer. It is never applied automatically: the signer has to
+// press "use the previous signature's details". Autofilling identity fields is
+// how a delivery gets signed under someone else's name. Never persisted
+// server-side or reused across a different customerId — each
 // signature_request/customer_signature row is still written per-group as
-// before; this only saves the courier from re-typing.
+// before; this only saves re-typing when the same person asks for it.
 type PrefillData = { fullName: string; mobile: string; nationalId: string }
 
 function prefillKey(taskToken: string, customerId: string) {
@@ -73,7 +87,7 @@ function savePrefill(taskToken: string, customerId: string | undefined, data: Pr
   }
 }
 
-export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, stageUnlocked, requestId, customerId }: Props) {
+export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, stageUnlocked, requestId, customerId, items = [] }: Props) {
   const t = useTranslations("signatures.signing")
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -87,12 +101,20 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   const [nationalId, setNationalId] = useState("")
   const [error, setError] = useState("")
   const [saving, setSaving] = useState(false)
+  // Held between the pad and the final confirmation. Drawing is not consent.
+  const [signatureData, setSignatureData] = useState<string | null>(null)
+  const [previousSigner, setPreviousSigner] = useState<PrefillData | null>(null)
 
   function handleStart() {
-    const prefill = loadPrefill(taskToken, customerId)
-    setFullName(prefill?.fullName ?? customerName ?? "")
-    setMobile(prefill?.mobile ?? customerMobile ?? "")
-    setNationalId(prefill?.nationalId ?? "")
+    // Identity fields start EMPTY on purpose. The name, mobile and national ID
+    // are the proof that this specific person took delivery, so they are typed
+    // by whoever signs — never inherited from the customer record, which is
+    // often a company contact rather than the person at the door.
+    setFullName("")
+    setMobile("")
+    setNationalId("")
+    setSignatureData(null)
+    setPreviousSigner(loadPrefill(taskToken, customerId))
     setOtp("")
     setOutcome(null)
     setRemarks("")
@@ -128,7 +150,16 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     setStep("pad")
   }
 
-  async function handleConfirm(data: string) {
+  // The pad hands the drawing back and stops. Nothing is submitted here.
+  function handlePadConfirm(data: string) {
+    setSignatureData(data)
+    setError("")
+    setStep("review")
+  }
+
+  async function handleFinalSubmit() {
+    const data = signatureData
+    if (!data) { setStep("pad"); return }
     setSaving(true)
     setError("")
     // Asked for only at the moment of signing, and never allowed to hold the
@@ -148,7 +179,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
       ? await signOnSiteForRequestGroup(taskToken, requestId, payload)
       : await signOnSiteByTaskToken(taskToken, payload)
     setSaving(false)
-    if (result.error) { setError(translateActionError(result.error)); setStep("pad"); return }
+    if (result.error) { setError(translateActionError(result.error)); return }
     savePrefill(taskToken, customerId, {
       fullName: fullName.trim(),
       mobile: mobile.trim(),
@@ -273,6 +304,46 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
             <p className="text-sm font-semibold text-kara-purple">{t("customerDetails")}</p>
           </div>
           <p className="text-xs text-muted-foreground">{t("detailsHint")}</p>
+
+          {/* Reference only — the details on record are shown, never typed into
+              the fields for the signer. */}
+          {(customerName || customerMobile) && (
+            <div className="rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-muted-foreground">{t("registeredRecipient")}</p>
+              <p className="mt-1 text-sm font-medium">{customerName ?? t("notProvided")}</p>
+              {customerMobile && (
+                <p className="font-mono text-xs text-muted-foreground" dir="ltr">{customerMobile}</p>
+              )}
+              <p className="mt-1.5 text-[11px] text-muted-foreground">{t("registeredHint")}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setFullName(customerName ?? "")
+                  setMobile(customerMobile ?? "")
+                }}
+                className="mt-2 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-kara-purple"
+              >
+                {t("useRegistered")}
+              </button>
+            </div>
+          )}
+
+          {/* Same trip, same customer, details this signer already typed. Also
+              opt-in — pressing it is the signer's own act. */}
+          {previousSigner && (
+            <button
+              type="button"
+              onClick={() => {
+                setFullName(previousSigner.fullName)
+                setMobile(previousSigner.mobile)
+                setNationalId(previousSigner.nationalId)
+              }}
+              className="w-full rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium text-kara-purple"
+            >
+              {t("usePrevious")}
+            </button>
+          )}
+
           <div className="space-y-3">
             <div className="space-y-1.5">
               <Label className="text-xs">{t("fullName")} <span className="text-destructive">*</span></Label>
@@ -328,11 +399,134 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
       {/* Step: full-screen signature pad */}
       {step === "pad" && (
         <SignaturePad
-          saving={saving}
+          saving={false}
           error={error}
           onCancel={() => setStep("form")}
-          onConfirm={handleConfirm}
+          onConfirm={handlePadConfirm}
         />
+      )}
+
+      {/* Step: review — the signer sees exactly what they are confirming, and
+          the delivery is only submitted from here. Drawing a signature is not
+          by itself an approval. */}
+      {step === "review" && (
+        <div className="space-y-4 p-4">
+          <div className="flex items-center gap-2">
+            <button onClick={() => setStep("form")} className="text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </button>
+            <p className="text-sm font-semibold text-kara-purple">{t("reviewTitle")}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">{t("reviewHint")}</p>
+
+          <dl className="divide-y rounded-lg border border-border">
+            <div className="flex items-start justify-between gap-3 px-3 py-2">
+              <dt className="text-xs text-muted-foreground">{t("fullName")}</dt>
+              <dd className="text-sm font-medium text-end">{fullName}</dd>
+            </div>
+            <div className="flex items-start justify-between gap-3 px-3 py-2">
+              <dt className="text-xs text-muted-foreground">{t("mobile")}</dt>
+              <dd className="font-mono text-sm text-end" dir="ltr">{mobile || t("notProvided")}</dd>
+            </div>
+            <div className="flex items-start justify-between gap-3 px-3 py-2">
+              <dt className="text-xs text-muted-foreground">{t("nationalId")}</dt>
+              <dd className="font-mono text-sm text-end" dir="ltr">{nationalId}</dd>
+            </div>
+            {position.trim() && (
+              <div className="flex items-start justify-between gap-3 px-3 py-2">
+                <dt className="text-xs text-muted-foreground">{t("position")}</dt>
+                <dd className="text-sm text-end">{position}</dd>
+              </div>
+            )}
+            {outcome && (
+              <div className="flex items-start justify-between gap-3 px-3 py-2">
+                <dt className="text-xs text-muted-foreground">{t("reviewOutcome")}</dt>
+                <dd className="text-sm text-end">
+                  {t(
+                    outcome === "full_no_remarks"
+                      ? "outcomeFullNoRemarks"
+                      : outcome === "full_with_remarks"
+                        ? "outcomeFullWithRemarks"
+                        : outcome === "partial"
+                          ? "outcomePartial"
+                          : "outcomeRefused"
+                  )}
+                </dd>
+              </div>
+            )}
+            {remarks.trim() && (
+              <div className="px-3 py-2">
+                <dt className="text-xs text-muted-foreground">{t("remarks")}</dt>
+                <dd className="mt-1 text-sm whitespace-pre-wrap">{remarks}</dd>
+              </div>
+            )}
+          </dl>
+
+          {items.length > 0 && (
+            <div className="rounded-lg border border-border">
+              <p className="border-b border-border px-3 py-2 text-xs font-semibold text-muted-foreground">
+                {t("reviewItems")} ({items.length})
+              </p>
+              <ul className="divide-y">
+                {items.map((item) => (
+                  <li key={item.id} className="flex items-start justify-between gap-2 px-3 py-2">
+                    <div>
+                      <p className="text-sm font-medium">{item.description}</p>
+                      {item.serialNumber && (
+                        <p className="font-mono text-[11px] text-muted-foreground" dir="ltr">
+                          S/N: {item.serialNumber}
+                        </p>
+                      )}
+                    </div>
+                    <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium">
+                      ×{item.quantity}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <p className="text-xs text-muted-foreground">{t("reviewSignature")}</p>
+            {signatureData && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={signatureData}
+                alt={t("reviewSignature")}
+                className="h-24 w-full rounded-lg border border-border bg-white object-contain p-2"
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => setStep("pad")}
+              disabled={saving}
+              className="text-xs font-medium text-kara-purple underline-offset-4 hover:underline"
+            >
+              {t("redraw")}
+            </button>
+          </div>
+
+          <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-xs leading-relaxed">{t("consent")}</p>
+
+          {error && <p className="text-xs text-destructive">{error}</p>}
+
+          <Button
+            className="h-14 w-full bg-kara-purple text-base font-semibold hover:bg-kara-purple-hover"
+            onClick={handleFinalSubmit}
+            disabled={saving}
+          >
+            {saving ? "…" : t("finalConfirm")}
+          </Button>
+          <button
+            type="button"
+            onClick={() => setStep("form")}
+            disabled={saving}
+            className="w-full text-center text-xs text-muted-foreground"
+          >
+            {t("backToDetails")}
+          </button>
+        </div>
       )}
 
       {/* Step: done */}
@@ -518,7 +712,7 @@ function SignaturePad({
           disabled={!hasStrokes || saving}
           className="w-full rounded-xl bg-kara-purple py-4 text-[17px] font-bold text-white transition-opacity disabled:opacity-40"
         >
-          {saving ? "…" : `✓ ${t("confirmSign")}`}
+          {t("padContinue")}
         </button>
       </div>
     </div>

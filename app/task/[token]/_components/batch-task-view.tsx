@@ -169,6 +169,12 @@ export async function BatchTaskView({ token, data }: { token: string; data: Data
                       customerName={group.customer?.name ?? null}
                       customerMobile={group.customer?.mobile ?? null}
                       stageUnlocked={stageUnlocked}
+                      items={group.items.map((item) => ({
+                        id: item.id,
+                        description: item.description,
+                        serialNumber: item.serialNumber,
+                        quantity: item.quantity,
+                      }))}
                     />
                   )}
                 </div>

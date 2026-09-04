@@ -695,7 +695,21 @@
       "next": "Next",
       "continueBtn": "Continue",
       "mobilePlaceholder": "05XXXXXXXX",
-      "optional": "(optional)"
+      "optional": "(optional)",
+      "registeredRecipient": "Recipient on record",
+      "registeredHint": "For reference only. The recipient enters their own details below.",
+      "useRegistered": "Use the details on record",
+      "usePrevious": "Use the previous signature's details from this trip",
+      "reviewTitle": "Review before confirming",
+      "reviewHint": "Check your details, the items and the signature. You cannot edit after confirming.",
+      "reviewSignature": "Signature",
+      "reviewItems": "Items received",
+      "reviewOutcome": "Delivery outcome",
+      "redraw": "Redraw signature",
+      "backToDetails": "Edit details",
+      "finalConfirm": "Confirm delivery and submit signature",
+      "notProvided": "Not provided",
+      "padContinue": "Continue to review"
     }
   },
   "payments": {

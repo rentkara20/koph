@@ -510,6 +510,12 @@ export default async function TaskPage({
             customerName={customer?.name ?? null}
             customerMobile={customer?.mobile ?? null}
             stageUnlocked={await isDeliveryStageUnlocked(token)}
+            items={items.map((item) => ({
+              id: item.id,
+              description: item.description,
+              serialNumber: item.serialNumber,
+              quantity: item.quantity,
+            }))}
           />
         )}
 
