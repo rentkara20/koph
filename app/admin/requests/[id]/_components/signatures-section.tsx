@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { formatDate } from "@/lib/utils/format"
+import { localizeDocumentName } from "@/lib/utils/document-name"
 import { translateActionError } from "@/lib/i18n/action-errors"
 import { DeliveryProofActions } from "./delivery-proof-actions"
 import {
@@ -139,6 +140,7 @@ export function SignaturesSection({
   const hasAuthorizedContact = !!authorizedContact
   const router = useRouter()
   const t = useTranslations("signatures")
+  const tKind = useTranslations("signatures.documentKind")
   const tToast = useTranslations("toast")
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -273,11 +275,19 @@ export function SignaturesSection({
           {signatures.map((sig) => {
             const isActive = ACTIVE_STATUSES.includes(sig.status)
             const isAuthorizedRow = sig.signatoryRole === "authorized"
-            const hasStage2 = signatures.some((s) => s.parentSignatureRequestId === sig.id)
+            // Kara's own rep countersigning a collection — a stage-2 row, but
+            // OUR side of the table, so it is never messaged to the customer.
+            const isAgentRow = sig.signatoryRole === "kara_agent"
+            const isCountersignRow = isAuthorizedRow || isAgentRow
+            // Scoped by role: a collection auto-opens the rep's stage, and that
+            // must not read as "the authorised signatory was already asked".
+            const hasAuthorizedStage2 = signatures.some(
+              (s) => s.parentSignatureRequestId === sig.id && s.signatoryRole === "authorized"
+            )
             // Offer authorised sign-off on a signed receiver request when the
             // customer has a flagged signatory and no stage-2 exists yet.
             const canRequestAuthorized =
-              !isAuthorizedRow && sig.status === "signed" && hasAuthorizedContact && !hasStage2
+              !isCountersignRow && sig.status === "signed" && hasAuthorizedContact && !hasAuthorizedStage2
 
             // WhatsApp: send the sign link to the receiver, or — for the
             // authorised-signatory stage — name the actual receiver + delivery
@@ -285,7 +295,7 @@ export function SignaturesSection({
             const parentReceiver = isAuthorizedRow
               ? signatures.find((s) => s.id === sig.parentSignatureRequestId) ?? null
               : null
-            const whatsappUrl = !isActive
+            const whatsappUrl = !isActive || isAgentRow
               ? null
               : isAuthorizedRow
                 ? buildWhatsappUrlWithLink(
@@ -315,11 +325,17 @@ export function SignaturesSection({
                 <div className="flex items-start justify-between gap-2">
                   <div>
                     <div className="flex items-center gap-2">
-                      <p className="font-medium text-sm">{sig.documentName}</p>
+                      <p className="font-medium text-sm">{localizeDocumentName(sig.documentName, tKind)}</p>
                       {isAuthorizedRow && (
                         <span className="inline-flex items-center gap-1 rounded-full bg-kara-purple/10 px-1.5 py-0.5 text-[10px] font-semibold text-kara-purple">
                           <ShieldCheck className="size-3" />
                           {t("authorizedSignatory")}
+                        </span>
+                      )}
+                      {isAgentRow && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-kara-blue/10 px-1.5 py-0.5 text-[10px] font-semibold text-kara-blue">
+                          <ShieldCheck className="size-3" />
+                          {t("karaAgentSignature")}
                         </span>
                       )}
                     </div>

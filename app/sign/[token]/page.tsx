@@ -1,8 +1,14 @@
 import { notFound } from "next/navigation"
 import { headers } from "next/headers"
 import { getLocale, getTranslations } from "next-intl/server"
+import { localizeDocumentName, splitDocumentName } from "@/lib/utils/document-name"
+import { isCountersignStage, stageInspectsItems } from "@/lib/domain/signature-stage"
 import { TriangleAlert } from "lucide-react"
-import { getSignatureByToken, recordSignatureOpened } from "@/lib/actions/signatures"
+import {
+  getPendingAgentCountersignToken,
+  getSignatureByToken,
+  recordSignatureOpened,
+} from "@/lib/actions/signatures"
 import { getDeliveryNoteData } from "@/lib/actions/delivery-notes"
 import { formatDate } from "@/lib/utils/format"
 import { SignatureForm } from "./_components/signature-form"
@@ -27,6 +33,7 @@ export default async function SignPage({
     getDeliveryNoteData(token),
     getTranslations("signatures.signing"),
   ])
+  const tKind = await getTranslations("signatures.documentKind")
 
   if (!data) notFound()
 
@@ -77,10 +84,24 @@ export default async function SignPage({
     (locale === "ar" ? activeConsent?.textAr : activeConsent?.textEn) ?? t("consent")
   const statusLabel = isSigned ? t("signed") : t("title")
 
+  // The stored document name is frozen English evidence; the signer reads it in
+  // their own language. The kind alone titles the header and the certificate —
+  // and it is read off THIS document, so a collection never says "delivery note".
+  const documentKindLabel = tKind(splitDocumentName(sig.documentName).kind ?? "deliveryNote")
+  // Only meaningful once stage 1 is signed; null on every other stage/channel.
+  const agentCountersignToken = isSigned
+    ? await getPendingAgentCountersignToken(sig.id)
+    : null
+  const localizedDocumentName = localizeDocumentName(sig.documentName, (k) => tKind(k))
+  // A collection receipt documents the date the devices came BACK. Labelling
+  // that "التسليم" on the review card told the signer the wrong direction.
+  const movementDateLabel =
+    request?.typeSlug === "collection" ? t("collectionDateLabel") : t("delivery")
+
   return (
     <div className="min-h-svh bg-muted/40">
       <SignHeader
-        documentName={t("deliveryNote")}
+        documentName={documentKindLabel}
         subtitle={customer?.name}
         statusLabel={statusLabel}
         statusVariant={STATUS_VARIANT[sig.status] ?? "outline"}
@@ -101,6 +122,17 @@ export default async function SignPage({
             <div className="rounded-xl border border-kara-blue/20 bg-kara-blue-soft px-4 py-3 text-sm font-semibold text-kara-blue">
               {t("signed")}
             </div>
+            {/* The rep's turn, on the tablet the customer just handed back.
+                Rendered as a plain link so it survives with JS disabled and
+                needs no client bundle on the signing page. */}
+            {agentCountersignToken && (
+              <a
+                href={`/sign/${agentCountersignToken}`}
+                className="rounded-xl border border-kara-purple/30 bg-kara-purple/5 px-4 py-3 text-sm font-semibold text-kara-purple underline-offset-4 hover:underline"
+              >
+                {t("agentCountersignCta")}
+              </a>
+            )}
             <div className="overflow-x-auto rounded-xl border border-border bg-card p-3">
               <DeliveryNoteView data={deliveryNote} />
             </div>
@@ -108,17 +140,23 @@ export default async function SignPage({
                 receiver and the authorised signatory each get proof of
                 their own signature, not each other's. */}
             {(() => {
-              const isAuthorizedHolder = sig.signatoryRole === "authorized"
-              const certificateParty = isAuthorizedHolder ? deliveryNote.authorized : deliveryNote.signature
-              const certificateVerificationId = isAuthorizedHolder
-                ? deliveryNote.authorizedVerificationId
-                : deliveryNote.verificationId
+              // Three stages can hold a token, and each gets proof of THEIR OWN
+              // signature only — the customer's certificate must never carry
+              // Kara's rep's signature, or the other way round.
+              const stage =
+                sig.signatoryRole === "authorized"
+                  ? { party: deliveryNote.authorized, id: deliveryNote.authorizedVerificationId }
+                  : sig.signatoryRole === "kara_agent"
+                    ? { party: deliveryNote.agent, id: deliveryNote.agentVerificationId }
+                    : { party: deliveryNote.signature, id: deliveryNote.verificationId }
+              const certificateParty = stage.party
+              const certificateVerificationId = stage.id
               return (
                 certificateParty && (
                   <Certificate
                     signature={certificateParty}
                     verificationId={certificateVerificationId}
-                    documentName={t("deliveryNote")}
+                    documentName={documentKindLabel}
                   />
                 )
               )
@@ -132,7 +170,7 @@ export default async function SignPage({
               <header className="flex items-center justify-between gap-3 bg-kara-purple px-5 py-3.5">
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-primary-foreground">
-                    {t("deliveryNote")}
+                    {documentKindLabel}
                   </p>
                   {request?.requestNumber && (
                     <p className="truncate font-mono text-xs text-primary-foreground/85">
@@ -233,14 +271,14 @@ export default async function SignPage({
                 )}
                 {request?.movementDate && (
                   <div>
-                    <span className="text-muted-foreground">{t("delivery")}: </span>
+                    <span className="text-muted-foreground">{movementDateLabel}: </span>
                     <strong className="text-foreground">{formatDate(request.movementDate)}</strong>
                   </div>
                 )}
               </div>
             )}
 
-            {canSign && sig.signatoryRole === "authorized" && deliveryNote?.signature && (
+            {canSign && isCountersignStage(sig.signatoryRole) && deliveryNote?.signature && (
               <ReceiverConfirmationCard
                 fullName={deliveryNote.signature.fullName}
                 nationalId={deliveryNote.signature.nationalId}
@@ -253,12 +291,12 @@ export default async function SignPage({
               <SignatureForm
                 token={token}
                 requireNationalId={sig.requireNationalId}
-                documentName={sig.documentName}
+                documentName={localizedDocumentName}
                 consentText={consentText}
                 // Authorised signatory co-signs the record — they did not
                 // physically inspect the items, so no condition selector.
                 items={
-                  sig.signatoryRole === "authorized"
+                  !stageInspectsItems(sig.signatoryRole)
                     ? []
                     : items.map((i) => ({
                         id: i.id,

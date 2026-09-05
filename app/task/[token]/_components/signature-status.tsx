@@ -2,7 +2,8 @@
 
 import { useTranslations } from "next-intl"
 import { CheckCircle2, Clock, ExternalLink, MessageCircle } from "lucide-react"
-import { formatDate } from "@/lib/utils/format"
+import { formatDateLocalized } from "@/lib/utils/format"
+import { useLocale } from "next-intl"
 import { buildWhatsappUrlWithLink } from "@/lib/utils/whatsapp"
 import { renderMessageTemplate } from "@/lib/domain/message-templates"
 
@@ -29,6 +30,7 @@ export function SignatureStatus({
   messageTemplate,
 }: Props) {
   const t = useTranslations("portal")
+  const locale = useLocale()
   const isSigned = status === "signed"
 
   // Null signLink = no public origin configured. The share control disappears
@@ -52,7 +54,7 @@ export function SignatureStatus({
           <p className="text-xs text-green-700 pl-6">{t("signedByName", { name: signerName })}</p>
         )}
         {signedAt && (
-          <p className="text-xs text-green-700 pl-6">{formatDate(signedAt)}</p>
+          <p className="text-xs text-green-700 pl-6">{formatDateLocalized(signedAt, locale)}</p>
         )}
         <div className="pl-6 pt-1">
           {signLink && <a

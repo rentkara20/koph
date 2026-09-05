@@ -710,8 +710,15 @@
       "finalConfirm": "Confirm delivery and submit signature",
       "notProvided": "Not provided",
       "padContinue": "Continue to review",
-      "reviewConsent": "I confirm the details above are correct, that I received the listed items in the condition shown, and I agree to this signature being recorded."
-    }
+      "reviewConsent": "I confirm the details above are correct, that I received the listed items in the condition shown, and I agree to this signature being recorded.",
+      "agentCountersignCta": "Kara rep's turn — tap here to countersign the same receipt",
+      "collectionDateLabel": "Collection date"
+    },
+    "documentKind": {
+      "deliveryNote": "Delivery Note",
+      "collectionReceipt": "Collection Receipt"
+    },
+    "karaAgentSignature": "Kara rep signature"
   },
   "payments": {
     "title": "Payments",
@@ -2294,7 +2301,8 @@
       "noSignatures": "No signature requests yet.",
       "signatoryRole": {
         "receiver": "Receiver",
-        "authorized": "Authorized signatory"
+        "authorized": "Authorized signatory",
+        "kara_agent": "Kara rep"
       },
       "attachments": "Attachments",
       "noAttachments": "No attachments uploaded yet.",
@@ -2327,7 +2335,8 @@
     "manualSignatureUploaded": "Signed file uploaded: {fileName}",
     "manualSignatureApproved": "Manually signed receipt approved",
     "manualSignatureRejected": "Signed file rejected: {reason}",
-    "adHocTaskCreated": "Ad-hoc task created"
+    "adHocTaskCreated": "Ad-hoc task created",
+    "agentCountersignRequested": "Kara rep countersignature requested"
   },
   "products": {
     "title": "Products for Sale",

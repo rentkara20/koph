@@ -185,7 +185,7 @@ const SETTLEMENT_COPY: Record<DepositSettlement, { en: string; ar: string }> = {
 }
 
 export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
-  const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName, depositNote, collectedBy } = data
+  const { sig, request, customer, items, signature, authorized, requiresAuthorized, authorizedName, agent, requiresAgent, depositNote, collectedBy } = data
   // One stored row per physical device, but a customer-facing note reads as
   // "Adapter, qty 5" — so interchangeable (non-serialized, identical) rows are
   // collapsed for print only. Serialized devices always keep their own line.
@@ -389,17 +389,21 @@ export function DeliveryNoteView({ data }: { data: DeliveryNoteData }) {
             signatureData={signature?.signatureData ?? null}
           />
           {/* A collection is a two-party handover: the customer releases the
-              devices and Kara's rep acknowledges taking them. The rep signs by
-              hand on the printed page — capturing it is pointless when the rep
-              is the one holding the tablet the customer just signed on. */}
-          {isCollectionNote && (
+              devices and Kara's rep acknowledges taking them. When the rep has
+              countersigned (stage 2) their captured signature prints here; on a
+              legacy or still-pending note the box falls back to the assigned
+              rep's name over a blank line to sign by hand. Either way the box
+              is the REP's — the failure this prevents is the rep signing in the
+              customer's box, leaving a receipt that says the customer released
+              the devices to themselves. */}
+          {(isCollectionNote || requiresAgent) && (
             <SignatureBox
               titleEn="Received by (Kara Team)"
               titleAr="توقيع مندوب كارا"
-              name={collectedBy}
+              name={agent?.fullName ?? collectedBy}
               nationalId={null}
-              date={signDate}
-              signatureData={null}
+              date={agent ? fmt(agent.signedAt) : signDate}
+              signatureData={agent?.signatureData ?? null}
               showNationalId={false}
             />
           )}

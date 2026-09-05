@@ -8,7 +8,7 @@ import { getServicesForTaskToken } from "@/lib/actions/task-services"
 import { getCustomerContacts } from "@/lib/actions/customer-contacts"
 import { getSignatureForTaskToken } from "@/lib/actions/signatures"
 import { isDeliveryStageUnlocked } from "@/lib/actions/otp"
-import { formatDate } from "@/lib/utils/format"
+import { formatDateLocalized } from "@/lib/utils/format"
 import { buildWhatsappUrlWithLink } from "@/lib/utils/whatsapp"
 import { getOperationalMessageTemplates } from "@/lib/actions/settings"
 import { renderMessageTemplate } from "@/lib/domain/message-templates"
@@ -145,6 +145,13 @@ export default async function TaskPage({
     workingHours: companyLocation.workingHours,
     accessNotes: companyLocation.accessNotes,
   } : { label: tReq("karaWarehouse") }
+  // A collection documents the day the devices came BACK; a delivery, the day
+  // they went out. Reading deliveryDate on both told the rep the wrong date
+  // under the wrong label.
+  const isCollection = requestType?.slug === "collection"
+  const movementDate =
+    (isCollection ? request?.collectionDate : request?.deliveryDate) ?? null
+
   const routePlan = buildRequestRoutePlan({
     typeSlug: requestType?.slug,
     warehouse: warehousePoint,
@@ -224,7 +231,9 @@ export default async function TaskPage({
 
         {/* Request info card */}
         <div className="rounded-xl bg-background border p-4 space-y-3">
-          <h2 className="font-semibold text-kara-purple">{requestType?.nameEn ?? tPortal("yourTask")}</h2>
+          <h2 className="font-semibold text-kara-purple">
+            {(locale === "ar" ? requestType?.nameAr : requestType?.nameEn) ?? tPortal("yourTask")}
+          </h2>
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
             <div>
@@ -257,15 +266,17 @@ export default async function TaskPage({
                     rel="noopener noreferrer"
                     className="text-xs text-primary underline-offset-4 hover:underline"
                   >
-                    View on map
+                    {tPortal("viewOnMap")}
                   </a>
                 )}
               </div>
             )}
-            {request.deliveryDate && (
+            {movementDate !== null && (
               <div>
-                <p className="text-xs text-muted-foreground">{tReq("deliveryDate")}</p>
-                <p className="font-medium">{formatDate(request.deliveryDate)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {isCollection ? tReq("collectionDate") : tReq("deliveryDate")}
+                </p>
+                <p className="font-medium">{formatDateLocalized(movementDate, locale)}</p>
               </div>
             )}
             {request.timeWindow && (

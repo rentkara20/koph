@@ -24,6 +24,7 @@ import {
   type SignatureChannel,
   type SignaturePolicyOverrides,
 } from "@/lib/domain/signature-channel"
+import type { SignatoryRole } from "@/lib/domain/signature-stage"
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0]
 type DbLike = typeof db | Tx
@@ -39,7 +40,7 @@ export type CreateSignatureRequestCoreInput = {
   initiatorId?: string | null
   /** Partner who initiated, when initiatedBy = "partner". */
   createdByAgentId?: string | null
-  signatoryRole?: "receiver" | "authorized"
+  signatoryRole?: SignatoryRole
   parentSignatureRequestId?: string | null
   signatoryContactId?: string | null
   /** JSON-encoded DepositNote, already validated by the caller. */

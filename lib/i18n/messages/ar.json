@@ -710,8 +710,15 @@
       "finalConfirm": "تأكيد التسليم وإرسال التوقيع",
       "notProvided": "غير محدد",
       "padContinue": "متابعة للمراجعة",
-      "reviewConsent": "أقر بأن البيانات أعلاه صحيحة، وأنني استلمت الأصناف المذكورة بالحالة الموضحة، وأوافق على اعتماد هذا التوقيع."
-    }
+      "reviewConsent": "أقر بأن البيانات أعلاه صحيحة، وأنني استلمت الأصناف المذكورة بالحالة الموضحة، وأوافق على اعتماد هذا التوقيع.",
+      "agentCountersignCta": "دور مندوب كارا — اضغط هنا للتوقيع على نفس السند",
+      "collectionDateLabel": "تاريخ الاستلام"
+    },
+    "documentKind": {
+      "deliveryNote": "سند تسليم",
+      "collectionReceipt": "سند استلام"
+    },
+    "karaAgentSignature": "توقيع مندوب كارا"
   },
   "payments": {
     "title": "المدفوعات",
@@ -2294,7 +2301,8 @@
       "noSignatures": "لا توجد طلبات توقيع بعد.",
       "signatoryRole": {
         "receiver": "المستلم",
-        "authorized": "المفوّض بالتوقيع"
+        "authorized": "المفوّض بالتوقيع",
+        "kara_agent": "مندوب كارا"
       },
       "attachments": "المرفقات",
       "noAttachments": "لم تُرفع مرفقات بعد.",
@@ -2327,7 +2335,8 @@
     "manualSignatureUploaded": "تم رفع الملف الموقّع: {fileName}",
     "manualSignatureApproved": "تمت الموافقة على السند الموقّع يدوياً",
     "manualSignatureRejected": "تم رفض الملف الموقّع: {reason}",
-    "adHocTaskCreated": "تم إنشاء مهمة عامة"
+    "adHocTaskCreated": "تم إنشاء مهمة عامة",
+    "agentCountersignRequested": "طُلب توقيع مندوب كارا على السند"
   },
   "products": {
     "title": "منتجات للبيع",

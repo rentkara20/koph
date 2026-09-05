@@ -4,7 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server"
 import { CalendarClock, ClipboardList, MapPin } from "lucide-react"
 import { getTaskByToken, getTaskPhotosByToken } from "@/lib/actions/tasks"
 import { getActiveFailureReasons } from "@/lib/actions/failure-reasons"
-import { formatDate } from "@/lib/utils/format"
+import { formatDateLocalized } from "@/lib/utils/format"
 import { LocaleToggle } from "@/components/layout/locale-toggle"
 import { PhotoUpload } from "./photo-upload"
 import { AdHocActions } from "./ad-hoc-actions"
@@ -87,7 +87,7 @@ export async function AdHocTaskView({ token }: { token: string }) {
               <div>
                 <p className="text-xs text-muted-foreground">{t("scheduledDate")}</p>
                 <p className="font-medium">
-                  {task.scheduledAt ? formatDate(task.scheduledAt) : "—"}
+                  {task.scheduledAt ? formatDateLocalized(task.scheduledAt, locale) : "—"}
                   {task.timeWindow ? ` · ${task.timeWindow}` : ""}
                 </p>
               </div>

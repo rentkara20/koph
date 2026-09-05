@@ -4,6 +4,7 @@ import type { RequestWorkspace } from "@/lib/actions/request-workspace"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatDate } from "@/lib/utils/format"
+import { localizeDocumentName } from "@/lib/utils/document-name"
 
 // Statuses where the signing page is still live and worth linking to.
 const ACTIVE_SIGNATURE_STATUSES = ["draft", "sent", "opened", "otp_verified"]
@@ -23,6 +24,7 @@ export async function DocumentsTab({ workspace }: { workspace: RequestWorkspace 
     getTranslations("workspace"),
     getTranslations("signatures"),
   ])
+  const tKind = await getTranslations("signatures.documentKind")
 
   return (
     <div className="space-y-4">
@@ -54,10 +56,12 @@ export async function DocumentsTab({ workspace }: { workspace: RequestWorkspace 
                           rel="noopener noreferrer"
                           className="block truncate text-sm font-medium after:absolute after:inset-0"
                         >
-                          {sig.documentName}
+                          {localizeDocumentName(sig.documentName, tKind)}
                         </a>
                       ) : (
-                        <p className="truncate text-sm font-medium">{sig.documentName}</p>
+                        <p className="truncate text-sm font-medium">
+                          {localizeDocumentName(sig.documentName, tKind)}
+                        </p>
                       )}
                       <p className="text-xs text-muted-foreground">
                         {t(`documents.signatoryRole.${sig.signatoryRole}`)} ·{" "}

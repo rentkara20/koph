@@ -17,6 +17,7 @@ import {
 } from "@/lib/db/schema"
 import { parseSignatureSnapshot } from "@/lib/domain/signature-snapshot"
 import { parseDepositNote, type DepositNote } from "@/lib/domain/deposit-note"
+import { isCountersignStage } from "@/lib/domain/signature-stage"
 
 type SignatureParty = {
   fullName: string
@@ -53,9 +54,10 @@ export type DeliveryNoteData = {
     typeSlug: string | null
   } | null
   // The Kara side of a collection: who physically took the devices. Resolved
-  // from the partner task covering this request. Printed as a name over a
-  // blank line the rep signs by hand — deliberately NOT a captured signature,
-  // since the rep is holding the tablet the customer just signed on.
+  // from the partner task covering this request. Used as the FALLBACK label on
+  // the rep's box: a legacy note (or one whose countersignature is still
+  // pending) prints this name over a blank line to sign by hand, while a
+  // countersigned note prints the rep's captured signature instead.
   collectedBy: string | null
   // Top block = the customer/company on record (NOT the receiver).
   customer: {
@@ -88,6 +90,13 @@ export type DeliveryNoteData = {
   requiresAuthorized: boolean
   // Name of the flagged authorised signatory (for the pending box label).
   authorizedName: string | null
+  // Stage-2: Kara's own rep countersigning a collection. Null on deliveries and
+  // on collections whose countersignature stage has not been opened.
+  agent: SignatureParty
+  // Verification id for the rep's own certificate.
+  agentVerificationId: string | null
+  // A Kara-rep countersignature stage exists (show the box even while pending).
+  requiresAgent: boolean
   // Optional per-device deposit block. Prefers the frozen snapshot value over
   // the live signature-request column. Null when off / not opted in.
   depositNote: DepositNote | null
@@ -175,7 +184,7 @@ export async function getDeliveryNoteData(
   // The delivery note always renders around the RECEIVER (stage-1) request.
   // If the token belongs to the authorised (stage-2) request, resolve its parent.
   let receiverSig = sig
-  if (sig.signatoryRole === "authorized" && sig.parentSignatureRequestId) {
+  if (isCountersignStage(sig.signatoryRole) && sig.parentSignatureRequestId) {
     const [parent] = await db
       .select()
       .from(signatureRequests)
@@ -191,6 +200,17 @@ export async function getDeliveryNoteData(
       and(
         eq(signatureRequests.parentSignatureRequestId, receiverSig.id),
         eq(signatureRequests.signatoryRole, "authorized")
+      )
+    )
+
+  // The Kara-rep countersignature stage, if one was opened for this note.
+  const [agentSig] = await db
+    .select()
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.parentSignatureRequestId, receiverSig.id),
+        eq(signatureRequests.signatoryRole, "kara_agent")
       )
     )
 
@@ -272,6 +292,7 @@ export async function getDeliveryNoteData(
 
   const receiverParty = await loadSignatureParty(receiverSig.id)
   const authorizedParty = authorizedSig ? await loadSignatureParty(authorizedSig.id) : null
+  const agentParty = agentSig ? await loadSignatureParty(agentSig.id) : null
 
   // Prefer the immutable snapshot frozen at signing time. Falls back to the
   // live rows loaded above for legacy signatures (signed before snapshots
@@ -333,6 +354,9 @@ export async function getDeliveryNoteData(
     authorizedVerificationId: authorizedSig?.verificationId ?? null,
     requiresAuthorized: !!authorizedSig,
     authorizedName,
+    agent: agentParty,
+    agentVerificationId: agentSig?.verificationId ?? null,
+    requiresAgent: !!agentSig,
     depositNote,
   }
 }

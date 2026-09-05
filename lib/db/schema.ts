@@ -607,8 +607,14 @@ export const signatureRequests = sqliteTable("signature_request", {
   customerId: text("customer_id")
     .notNull()
     .references(() => customers.id),
-  // Two-stage signing: receiver acknowledges, authorised signatory finalises.
-  signatoryRole: text("signatory_role", { enum: ["receiver", "authorized"] })
+  // Two-stage signing. Stage 1 is always "receiver" — the person physically at
+  // the handover. Stage 2 is whoever must countersign the SAME note:
+  //   authorized — the customer's flagged authorised signatory finalises.
+  //   kara_agent — Kara's own rep countersigns a collection, so the receipt
+  //     carries both "who released the devices" and "who took them".
+  // No CHECK constraint backs this column, so widening the list needs no
+  // migration. See lib/domain/signature-stage.ts for what each stage may do.
+  signatoryRole: text("signatory_role", { enum: ["receiver", "authorized", "kara_agent"] })
     .notNull()
     .default("receiver"),
   // Stage-2 requests point back at the receiver's stage-1 request.

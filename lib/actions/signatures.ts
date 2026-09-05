@@ -34,6 +34,10 @@ import {
 } from "@/lib/domain/deposit-note"
 import { emitDomainEvent } from "@/lib/actions/domain-events"
 import { logActivity } from "@/lib/utils/activity"
+import {
+  isCountersignStage,
+  stageAdvancesDeliveryTask,
+} from "@/lib/domain/signature-stage"
 import { sendEmail } from "@/lib/email/resend"
 import { deliveryNoteSignedEmail } from "@/lib/email/templates"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
@@ -742,7 +746,11 @@ export async function submitSignature(
     // the signature-received time on the delivery task awaiting sign-off; never
     // closes it (admin sign-off remains the sole closer/payment gate). Only the
     // receiver stage (not authorised stage-2) advances the delivery task.
-    if (sig.requestId && sig.signatoryRole !== "authorized" && data.deliveryOutcome !== "refused") {
+    if (
+      sig.requestId &&
+      stageAdvancesDeliveryTask(sig.signatoryRole) &&
+      data.deliveryOutcome !== "refused"
+    ) {
       // Scope to the exact task this signature belongs to. The requestId-only
       // fallback is for legacy signature requests created before per-task
       // linkage existed (partnerTaskId null) — every new signature request is
@@ -808,6 +816,8 @@ export async function submitSignature(
   return { id }
 }
 
+const PENDING_SIGNATURE_STATUSES = new Set(["draft", "sent", "opened", "otp_verified"])
+
 type PostSignatureCtx = {
   sig: typeof signatureRequests.$inferSelect
   requestNumber: string
@@ -816,6 +826,13 @@ type PostSignatureCtx = {
 
 async function handlePostSignature(ctx: PostSignatureCtx) {
   const { sig, requestNumber } = ctx
+
+  // A collection is a two-party handover: the customer released the devices
+  // (this signature) and Kara's rep must acknowledge taking them on the SAME
+  // receipt. Chain stage 2 the instant stage 1 lands, so the rep can hand the
+  // device straight back and countersign — waiting on an admin to press a
+  // button is how the rep ends up signing in the customer's box instead.
+  await maybeChainAgentCountersign(sig)
 
   // In-app notifications for signing (customer_signed / fully_signed) are now
   // event-driven: the SignatureCompleted domain event emitted inside the
@@ -838,6 +855,31 @@ async function handlePostSignature(ctx: PostSignatureCtx) {
       await sendEmail({ to: customerRow.email, subject, html })
     }
   }
+}
+
+
+/**
+ * Opens the Kara-rep countersignature stage for a freshly signed COLLECTION
+ * receipt. Silent no-op everywhere else: deliveries need no Kara-side
+ * signature, a countersignature is never itself countersigned, and a refusal
+ * has nothing to acknowledge.
+ */
+async function maybeChainAgentCountersign(
+  sig: typeof signatureRequests.$inferSelect
+): Promise<void> {
+  if (!sig.requestId) return
+  if (isCountersignStage(sig.signatoryRole)) return
+
+  const [row] = await db
+    .select({ typeSlug: requestTypes.slug })
+    .from(requests)
+    .innerJoin(requestTypes, eq(requests.typeId, requestTypes.id))
+    .where(eq(requests.id, sig.requestId))
+  if (row?.typeSlug !== "collection") return
+
+  // Chained by the system on the customer's behalf, so it runs without an admin
+  // session — the signing request itself is the authorisation.
+  await requestAgentCountersign(sig.id, { actor: { userId: sig.initiatorId } })
 }
 
 // ─── Admin: request authorised sign-off (stage-2) ────────────────────────────
@@ -914,6 +956,113 @@ export async function requestAuthorizedSignoff(
   }
 
   return { id, token: secureToken }
+}
+
+// ─── Kara agent countersignature (stage-2, collections) ──────────────────────
+
+/**
+ * Creates the stage-2 request on which KARA'S OWN REP countersigns a note the
+ * customer has already signed. Used on collections: the customer releases the
+ * devices in stage 1, the rep acknowledges taking them in stage 2, and both
+ * signatures land on the one receipt.
+ *
+ * Idempotent — a second call returns the existing stage-2 link rather than
+ * minting a rival token for the same note.
+ */
+export async function requestAgentCountersign(
+  receiverSignatureId: string,
+  // `actor` marks the system path taken by the automatic chain after a
+  // collection is signed: the completed stage-1 signature IS the authorisation,
+  // so there is no admin session to check and the actor may be unattributed.
+  options: { actor?: { userId: string | null } } = {}
+): Promise<SignatureActionResult> {
+  const actorUserId = options.actor
+    ? options.actor.userId
+    : ((await getSessionWithRole("admin"))?.user.id ?? null)
+  if (!options.actor && !actorUserId) return { error: "Unauthorized" }
+
+  const [receiver] = await db
+    .select()
+    .from(signatureRequests)
+    .where(eq(signatureRequests.id, receiverSignatureId))
+  if (!receiver) return { error: "Signature request not found" }
+  if (receiver.status !== "signed") return { error: "The receiver must sign first" }
+  if (isCountersignStage(receiver.signatoryRole)) {
+    return { error: "A countersignature cannot itself be countersigned" }
+  }
+
+  const [existing] = await db
+    .select()
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.parentSignatureRequestId, receiver.id),
+        eq(signatureRequests.signatoryRole, "kara_agent")
+      )
+    )
+  if (existing) return { id: existing.id, token: existing.secureToken }
+
+  const { id, token: secureToken } = await createSignatureRequestCore(db, {
+    channel: assignableChannel(receiver.channel),
+    requestId: receiver.requestId,
+    partnerTaskId: receiver.partnerTaskId,
+    initiatedBy: options.actor ? "system" : "admin",
+    initiatorId: actorUserId,
+    customerId: receiver.customerId,
+    signatoryRole: "kara_agent",
+    parentSignatureRequestId: receiver.id,
+    documentName: receiver.documentName,
+    status: "sent",
+    // The rep is a Kara employee, not the customer — inheriting the customer's
+    // national-ID requirement would demand an Iqama from our own courier.
+    policyOverrides: { requireNationalId: false },
+    storedPolicies: await getSignatureChannelPolicies(),
+  })
+
+  if (receiver.requestId) {
+    await logActivity({
+      entityType: "signature_request",
+      entityId: id,
+      action: "agent_countersign_requested",
+      i18nKey: "activity.agentCountersignRequested",
+      performedBy: actorUserId ?? undefined,
+      performedAs: actorUserId ? "user" : "system",
+    })
+    revalidatePath(`/admin/requests/${receiver.requestId}`)
+  }
+
+  return { id, token: secureToken }
+}
+
+/**
+ * Token of the still-unsigned Kara-rep countersignature chained to a signed
+ * stage-1 note — the "hand the tablet back and countersign" hop.
+ *
+ * Only exposed on the AGENT_DEVICE channel. On that channel the parent token is
+ * already open on the rep's own tablet, so surfacing the child token hands it
+ * to nobody new. On a remote channel the parent link sits in the customer's
+ * WhatsApp, and returning it there would let the customer sign as Kara.
+ */
+export async function getPendingAgentCountersignToken(
+  receiverSignatureId: string
+): Promise<string | null> {
+  const [parent] = await db
+    .select({ channel: signatureRequests.channel })
+    .from(signatureRequests)
+    .where(eq(signatureRequests.id, receiverSignatureId))
+  if (parent?.channel !== "agent_device") return null
+
+  const [child] = await db
+    .select({ token: signatureRequests.secureToken, status: signatureRequests.status })
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.parentSignatureRequestId, receiverSignatureId),
+        eq(signatureRequests.signatoryRole, "kara_agent")
+      )
+    )
+  if (!child) return null
+  return PENDING_SIGNATURE_STATUSES.has(child.status) ? child.token : null
 }
 
 // ─── Partner: get signature status for a task token ──────────────────────────
