@@ -3,6 +3,7 @@
 import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { digitsOnly, normalizeMobile } from "@/lib/utils/digits"
 import { toast } from "sonner"
 import { Check, CircleAlert, Loader2 } from "lucide-react"
 import { submitSignature } from "@/lib/actions/signatures"
@@ -72,7 +73,7 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
     setAttempted(true)
     const failed: FieldKey[] = []
     if (fullName.trim().length < 2) failed.push("fullName")
-    if (requireNationalId && nationalId.trim().length < 5) failed.push("nationalId")
+    if (requireNationalId && digitsOnly(nationalId).length < 5) failed.push("nationalId")
     if (canvasRef.current?.isEmpty() !== false) failed.push("signature")
 
     if (failed.length > 0) {
@@ -90,8 +91,8 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
     const result = await submitSignature(token, {
       geo,
       fullName: fullName.trim(),
-      mobile: mobile.trim() || undefined,
-      nationalId: nationalId.trim() || undefined,
+      mobile: normalizeMobile(mobile) || undefined,
+      nationalId: digitsOnly(nationalId) || undefined,
       signatureData: canvasRef.current?.toDataURL() ?? "",
       itemConditions: groupedItems.flatMap((group) =>
         group.groupedIds.map((requestItemId) => ({
@@ -158,10 +159,13 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
             id="sig-nid"
             value={nationalId}
             onChange={(e) => {
-              setNationalId(e.target.value)
+              setNationalId(digitsOnly(e.target.value))
               clearField("nationalId")
             }}
             inputMode="numeric"
+            pattern="[0-9]*"
+            lang="en"
+            dir="ltr"
             className="font-mono"
             aria-invalid={invalid.has("nationalId")}
             aria-describedby={invalid.has("nationalId") ? "sig-nid-error" : undefined}
@@ -180,9 +184,13 @@ export function SignatureForm({ token, requireNationalId, consentText, items }: 
           <Input
             id="sig-mobile"
             value={mobile}
-            onChange={(e) => setMobile(e.target.value)}
+            onChange={(e) => setMobile(normalizeMobile(e.target.value))}
             inputMode="tel"
             type="tel"
+            pattern="[0-9+]*"
+            lang="en"
+            dir="ltr"
+            className="font-mono"
             placeholder="05XXXXXXXX"
           />
         </div>

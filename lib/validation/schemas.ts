@@ -1,9 +1,25 @@
 import { z } from "zod"
+import { digitsOnly, normalizeMobile } from "@/lib/utils/digits"
 
 // Shared Zod schemas for server-action inputs. Server actions are public POST
 // endpoints, so every untrusted input is validated here before any DB work.
 
 const nonEmpty = (max = 500) => z.string().trim().min(1).max(max)
+
+// Number fields arrive from phone keyboards that may be set to Arabic, which
+// sends ٠١٢٣ rather than 0123. Fold before validating, so a genuine number
+// typed on an Arabic keyboard is accepted rather than rejected as malformed,
+// and so nothing but ASCII digits ever reaches the database.
+const digitString = (max = 30) =>
+  z.preprocess(
+    (value) => (typeof value === "string" ? digitsOnly(value) : value),
+    z.string().max(max)
+  )
+const mobileString = (max = 30) =>
+  z.preprocess(
+    (value) => (typeof value === "string" ? normalizeMobile(value) : value),
+    z.string().max(max)
+  )
 
 // A signature is a base64 data URL from a canvas. Cap the size to reject
 // oversized/garbage payloads (~2MB of base64).
@@ -26,8 +42,8 @@ export const itemConditionSchema = z.object({
 
 export const submitSignatureSchema = z.object({
   fullName: nonEmpty(200),
-  mobile: z.string().trim().max(30).optional(),
-  nationalId: z.string().trim().max(30).optional(),
+  mobile: mobileString().optional(),
+  nationalId: digitString().optional(),
   signatureData: signatureDataSchema,
   itemConditions: z.array(itemConditionSchema).max(200).optional(),
 })
@@ -35,8 +51,10 @@ export const submitSignatureSchema = z.object({
 export const signOnSiteSchema = z.object({
   fullName: nonEmpty(200),
   // Saudi national ID / Iqama numbers are 10 digits; allow longer foreign IDs.
-  nationalId: z.string().trim().regex(/^\d{10,30}$/),
-  mobile: z.string().trim().max(30).optional(),
+  nationalId: digitString().refine((value) => /^\d{10,30}$/.test(value), {
+    message: "must be 10-30 digits",
+  }),
+  mobile: mobileString().optional(),
   signatureData: signatureDataSchema,
 })
 

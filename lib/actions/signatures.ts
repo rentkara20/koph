@@ -47,6 +47,7 @@ import { getAffectedRequestIds, loadTaskBatchGroup, getTasksForRequest } from "@
 import { createSignatureRequestCore } from "@/lib/actions/signature-request-core"
 import { getSignatureChannelPolicies } from "@/lib/actions/settings"
 import { assignableChannel, toSigningGeoColumns, type SigningGeo } from "@/lib/domain/signature-channel"
+import { digitsOnly, normalizeMobile } from "@/lib/utils/digits"
 
 // Terminal task statuses — a signature request should never bind itself to a
 // task that's already closed/rejected/failed/cancelled (no active trip left
@@ -647,7 +648,7 @@ export async function submitSignature(
   const now = Date.now()
   const signedAtIso = new Date(now).toISOString()
   const fullName = data.fullName.trim()
-  const nationalId = data.nationalId?.trim() || null
+  const nationalId = digitsOnly(data.nationalId ?? "") || null
 
   const auditDataHash = await buildAuditHash([
     requestNumber,
@@ -703,7 +704,7 @@ export async function submitSignature(
       id,
       signatureRequestId: sig.id,
       fullName,
-      mobile: data.mobile?.trim() ?? "",
+      mobile: normalizeMobile(data.mobile ?? ""),
       nationalId,
       position: data.position?.trim() || null,
       signatureData: data.signatureData,
@@ -1057,7 +1058,7 @@ export async function signOnSiteByTaskToken(
   const now = Date.now()
   const id = createId()
   const fullName = data.fullName.trim()
-  const nationalId = data.nationalId.trim()
+  const nationalId = digitsOnly(data.nationalId)
   const signedAtIso = new Date(now).toISOString()
 
   const auditDataHash = await buildAuditHash([
@@ -1107,7 +1108,7 @@ export async function signOnSiteByTaskToken(
       id,
       signatureRequestId: sigReq.id,
       fullName,
-      mobile: data.mobile?.trim() ?? "",
+      mobile: normalizeMobile(data.mobile ?? ""),
       nationalId,
       position: data.position?.trim() || null,
       signatureData: data.signatureData,
@@ -1366,7 +1367,7 @@ export async function signOnSiteForRequestGroup(
   const now = Date.now()
   const id = createId()
   const fullName = data.fullName.trim()
-  const nationalId = data.nationalId.trim()
+  const nationalId = digitsOnly(data.nationalId)
   const signedAtIso = new Date(now).toISOString()
 
   const auditDataHash = await buildAuditHash([
@@ -1410,7 +1411,7 @@ export async function signOnSiteForRequestGroup(
         id,
         signatureRequestId: sigReq.id,
         fullName,
-        mobile: data.mobile?.trim() ?? "",
+        mobile: normalizeMobile(data.mobile ?? ""),
         nationalId,
         position: data.position?.trim() || null,
         signatureData: data.signatureData,
@@ -1569,7 +1570,7 @@ export async function uploadManualSignature(
       signatureRequestId: sig.id,
       fullName,
       mobile: "",
-      nationalId: data.nationalId?.trim() || null,
+      nationalId: digitsOnly(data.nationalId ?? "") || null,
       signatureData: "", // artefact lives in uploadedFileUrl for manual uploads
       signatureMethod: "manual_upload",
       uploadedFileUrl: fileUrl,
@@ -1585,7 +1586,7 @@ export async function uploadManualSignature(
       target: customerSignatures.signatureRequestId,
       set: {
         fullName,
-        nationalId: data.nationalId?.trim() || null,
+        nationalId: digitsOnly(data.nationalId ?? "") || null,
         signatureMethod: "manual_upload",
         uploadedFileUrl: fileUrl,
         uploadedBy: session.user.id,

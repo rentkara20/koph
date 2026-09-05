@@ -245,6 +245,39 @@ describe("existing flows after the unification", () => {
     expect(sig.geoLatitude).toBeNull()
   })
 
+  // A phone keyboard set to Arabic sends ٠١٢٣ rather than 0123. Stored raw,
+  // the mobile cannot be dialled or matched, and \d rejects the national ID.
+  test("signing folds Arabic-Indic digits to ASCII before storing them", async () => {
+    const { requestId } = await seedRequest("Digits Customer")
+    const partnerId = createId()
+    await db.insert(schema.partners).values({ id: partnerId, name: "Digits Partner", status: "active" })
+    const task = await createTask(requestId, { scheduledDate: "2026-01-18", partnerId })
+    await db
+      .update(schema.partnerTasks)
+      .set({ status: "in_progress" })
+      .where(eq(schema.partnerTasks.id, task.id as string))
+
+    const signed = await signOnSiteByTaskToken(task.taskToken as string, {
+      fullName: "مستلم",
+      nationalId: "١٢٣٤٥٦٧٨٩٠",
+      mobile: "٠٥٤٥٦٤٦١٨٤٥",
+      signatureData: "data:image/png;base64,iVBORw0KGgo=",
+    })
+    expect(signed.error).toBeUndefined()
+
+    const [row] = await db
+      .select()
+      .from(schema.signatureRequests)
+      .where(eq(schema.signatureRequests.requestId, requestId))
+      .orderBy(desc(schema.signatureRequests.createdAt))
+    const [sig] = await db
+      .select()
+      .from(schema.customerSignatures)
+      .where(eq(schema.customerSignatures.signatureRequestId, row.id))
+    expect(sig.nationalId).toBe("1234567890")
+    expect(sig.mobile).toBe("05456461845")
+  })
+
   test("signing stores coordinates when the browser gave a fix", async () => {
     const { requestId } = await seedRequest("Geo Fix Customer")
     const partnerId = createId()

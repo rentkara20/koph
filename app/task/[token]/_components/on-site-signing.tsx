@@ -7,6 +7,7 @@ import { CheckCircle2, ChevronRight, PenLine, X } from "lucide-react"
 import { signOnSiteByTaskToken, signOnSiteForRequestGroup } from "@/lib/actions/signatures"
 import { captureSigningGeo } from "@/lib/utils/signing-geo"
 import { canSubmitSignature } from "@/lib/domain/signing-review"
+import { digitsOnly, normalizeMobile } from "@/lib/utils/digits"
 import { verifyDeliveryOtp } from "@/lib/actions/otp"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -130,10 +131,10 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   }
 
   async function handleVerifyOtp() {
-    if (!/^\d{6}$/.test(otp.trim())) { setError(t("otpPlaceholder")); return }
+    if (!/^\d{6}$/.test(digitsOnly(otp))) { setError(t("otpPlaceholder")); return }
     setSaving(true)
     setError("")
-    const result = await verifyDeliveryOtp(taskToken, otp.trim(), requestId)
+    const result = await verifyDeliveryOtp(taskToken, digitsOnly(otp), requestId)
     setSaving(false)
     if (result.error) { setError(translateActionError(result.error)); return }
     setStep("outcome")
@@ -150,7 +151,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
 
   function handleFormNext() {
     if (!fullName.trim()) { setError(t("nameRequired")); return }
-    if (!/^\d{10,30}$/.test(nationalId.trim())) { setError(t("nationalIdRequired")); return }
+    if (!/^\d{10,30}$/.test(digitsOnly(nationalId))) { setError(t("nationalIdRequired")); return }
     setError("")
     setStep("pad")
   }
@@ -167,7 +168,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     signatureData,
     consentAccepted,
     fullName: fullName.trim(),
-    nationalId: nationalId.trim(),
+    nationalId: digitsOnly(nationalId),
   }
 
   async function handleFinalSubmit() {
@@ -186,8 +187,8 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     const geo = await captureSigningGeo()
     const payload = {
       fullName: fullName.trim(),
-      nationalId: nationalId.trim(),
-      mobile: mobile.trim() || undefined,
+      nationalId: digitsOnly(nationalId),
+      mobile: normalizeMobile(mobile) || undefined,
       position: position.trim() || undefined,
       deliveryOutcome: outcome ?? undefined,
       remarks: remarks.trim() || undefined,
@@ -201,8 +202,8 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     if (result.error) { setError(translateActionError(result.error)); return }
     savePrefill(taskToken, customerId, {
       fullName: fullName.trim(),
-      mobile: mobile.trim(),
-      nationalId: nationalId.trim(),
+      mobile: normalizeMobile(mobile),
+      nationalId: digitsOnly(nationalId),
     })
     setStep("done")
     router.refresh()
@@ -235,9 +236,12 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
           <p className="text-xs text-muted-foreground">{t("otpHint")}</p>
           <Input
             value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            onChange={(e) => setOtp(digitsOnly(e.target.value).slice(0, 6))}
             placeholder={t("otpPlaceholder")}
             inputMode="numeric"
+            pattern="[0-9]*"
+            lang="en"
+            dir="ltr"
             autoComplete="one-time-code"
             className="text-center font-mono text-2xl tracking-[0.4em]"
             autoFocus
@@ -377,9 +381,11 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
               <Label className="text-xs">{t("mobile")} <span className="text-muted-foreground">{t("optional")}</span></Label>
               <Input
                 value={mobile}
-                onChange={(e) => setMobile(e.target.value)}
+                onChange={(e) => setMobile(normalizeMobile(e.target.value))}
                 placeholder={t("mobilePlaceholder")}
                 inputMode="tel"
+                pattern="[0-9+]*"
+                lang="en"
                 dir="ltr"
                 className="font-mono"
               />
@@ -396,9 +402,11 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
               <Label className="text-xs">{t("nationalId")} <span className="text-destructive">*</span></Label>
               <Input
                 value={nationalId}
-                onChange={(e) => setNationalId(e.target.value.replace(/\D/g, "").slice(0, 30))}
+                onChange={(e) => setNationalId(digitsOnly(e.target.value).slice(0, 30))}
                 placeholder={t("idPlaceholder")}
                 inputMode="numeric"
+                pattern="[0-9]*"
+                lang="en"
                 className="font-mono"
                 dir="ltr"
               />
