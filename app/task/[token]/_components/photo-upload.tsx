@@ -3,6 +3,7 @@
 import { useState, useRef } from "react"
 import { useTranslations } from "next-intl"
 import { upload } from "@vercel/blob/client"
+import { shrinkImage } from "@/lib/utils/image-resize"
 import { Camera, X, Loader2 } from "lucide-react"
 import Image from "next/image"
 
@@ -22,6 +23,7 @@ export function PhotoUpload({
   const t = useTranslations("portal")
   const [photos, setPhotos] = useState<Photo[]>(existingPhotos)
   const [uploading, setUploading] = useState(false)
+  const [stage, setStage] = useState<"preparing" | "uploading">("uploading")
   const [error, setError] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -38,10 +40,14 @@ export function PhotoUpload({
     setUploading(true)
 
     try {
-      const file = files[0]
+      // Downscale first: a straight-from-camera photo is several megabytes, and
+      // on mobile data that upload reads as a frozen page.
+      setStage("preparing")
+      const file = await shrinkImage(files[0])
       const ext = file.name.split(".").pop() ?? "jpg"
       const filename = `tasks/${token}/${Date.now()}.${ext}`
 
+      setStage("uploading")
       const blob = await upload(filename, file, {
         access: "public",
         handleUploadUrl: "/api/upload",
@@ -57,6 +63,7 @@ export function PhotoUpload({
       setError(t("uploadFailed"))
     } finally {
       setUploading(false)
+      setStage("uploading")
       if (inputRef.current) inputRef.current.value = ""
     }
   }
@@ -108,7 +115,7 @@ export function PhotoUpload({
             {uploading ? (
               <>
                 <Loader2 className="size-4 animate-spin" aria-hidden />
-                {t("uploading")}
+                {stage === "preparing" ? t("preparingPhoto") : t("uploading")}
               </>
             ) : (
               <>

@@ -1317,7 +1317,8 @@
     "batchTitle": "Multi-stop delivery",
     "batchSubtitle": "This trip covers {count} requests",
     "batchGroupItems": "{count} items",
-    "destination": "Destination"
+    "destination": "Destination",
+    "preparingPhoto": "Preparing the photo…"
   },
   "trust": {
     "secureLink": "Secure link",

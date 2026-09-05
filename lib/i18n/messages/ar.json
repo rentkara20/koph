@@ -1317,7 +1317,8 @@
     "batchTitle": "توصيل متعدد الطلبات",
     "batchSubtitle": "هذه الرحلة تغطي {count} طلبات",
     "batchGroupItems": "{count} أصناف",
-    "destination": "جهة الوصول"
+    "destination": "جهة الوصول",
+    "preparingPhoto": "جارٍ تجهيز الصورة…"
   },
   "trust": {
     "secureLink": "رابط آمن",

@@ -36,7 +36,11 @@ const SECURITY_HEADERS = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https://*.public.blob.vercel-storage.com",
       "font-src 'self' data:",
-      "connect-src 'self' https://*.public.blob.vercel-storage.com",
+      // Photo upload goes browser -> Vercel Blob directly, so BOTH the API that
+      // issues the upload token (vercel.com/api/blob) and the storage host that
+      // receives the bytes must be reachable. Allowing only the public read
+      // host silently blocked every upload: the request never left the page.
+      "connect-src 'self' https://vercel.com https://*.blob.vercel-storage.com https://*.public.blob.vercel-storage.com",
       "frame-src 'none'",
       "object-src 'none'",
       "base-uri 'self'",
