@@ -312,7 +312,7 @@
       "in_progress": "In Progress",
       "arrived": "Arrived at supplier",
       "picked_up": "Picked up — in transit",
-      "pending_signoff": "Delivery completed — Signature pending",
+      "pending_signoff": "Delivered — Awaiting admin sign-off",
       "closed": "Closed",
       "rejected": "Rejected",
       "failed": "Failed",
@@ -1490,7 +1490,17 @@
     "adoptStockOverCapacity": "Selected quantity exceeds what is left on the line ({remaining}).",
     "adoptStockDone": "{count} device(s) added to this order",
     "adoptStockSubstitutes": "Other models ({count}) — equivalent or better substitute",
-    "adoptStockSubstitutesHint": "Substitutes are allowed and recorded. The device keeps its real name on the delivery note and in its own history."
+    "adoptStockSubstitutesHint": "Substitutes are allowed and recorded. The device keeps its real name on the delivery note and in its own history.",
+    "adoptStockLinePlaceholder": "Choose a line…",
+    "adoptStockPickLineFirst": "Choose a line first to see its devices and the stock available for it.",
+    "adoptStockOnLine": "Devices on this line ({count})",
+    "adoptStockOccupantMismatch": "different model from the line",
+    "adoptStockOccupantLocked": "out with the customer — returns via collection",
+    "adoptStockRelease": "Remove",
+    "adoptStockReleaseConfirm": "Remove device {serial} from this line and return it to free stock?",
+    "adoptStockMoveTo": "Move to another line…",
+    "adoptStockSubstituteWarning": "You selected devices whose model differs from line “{line}”:",
+    "adoptStockSubstituteConfirm": "I confirm the substitution is intended"
   },
   "assets": {
     "title": "Assets",

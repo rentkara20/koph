@@ -17,6 +17,7 @@ import { config } from "dotenv"
 import * as schema from "../lib/db/schema"
 import {
   countPendingAllocationBackfill,
+  findAllocationModelMismatches,
   findAllocationDrift,
   findAssetKindLineTypeMismatches,
   findClosedTasksWithoutPayment,
@@ -105,6 +106,22 @@ if (originMismatches.length === 0) {
       "  never be rewritten — lending a device out is recorded in current_order_id.\n" +
       "  A mismatch here means something rewrote the origin, which erases the\n" +
       "  originating order's record of the device.\n"
+  )
+}
+
+const modelMismatches = await findAllocationModelMismatches(db)
+if (modelMismatches.length === 0) {
+  console.log("✓ every allocated device matches the model of the line it fills")
+} else {
+  console.log(
+    `\ni ${modelMismatches.length} device(s) allocated to a line of a different model:`
+  )
+  console.table(modelMismatches)
+  console.log(
+    "  Not a violation: substituting an equivalent or better device is legitimate.\n" +
+      "  It is a review list — each row is either a deliberate substitution or a\n" +
+      "  mis-click, and until 2026-08-30 nothing could tell them apart. Correct a\n" +
+      "  mis-click from the order's devices tab (شيل / نقل لبند آخر), not with SQL.\n"
   )
 }
 

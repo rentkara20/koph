@@ -8,15 +8,19 @@
 
 import { and, eq, isNull, ne, notInArray, or, sql } from "drizzle-orm"
 import type { drizzle } from "drizzle-orm/libsql"
+import { alias } from "drizzle-orm/sqlite-core"
 import {
   orderLines,
   orderUnits,
+  orders,
+  purchaseOrderLines,
   partnerPaymentDecisions,
   partnerPayments,
   partners,
   partnerTasks,
 } from "@/lib/db/schema"
 import type * as schema from "@/lib/db/schema"
+import { isSameModel } from "@/lib/domain/model-match"
 
 // Any libsql drizzle handle — the app's `db`, or a throwaway file DB in a test.
 type Db = ReturnType<typeof drizzle<typeof schema>>
@@ -223,4 +227,53 @@ export async function findOriginMismatches(db: Db): Promise<OriginRewrite[]> {
     .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
     .where(and(sql`${orderUnits.orderId} is not null`, ne(orderLines.orderId, orderUnits.orderId)))
   return rows
+}
+
+export type AllocationModelMismatch = {
+  id: string
+  assetTag: string | null
+  serialNumber: string | null
+  deviceModel: string
+  lineModel: string
+  orderNumber: string | null
+}
+
+/**
+ * A device must be a plausible fill for the line it is allocated to.
+ *
+ * Substituting an equivalent or better device is legitimate business, so this
+ * is not a hard rule the write path can enforce — it is a report. What it
+ * catches is the accidental substitution: on 2026-08-30 two iPad Pros were
+ * allocated to an order's iPad 10th Gen line because the adopt panel
+ * pre-selected a line by itself and treated every free device as equally
+ * valid. The line read 2/2, the two real iPad 10th Gen units had nowhere to
+ * go, and nothing in the system had an opinion about it.
+ *
+ * Reviewing the rows is the point: each is either a deliberate substitution or
+ * a mis-click that has been silently invisible until now.
+ */
+export async function findAllocationModelMismatches(db: Db): Promise<AllocationModelMismatch[]> {
+  const servingLine = alias(orderLines, "serving_line")
+  const originLine = alias(orderLines, "origin_line")
+  const originPoLine = alias(purchaseOrderLines, "origin_po_line")
+
+  const rows = await db
+    .select({
+      id: orderUnits.id,
+      assetTag: orderUnits.assetTag,
+      serialNumber: orderUnits.serialNumber,
+      deviceModel: sql<string>`coalesce(${orderUnits.model}, ${originLine.description}, ${originPoLine.itemDescription}, '')`,
+      lineModel: sql<string>`coalesce(${servingLine.description}, '')`,
+      orderNumber: orders.orderNumber,
+    })
+    .from(orderUnits)
+    .innerJoin(servingLine, eq(sql`coalesce(${orderUnits.currentOrderLineId}, ${orderUnits.orderLineId})`, servingLine.id))
+    .leftJoin(originLine, eq(orderUnits.orderLineId, originLine.id))
+    .leftJoin(originPoLine, eq(orderUnits.purchaseOrderLineId, originPoLine.id))
+    .leftJoin(orders, eq(servingLine.orderId, orders.id))
+    .where(and(eq(servingLine.type, "rental_asset"), notInArray(orderUnits.status, ["retired", "lost", "sold"])))
+
+  // The comparison is textual and lives in the domain layer, so the audit, the
+  // adopt panel, and the server action all answer "same model?" identically.
+  return rows.filter((row) => !isSameModel(row.deviceModel, row.lineModel))
 }

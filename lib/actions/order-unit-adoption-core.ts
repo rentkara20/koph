@@ -135,3 +135,126 @@ export async function adoptUnitsIntoOrderLineCore(
 
   return { adopted: wanted.length }
 }
+
+/**
+ * Take a device back off an order line and return it to free warehouse stock.
+ *
+ * The counterpart to adoption, and the reason it exists: until 2026-08-30 an
+ * allocation could only ever be added. A device put on the wrong line — which
+ * the panel made easy, since it auto-selected a line and accepted any model —
+ * could not be corrected from the UI at all, so a mis-click became a
+ * hand-written production script. An operator must be able to undo their own
+ * mistake.
+ *
+ * Only a device still sitting in the warehouse can be released. Once it is
+ * assigned or delivered it belongs to the customer flow, and the way back is a
+ * collection, not an edit.
+ */
+export async function releaseUnitFromOrderLineCore(
+  tx: Tx,
+  orderId: string,
+  unitId: string,
+  byUserId: string | null = null,
+): Promise<void> {
+  const [unit] = await tx
+    .select({
+      id: orderUnits.id,
+      status: orderUnits.status,
+      currentOrderId: orderUnits.currentOrderId,
+      currentOrderLineId: orderUnits.currentOrderLineId,
+    })
+    .from(orderUnits)
+    .where(eq(orderUnits.id, unitId))
+  if (!unit) throw new AdoptionError("Device not found")
+  if (unit.currentOrderId !== orderId) throw new AdoptionError("Device is not allocated to this order")
+  if (unit.status !== "in_stock") throw new AdoptionError("Only a device still in the warehouse can be released")
+
+  const res = await tx
+    .update(orderUnits)
+    .set({ currentOrderId: null, currentOrderLineId: null, updatedAt: Date.now() })
+    .where(and(eq(orderUnits.id, unitId), eq(orderUnits.currentOrderId, orderId), eq(orderUnits.status, "in_stock")))
+  if (((res as { rowsAffected?: number }).rowsAffected ?? 1) === 0) {
+    throw new AdoptionError("Device is no longer available")
+  }
+
+  await tx.insert(assetEvents).values({
+    id: createId(),
+    assetId: unitId,
+    type: "note",
+    fromStatus: null,
+    toStatus: null,
+    notes: `Released from order line ${unit.currentOrderLineId} back to free warehouse stock. Origin unchanged.`,
+    byUserId,
+  })
+}
+
+/**
+ * Move an already-allocated device from one line of an order to another —
+ * the common correction, done as one auditable step rather than a release the
+ * operator might forget to follow with an adoption.
+ */
+export async function moveUnitToOrderLineCore(
+  tx: Tx,
+  orderId: string,
+  unitId: string,
+  targetLineId: string,
+  byUserId: string | null = null,
+): Promise<void> {
+  const [unit] = await tx
+    .select({
+      id: orderUnits.id,
+      status: orderUnits.status,
+      currentOrderId: orderUnits.currentOrderId,
+      currentOrderLineId: orderUnits.currentOrderLineId,
+    })
+    .from(orderUnits)
+    .where(eq(orderUnits.id, unitId))
+  if (!unit) throw new AdoptionError("Device not found")
+  if (unit.currentOrderId !== orderId) throw new AdoptionError("Device is not allocated to this order")
+  if (unit.status !== "in_stock") throw new AdoptionError("Only a device still in the warehouse can be moved")
+  if (unit.currentOrderLineId === targetLineId) return
+
+  const [line] = await tx
+    .select({ id: orderLines.id, orderId: orderLines.orderId, type: orderLines.type, quantity: orderLines.quantity })
+    .from(orderLines)
+    .where(eq(orderLines.id, targetLineId))
+  if (!line) throw new AdoptionError("Order line not found")
+  if (line.orderId !== orderId) throw new AdoptionError("Order line does not belong to this order")
+  if (line.type !== "rental_asset") throw new AdoptionError("Only rental lines can borrow warehouse stock")
+
+  const [occupied] = await tx
+    .select({ n: sql<number>`count(*)` })
+    .from(orderUnits)
+    .where(
+      and(
+        servingOrderLine(targetLineId),
+        sql`${orderUnits.status} in (${sql.join(OCCUPYING_ASSET_STATUSES.map((s) => sql`${s}`), sql`, `)})`,
+      ),
+    )
+  if (Number(occupied?.n ?? 0) + 1 > line.quantity) throw new AdoptionError("Line capacity exceeded")
+
+  const res = await tx
+    .update(orderUnits)
+    .set({ currentOrderLineId: targetLineId, updatedAt: Date.now() })
+    .where(
+      and(
+        eq(orderUnits.id, unitId),
+        eq(orderUnits.currentOrderId, orderId),
+        eq(orderUnits.status, "in_stock"),
+        eq(orderUnits.currentOrderLineId, unit.currentOrderLineId!),
+      ),
+    )
+  if (((res as { rowsAffected?: number }).rowsAffected ?? 1) === 0) {
+    throw new AdoptionError("Device is no longer available")
+  }
+
+  await tx.insert(assetEvents).values({
+    id: createId(),
+    assetId: unitId,
+    type: "correction",
+    fromStatus: null,
+    toStatus: null,
+    notes: `Reallocated from order line ${unit.currentOrderLineId} to ${targetLineId} on the same order. Origin unchanged.`,
+    byUserId,
+  })
+}

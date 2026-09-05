@@ -14,6 +14,8 @@ import {
   AdoptionError,
   adoptUnitsIntoOrderLineCore,
   getAdoptableUnitsCore,
+  moveUnitToOrderLineCore,
+  releaseUnitFromOrderLineCore,
 } from "@/lib/actions/order-unit-adoption-core"
 
 let dir: string
@@ -367,5 +369,103 @@ describe("adoptUnitsIntoOrderLineCore", () => {
     // this to satisfy the single-origin constraint.
     expect(unit.purchaseOrderLineId).toBe(poLineId)
     expect(unit.purchaseOrderId).toBe(poId)
+  })
+})
+
+// Undoing an allocation. Adoption was one-way until 2026-08-30, so a device put
+// on the wrong line needed a production script to correct — see
+// scripts/fix-10760-line-allocation-20260830.mts.
+describe("releaseUnitFromOrderLineCore", () => {
+  it("returns a device to free stock and leaves its origin alone", async () => {
+    const origin = await makeOrder("22001")
+    const target = await makeOrder("22002")
+    const unitId = await makeUnit(origin.orderId, origin.lineId, "REL001")
+    await markReturned(unitId)
+    await db.transaction((tx) => adoptUnitsIntoOrderLineCore(tx, target.orderId, target.lineId, [unitId]))
+
+    await db.transaction((tx) => releaseUnitFromOrderLineCore(tx, target.orderId, unitId))
+
+    const [unit] = await db.select().from(schema.orderUnits).where(eq(schema.orderUnits.id, unitId))
+    expect(unit.currentOrderId).toBeNull()
+    expect(unit.currentOrderLineId).toBeNull()
+    expect(unit.orderId).toBe(origin.orderId)
+    expect(unit.orderLineId).toBe(origin.lineId)
+
+    // Free again, so the mistake can be re-done correctly straight away.
+    const adoptable = await db.transaction((tx) => getAdoptableUnitsCore(tx, target.orderId))
+    expect(adoptable.map((u) => u.unitId)).toContain(unitId)
+  })
+
+  it("refuses to release a device that is out with the customer", async () => {
+    const target = await makeOrder("22003")
+    const unitId = await makeUnit(target.orderId, target.lineId, "REL002")
+    await db.transaction((tx) => applyAssetTransition(tx, unitId, "assign", { requestId: null, customerId: target.customerId }))
+
+    await expect(
+      db.transaction((tx) => releaseUnitFromOrderLineCore(tx, target.orderId, unitId)),
+    ).rejects.toBeInstanceOf(AdoptionError)
+  })
+
+  it("refuses to release a device allocated to a different order", async () => {
+    const origin = await makeOrder("22004")
+    const holder = await makeOrder("22005")
+    const other = await makeOrder("22006")
+    const unitId = await makeUnit(origin.orderId, origin.lineId, "REL003")
+    await markReturned(unitId)
+    await db.transaction((tx) => adoptUnitsIntoOrderLineCore(tx, holder.orderId, holder.lineId, [unitId]))
+
+    await expect(
+      db.transaction((tx) => releaseUnitFromOrderLineCore(tx, other.orderId, unitId)),
+    ).rejects.toBeInstanceOf(AdoptionError)
+  })
+})
+
+describe("moveUnitToOrderLineCore", () => {
+  // Adds a second rental line to an existing order.
+  async function addLine(orderId: string, description: string, quantity: number) {
+    const lineId = createId()
+    await db.insert(schema.orderLines).values({ id: lineId, orderId, type: "rental_asset", description, quantity })
+    return lineId
+  }
+
+  it("moves a device between two lines of the same order", async () => {
+    const order = await makeOrder("22010", 2)
+    const otherLineId = await addLine(order.orderId, "Apple iPad 10th Gen, Wi-Fi, Storage 64GB", 2)
+    const unitId = await makeUnit(null, null, "MOV001")
+    await markReturned(unitId)
+    await db.transaction((tx) => adoptUnitsIntoOrderLineCore(tx, order.orderId, order.lineId, [unitId]))
+
+    await db.transaction((tx) => moveUnitToOrderLineCore(tx, order.orderId, unitId, otherLineId))
+
+    const [unit] = await db.select().from(schema.orderUnits).where(eq(schema.orderUnits.id, unitId))
+    expect(unit.currentOrderLineId).toBe(otherLineId)
+    expect(unit.currentOrderId).toBe(order.orderId)
+  })
+
+  it("refuses to move onto a full line", async () => {
+    const order = await makeOrder("22011", 2)
+    const fullLineId = await addLine(order.orderId, "Apple iPad 10th Gen, Wi-Fi, Storage 64GB", 1)
+    const parked = await makeUnit(null, null, "MOV002")
+    const moving = await makeUnit(null, null, "MOV003")
+    await markReturned(parked)
+    await markReturned(moving)
+    await db.transaction((tx) => adoptUnitsIntoOrderLineCore(tx, order.orderId, fullLineId, [parked]))
+    await db.transaction((tx) => adoptUnitsIntoOrderLineCore(tx, order.orderId, order.lineId, [moving]))
+
+    await expect(
+      db.transaction((tx) => moveUnitToOrderLineCore(tx, order.orderId, moving, fullLineId)),
+    ).rejects.toBeInstanceOf(AdoptionError)
+  })
+
+  it("refuses to move onto a line of another order", async () => {
+    const order = await makeOrder("22012")
+    const foreign = await makeOrder("22013")
+    const unitId = await makeUnit(null, null, "MOV004")
+    await markReturned(unitId)
+    await db.transaction((tx) => adoptUnitsIntoOrderLineCore(tx, order.orderId, order.lineId, [unitId]))
+
+    await expect(
+      db.transaction((tx) => moveUnitToOrderLineCore(tx, order.orderId, unitId, foreign.lineId)),
+    ).rejects.toBeInstanceOf(AdoptionError)
   })
 })
