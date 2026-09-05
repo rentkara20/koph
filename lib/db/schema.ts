@@ -649,6 +649,15 @@ export const signatureRequests = sqliteTable("signature_request", {
   // Why a signer declined to sign at all. Distinct from refusing the DELIVERY,
   // which is customer_signature.deliveryOutcome = "refused" + remarks.
   rejectionReason: text("rejection_reason"),
+  // Set only on an agent-only receipt: the rep collected the devices but the
+  // customer was not there to sign, and this records why. Deliberately NOT
+  // rejectionReason — nobody declined; the counterparty was simply absent, and
+  // the note stays open for them to sign later on paper.
+  //
+  // Lives in KOPH, never on the printed page: the customer's signature box must
+  // stay a blank, signable line so the receipt can still be emailed or printed
+  // for a wet signature.
+  customerAbsenceReason: text("customer_absence_reason"),
   reminderEnabled: integer("reminder_enabled", { mode: "boolean" }).notNull().default(false),
   reminderSentAt: integer("reminder_sent_at"),
   // Optional per-device price/deposit block on the delivery note (opt-in per

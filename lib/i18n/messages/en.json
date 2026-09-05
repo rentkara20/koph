@@ -414,7 +414,11 @@
     "photoRequiredError": "Please upload a proof photo first.",
     "selectFailureReason": "Select a reason",
     "markFailedShort": "Couldn’t do it",
-    "deliveryDate": "Delivery date"
+    "deliveryDate": "Delivery date",
+    "proofOverrideTitle": "Close without customer signature",
+    "proofOverrideHint": "No accepted customer signature exists for this request. Closing now releases the partner's payment on your authority alone, and the reason is logged against the request under your name.",
+    "proofOverrideReason": "State why you are closing without the customer's signature",
+    "proofOverrideConfirm": "Close without customer signature"
   },
   "customers": {
     "title": "Customers",
@@ -712,13 +716,22 @@
       "padContinue": "Continue to review",
       "reviewConsent": "I confirm the details above are correct, that I received the listed items in the condition shown, and I agree to this signature being recorded.",
       "agentCountersignCta": "Kara rep's turn — tap here to countersign the same receipt",
-      "collectionDateLabel": "Collection date"
+      "collectionDateLabel": "Collection date",
+      "customerUnavailable": "Customer not available to sign",
+      "customerUnavailableHint": "The devices really were collected, but nobody on the customer's side can sign. Kara's rep signs instead, and the customer's box stays blank for them to sign later.",
+      "absenceReason": "Why the customer did not sign",
+      "absenceReasonHint": "Recorded in KOPH for the admin only — never printed on the receipt.",
+      "absenceReasonRequired": "State why the customer did not sign",
+      "agentDetails": "Kara rep details",
+      "agentDetailsHint": "Enter your own name as the Kara rep collecting the devices.",
+      "agentReviewConsent": "I confirm I collected the items listed above on Kara's behalf in the condition shown, and that the customer could not sign for the reason stated."
     },
     "documentKind": {
       "deliveryNote": "Delivery Note",
       "collectionReceipt": "Collection Receipt"
     },
-    "karaAgentSignature": "Kara rep signature"
+    "karaAgentSignature": "Kara rep signature",
+    "agentOnlyReceipt": "Collected without customer signature"
   },
   "payments": {
     "title": "Payments",
@@ -2336,7 +2349,9 @@
     "manualSignatureApproved": "Manually signed receipt approved",
     "manualSignatureRejected": "Signed file rejected: {reason}",
     "adHocTaskCreated": "Ad-hoc task created",
-    "agentCountersignRequested": "Kara rep countersignature requested"
+    "agentCountersignRequested": "Kara rep countersignature requested",
+    "agentOnlyReceiptSigned": "{fullName} signed an agent-only receipt — reason: {reason}",
+    "taskClosedWithoutCustomerProof": "Task closed without customer proof — reason: {reason}"
   },
   "products": {
     "title": "Products for Sale",

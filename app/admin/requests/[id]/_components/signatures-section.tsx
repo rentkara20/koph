@@ -70,6 +70,7 @@ type SigRow = {
   createdAt: number
   signatoryRole: string
   parentSignatureRequestId: string | null
+  customerAbsenceReason?: string | null
   signerName: string | null
   signedAt: number | null
   signatureMethod?: string | null
@@ -339,6 +340,15 @@ export function SignaturesSection({
                         </span>
                       )}
                     </div>
+                    {/* One-sided receipt. Loud on purpose: this is the row that
+                        tells the admin no customer ever signed, and that
+                        releasing payment on it is their own call. */}
+                    {sig.customerAbsenceReason && (
+                      <p className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-500/10 dark:text-amber-200">
+                        <span className="font-semibold">{t("agentOnlyReceipt")}</span>{" — "}
+                        {sig.customerAbsenceReason}
+                      </p>
+                    )}
                     {sig.requireNationalId && (
                       <p className="text-xs text-muted-foreground mt-0.5">{t("requiresNationalId")}</p>
                     )}

@@ -137,6 +137,11 @@ function SignOffButton({
   const [approvedAmount, setApprovedAmount] = useState("")
   const [reason, setReason] = useState("")
   const [loading, setLoading] = useState(false)
+  // Revealed only after the proof gate has actually refused this task. The
+  // waiver never invites itself: an admin who sees the box before they have hit
+  // the wall is being nudged toward closing without a customer signature.
+  const [proofBlocked, setProofBlocked] = useState(false)
+  const [proofOverrideReason, setProofOverrideReason] = useState("")
   const needsQty = pricingModel === "per_day" || pricingModel === "per_hour" || pricingModel === "per_item"
 
   const parsedQty = qty ? parseFloat(qty) : null
@@ -152,7 +157,8 @@ function SignOffButton({
   const canConfirm =
     !(needsQty && !qty) &&
     !(decision === "partial" && (!approvedAmount || !reason.trim())) &&
-    !(decision === "none" && !reason.trim())
+    !(decision === "none" && !reason.trim()) &&
+    !(proofBlocked && !proofOverrideReason.trim())
 
   async function handleSignOff() {
     setLoading(true)
@@ -162,8 +168,12 @@ function SignOffButton({
         quantity: needsQty && qty ? parseInt(qty) : undefined,
         approvedAmount: decision === "partial" ? parseFloat(approvedAmount) : undefined,
         reason: reason.trim() || undefined,
+        proofOverrideReason: proofBlocked ? proofOverrideReason.trim() : undefined,
       })
       if (result?.error) {
+        // The gate refused for want of a customer signature — the one refusal an
+        // admin is allowed to answer, in writing.
+        if (result.error.includes("customer signature is required")) setProofBlocked(true)
         toast.error(translateActionError(result.error))
         setLoading(false)
         return
@@ -237,9 +247,25 @@ function SignOffButton({
           className="h-14 text-xs"
         />
       )}
+      {proofBlocked && (
+        <div className="space-y-1.5 rounded-md border border-amber-300 bg-amber-50 p-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="text-xs font-semibold text-amber-800 dark:text-amber-200">
+            {t("proofOverrideTitle")}
+          </p>
+          <p className="text-[11px] text-amber-800/80 dark:text-amber-200/80">
+            {t("proofOverrideHint")}
+          </p>
+          <Textarea
+            placeholder={t("proofOverrideReason")}
+            value={proofOverrideReason}
+            onChange={(e) => setProofOverrideReason(e.target.value)}
+            className="h-14 text-xs"
+          />
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Button size="sm" disabled={loading || !canConfirm} onClick={handleSignOff}>
-          {loading ? "…" : t("confirm")}
+          {loading ? "…" : proofBlocked ? t("proofOverrideConfirm") : t("confirm")}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>{t("cancel")}</Button>
       </div>

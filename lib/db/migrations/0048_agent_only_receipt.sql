@@ -1,0 +1,1 @@
+ALTER TABLE `signature_request` ADD `customer_absence_reason` text;

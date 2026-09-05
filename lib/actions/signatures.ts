@@ -43,6 +43,7 @@ import { deliveryNoteSignedEmail } from "@/lib/email/templates"
 import { getStaffSession, getSessionWithRole } from "@/lib/auth/session"
 import {
   createSignatureRequestSchema,
+  signAgentOnlySchema,
   signOnSiteSchema,
   submitSignatureSchema,
   firstError,
@@ -371,6 +372,7 @@ export async function getSignatureRequestsForRequest(requestId: string) {
       createdAt: signatureRequests.createdAt,
       signatoryRole: signatureRequests.signatoryRole,
       parentSignatureRequestId: signatureRequests.parentSignatureRequestId,
+      customerAbsenceReason: signatureRequests.customerAbsenceReason,
       signerName: customerSignatures.fullName,
       signedAt: customerSignatures.signedAt,
       signatureMethod: customerSignatures.signatureMethod,
@@ -1097,6 +1099,270 @@ export async function getSignatureForTaskToken(taskToken: string) {
     // dispatch path above keeps the throwing publicUrl().
     signLink: publicUrlOrNull(`/sign/${sigReq.secureToken}`),
   }
+}
+
+// ─── Partner: agent-only receipt (the customer was not there to sign) ────────
+
+/**
+ * The rep collected the devices but nobody on the customer's side could sign.
+ *
+ * The rep's signature goes into KARA'S OWN box on a `kara_agent` child, and the
+ * customer's stage-1 note is deliberately LEFT UNSIGNED. Three things follow
+ * from that, and all three are the point:
+ *
+ *   1. The printed receipt keeps a blank, signable customer box, so it can
+ *      still be emailed or printed for a wet signature afterwards.
+ *   2. The manual-return path (upload + admin approval) stays open on that
+ *      untouched parent, so a paper signature can still become accepted proof.
+ *   3. `canSignOff` sees no customer proof, so the partner payment cannot be
+ *      released without an attributed admin override.
+ *
+ * The task still advances to pending_signoff — the devices really did move —
+ * but `signatureReceivedAt` stays null, because no customer signature was
+ * received. That null is what tells the admin queue this receipt is one-sided.
+ */
+export async function signAgentOnlyByTaskToken(
+  taskToken: string,
+  data: {
+    fullName: string
+    signatureData: string
+    customerAbsenceReason: string
+    mobile?: string
+    position?: string
+    deliveryOutcome?: DeliveryOutcome
+    remarks?: string
+    itemConditions?: {
+      requestItemId: string
+      condition: "good" | "damaged" | "missing"
+      receivedQuantity?: number
+    }[]
+    geo?: SigningGeo
+  }
+): Promise<SignatureActionResult> {
+  if (!checkRateLimit(`sig-agent-only:${taskToken}`, 10)) {
+    return { error: "Too many attempts. Please wait a minute and try again." }
+  }
+
+  const [task] = await db
+    .select()
+    .from(partnerTasks)
+    .where(eq(partnerTasks.taskToken, taskToken))
+
+  if (!task) return { error: "Task not found" }
+  if (!task.requestId) return { error: "Task has no linked request" }
+  if (task.taskTokenExpiresAt < Date.now()) return { error: "Link expired" }
+  if (!["in_progress", "pending_signoff"].includes(task.status)) {
+    return { error: "Task is not active for on-site signing" }
+  }
+
+  const parsed = signAgentOnlySchema.safeParse(data)
+  if (!parsed.success) return { error: firstError(parsed.error) }
+
+  const [req] = await db.select().from(requests).where(eq(requests.id, task.requestId))
+  if (!req) return { error: "Request not found" }
+
+  // The customer's note. Reused when one is already open, so the rep's receipt
+  // hangs off the same document the admin will later print or upload against.
+  const parentSig = await findOrCreateOpenReceiverRequest(task, req.customerId)
+  if ("error" in parentSig) return parentSig
+  const parent = parentSig.row
+
+  if (parent.status === "signed") {
+    return { error: "The customer has already signed — use the countersignature instead" }
+  }
+
+  const absenceReason = data.customerAbsenceReason.trim()
+
+  // Idempotent: a retry after a dropped connection must not mint a second
+  // receipt for the same collection.
+  let [child] = await db
+    .select()
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.parentSignatureRequestId, parent.id),
+        eq(signatureRequests.signatoryRole, "kara_agent")
+      )
+    )
+  if (child && TERMINAL_SIGNATURE_STATUSES.includes(child.status)) {
+    return { error: "This document is already signed or cancelled" }
+  }
+  if (!child) {
+    const { id } = await createSignatureRequestCore(db, {
+      channel: "agent_device",
+      requestId: task.requestId,
+      partnerTaskId: task.id,
+      initiatedBy: "partner",
+      createdByAgentId: task.partnerId,
+      customerId: req.customerId,
+      signatoryRole: "kara_agent",
+      parentSignatureRequestId: parent.id,
+      documentName: parent.documentName,
+      status: "sent",
+      // Our own employee — never the customer's identity check.
+      policyOverrides: { requireNationalId: false },
+      storedPolicies: await getSignatureChannelPolicies(),
+    })
+    const [created] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
+    child = created
+  }
+  if (!child) return { error: "Could not create the agent receipt" }
+
+  await db
+    .update(signatureRequests)
+    .set({ customerAbsenceReason: absenceReason, updatedAt: Date.now() })
+    .where(eq(signatureRequests.id, child.id))
+
+  const [customerRow] = await db
+    .select({ name: customers.name })
+    .from(customers)
+    .where(eq(customers.id, req.customerId))
+
+  const { ipAddress, userAgent } = await captureRequestMeta()
+  const now = Date.now()
+  const id = createId()
+  const fullName = data.fullName.trim()
+  const verificationId = child.verificationId ?? generateVerificationId()
+
+  const auditDataHash = await buildAuditHash([
+    req.requestNumber,
+    req.quoteNumber,
+    customerRow?.name ?? "",
+    fullName,
+    null,
+    new Date(now).toISOString(),
+    verificationId,
+    ipAddress,
+    userAgent,
+  ])
+
+  // The rep is the only person who reported what was collected, so their
+  // per-item conditions are the receipt's statement of condition.
+  const snapshotJson = await buildSnapshotJson({
+    requestId: task.requestId,
+    requestNumber: req.requestNumber,
+    quoteNumber: req.quoteNumber ?? "",
+    customerId: req.customerId,
+    itemConditions: data.itemConditions,
+    deliveryOutcome: data.deliveryOutcome ?? null,
+    remarks: data.remarks ?? null,
+    depositNote: parseDepositNote(child.depositNote),
+    signer: { fullName, position: data.position ?? null, nationalId: null },
+    signedAt: now,
+  })
+
+  try {
+    await db.transaction(async (tx) => {
+      assertSigned(await tx
+        .update(signatureRequests)
+        .set({ status: "signed", verificationId, otpHash: null, otpExpiresAt: null, updatedAt: now })
+        .where(and(eq(signatureRequests.id, child.id), eq(signatureRequests.status, child.status))))
+
+      await tx.insert(customerSignatures).values({
+        id,
+        signatureRequestId: child.id,
+        fullName,
+        mobile: normalizeMobile(data.mobile ?? ""),
+        nationalId: null,
+        position: data.position?.trim() || null,
+        signatureData: data.signatureData,
+        signatureMethod: "electronic",
+        deliveryOutcome: data.deliveryOutcome ?? null,
+        remarks: data.remarks?.trim() || null,
+        snapshot: snapshotJson,
+        consentAcceptedAt: now,
+        signedAt: now,
+        signedAtTz: "Asia/Riyadh",
+        ipAddress,
+        userAgent,
+        auditDataHash,
+        ...toSigningGeoColumns(data.geo),
+      })
+
+      await tx.insert(signatureEvents).values({
+        id: createId(),
+        signatureRequestId: child.id,
+        eventType: "signed",
+        ipAddress,
+        userAgent,
+      })
+
+      await emitDomainEvent(tx, {
+        aggregateType: "signature_request",
+        aggregateId: child.id,
+        eventType: "SignatureCompleted",
+        payload: { requestId: child.requestId ?? null, signatoryRole: child.signatoryRole },
+        dedupeKey: `signature_request:${child.id}:SignatureCompleted`,
+      })
+
+      // The devices moved, so the task leaves in_progress — but
+      // signatureReceivedAt stays NULL. No customer signature was received, and
+      // writing a time there would tell the admin queue a lie it cannot detect.
+      await tx
+        .update(partnerTasks)
+        .set({
+          status: task.status === "in_progress" ? "pending_signoff" : task.status,
+          completedAt: task.completedAt ?? now,
+          deliveredAt: task.deliveredAt ?? now,
+          updatedAt: now,
+        })
+        .where(and(eq(partnerTasks.id, task.id), eq(partnerTasks.status, task.status)))
+    })
+  } catch (e) {
+    if (e instanceof StaleSignatureError) return { error: "This document is already signed or cancelled" }
+    throw e
+  }
+
+  await logActivity({
+    entityType: "signature_request",
+    entityId: child.id,
+    action: "agent_only_receipt_signed",
+    i18nKey: "activity.agentOnlyReceiptSigned",
+    i18nData: { fullName, reason: absenceReason },
+    performedAs: "system",
+  })
+
+  revalidatePath(`/admin/requests/${task.requestId}`)
+  return { id, token: child.secureToken }
+}
+
+/**
+ * The open stage-1 note for a task, created if the request has none yet.
+ * Shared with signOnSiteByTaskToken's lookup so an agent-only receipt and a
+ * normal on-site signature can never disagree about which note they belong to.
+ */
+async function findOrCreateOpenReceiverRequest(
+  task: typeof partnerTasks.$inferSelect,
+  customerId: string
+): Promise<{ row: typeof signatureRequests.$inferSelect } | { error: string }> {
+  const [open] = await db
+    .select()
+    .from(signatureRequests)
+    .where(
+      and(
+        eq(signatureRequests.requestId, task.requestId!),
+        eq(signatureRequests.signatoryRole, "receiver")
+      )
+    )
+    .orderBy(desc(signatureRequests.createdAt))
+    .limit(1)
+
+  if (open && !TERMINAL_SIGNATURE_STATUSES.includes(open.status)) return { row: open }
+  if (open?.status === "signed") return { row: open }
+
+  const { id } = await createSignatureRequestCore(db, {
+    channel: "agent_device",
+    requestId: task.requestId!,
+    partnerTaskId: task.id,
+    initiatedBy: "partner",
+    createdByAgentId: task.partnerId,
+    customerId,
+    documentName: "Delivery Note",
+    status: "sent",
+    storedPolicies: await getSignatureChannelPolicies(),
+  })
+  const [created] = await db.select().from(signatureRequests).where(eq(signatureRequests.id, id))
+  return created ? { row: created } : { error: "Could not create the signature request" }
 }
 
 // ─── Partner: sign on-site using task token ───────────────────────────────────

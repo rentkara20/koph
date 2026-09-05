@@ -1,6 +1,6 @@
 "use server"
 
-import { and, count, desc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm"
+import { and, count, desc, eq, gt, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import {
@@ -589,6 +589,17 @@ export type SignOffInput = {
   quantity?: number
   approvedAmount?: number
   reason?: string
+  /**
+   * Closes a task whose customer proof is missing, on the admin's own
+   * authority. The case it exists for: an agent-only receipt — the rep
+   * collected the devices, nobody could sign, and the partner is owed their
+   * money now rather than whenever a paper signature finds its way back.
+   *
+   * Deliberately a REASON, not a boolean. A silent override would be
+   * indistinguishable from a signed delivery in every later report; a stated
+   * one is attributed to the admin who typed it and logged with the task.
+   */
+  proofOverrideReason?: string
 }
 
 // Ad-hoc sign-off: same admin-controlled payment decision + close as a delivery
@@ -805,6 +816,14 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
     return { error: "Task is not awaiting sign-off" }
   }
 
+  // A separate, narrower override: the state transition is normal, only the
+  // customer-proof gate is being waived. Kept distinct from isOverride so
+  // waiving proof never also drags a failed task back to closed.
+  const proofOverrideReason = input.proofOverrideReason?.trim() || null
+  if (input.proofOverrideReason !== undefined && !proofOverrideReason) {
+    return { error: "State a reason to close this task without customer proof" }
+  }
+
   // Never generate payment for work under a cancelled/deleted request. A
   // failed request is allowed through when this is itself the override that
   // rescues the request out of that failed state.
@@ -859,7 +878,7 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
   // partnerTaskId and requestId) or unscoped-by-task for legacy signature
   // requests that predate per-task linkage.
   const missingProofRequestNumbers: string[] = []
-  if (!isOverride && (await isProofEnforcementEnabled())) {
+  if (!isOverride && !proofOverrideReason && (await isProofEnforcementEnabled())) {
     const systemDefault = await getSystemDefaultProof()
     const typeIds = [...new Set(parentRequests.map((r) => r.typeId))]
     const typeRows = await db
@@ -876,6 +895,11 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
       )
       if (!proof.signature) continue
 
+      // Kara's own signature is deliberately excluded: the rep works for us, so
+      // accepting it here would let Kara certify its own delivery and release
+      // the partner payment with nothing from the customer. An agent-only
+      // receipt must go through an attributed admin override, or wait for the
+      // customer's paper signature to be uploaded and approved.
       const [proofRow] = await db
         .select({ outcome: customerSignatures.deliveryOutcome })
         .from(customerSignatures)
@@ -884,6 +908,7 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
           and(
             eq(signatureRequests.status, "signed"),
             eq(signatureRequests.requestId, req.id),
+            ne(signatureRequests.signatoryRole, "kara_agent"),
             or(eq(signatureRequests.partnerTaskId, taskId), isNull(signatureRequests.partnerTaskId))
           )
         )
@@ -1188,6 +1213,20 @@ export async function signOffTask(taskId: string, input: SignOffInput): Promise<
       i18nKey: isOverride ? "activity.taskForceCompleted" : "activity.taskSignedOff",
       performedBy: session.user.id,
     })
+
+    // Closing without the customer's signature must never be silent: this is
+    // the row that later tells anyone reading the trail that the money moved on
+    // an admin's word rather than on a customer's signature.
+    if (proofOverrideReason) {
+      await logActivity({
+        entityType: "request",
+        entityId: requestId,
+        action: "task_closed_without_customer_proof",
+        i18nKey: "activity.taskClosedWithoutCustomerProof",
+        i18nData: { reason: proofOverrideReason },
+        performedBy: session.user.id,
+      })
+    }
 
     // OI-0: a "none" decision produces no partner payment. Record why, so a
     // zero-payment close is an explicit, audited decision rather than silent.

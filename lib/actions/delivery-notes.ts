@@ -225,6 +225,19 @@ export async function getDeliveryNoteData(
     .from(customers)
     .where(eq(customers.id, receiverSig.customerId))
 
+  // Whose signature STATES what was collected. Normally the customer's stage-1
+  // note. On an agent-only receipt the customer never signed and the rep is the
+  // only person who reported anything, so the statement — per-item conditions
+  // and the frozen snapshot — comes from the rep's child instead. Without this
+  // the receipt would print no condition at all and silently fall back to live
+  // rows that later edits can rewrite.
+  const statementSigId =
+    receiverSig.status === "signed"
+      ? receiverSig.id
+      : agentSig?.status === "signed"
+        ? agentSig.id
+        : receiverSig.id
+
   let requestRow: DeliveryNoteData["request"] = null
   let items: DeliveryNoteData["items"] = []
 
@@ -271,7 +284,7 @@ export async function getDeliveryNoteData(
         receivedQuantity: signatureItemConditions.receivedQuantity,
       })
       .from(signatureItemConditions)
-      .where(eq(signatureItemConditions.signatureRequestId, receiverSig.id))
+      .where(eq(signatureItemConditions.signatureRequestId, statementSigId))
     const conditionMap = new Map(conditionRows.map((c) => [c.requestItemId, c]))
 
     items = rawItems.map((i) => {
@@ -300,7 +313,7 @@ export async function getDeliveryNoteData(
   const [snapRow] = await db
     .select({ snapshot: customerSignatures.snapshot })
     .from(customerSignatures)
-    .where(eq(customerSignatures.signatureRequestId, receiverSig.id))
+    .where(eq(customerSignatures.signatureRequestId, statementSigId))
   // Deposit note: live column by default; the frozen snapshot value wins when a
   // snapshot exists (same override pattern as items/customer below).
   let depositNote = parseDepositNote(receiverSig.depositNote)

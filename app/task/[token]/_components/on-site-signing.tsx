@@ -4,7 +4,11 @@ import { useRef, useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { CheckCircle2, ChevronRight, PenLine, X } from "lucide-react"
-import { signOnSiteByTaskToken, signOnSiteForRequestGroup } from "@/lib/actions/signatures"
+import {
+  signAgentOnlyByTaskToken,
+  signOnSiteByTaskToken,
+  signOnSiteForRequestGroup,
+} from "@/lib/actions/signatures"
 import { captureSigningGeo } from "@/lib/utils/signing-geo"
 import { canSubmitSignature } from "@/lib/domain/signing-review"
 import { digitsOnly, normalizeMobile } from "@/lib/utils/digits"
@@ -106,6 +110,12 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   // Held between the pad and the final confirmation. Drawing is not consent.
   const [signatureData, setSignatureData] = useState<string | null>(null)
   const [previousSigner, setPreviousSigner] = useState<PrefillData | null>(null)
+  // Who is about to sign. "kara_agent" is the escape hatch for a collection the
+  // customer could not attend: the rep signs in KARA's box and the customer's
+  // note stays blank and printable. Never a silent fallback — the rep has to
+  // choose it and say why.
+  const [signerMode, setSignerMode] = useState<"customer" | "kara_agent">("customer")
+  const [absenceReason, setAbsenceReason] = useState("")
   // Ticked on the review step only, and cleared whenever the signature is
   // redrawn — an acknowledgement covers the signature it was given for.
   const [consentAccepted, setConsentAccepted] = useState(false)
@@ -125,6 +135,8 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     setOutcome(null)
     setRemarks("")
     setPosition("")
+    setSignerMode("customer")
+    setAbsenceReason("")
     setError("")
     setStep(stageUnlocked ? "outcome" : "otp")
     setOpen(true)
@@ -145,13 +157,19 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     if (REMARKS_REQUIRED.includes(outcome) && !remarks.trim()) {
       setError(t("remarksRequired")); return
     }
+    if (signerMode === "kara_agent" && !absenceReason.trim()) {
+      setError(t("absenceReasonRequired")); return
+    }
     setError("")
     setStep("form")
   }
 
   function handleFormNext() {
     if (!fullName.trim()) { setError(t("nameRequired")); return }
-    if (!/^\d{10,30}$/.test(digitsOnly(nationalId))) { setError(t("nationalIdRequired")); return }
+    // Our own employee carries no customer identity to verify.
+    if (signerMode === "customer" && !/^\d{10,30}$/.test(digitsOnly(nationalId))) {
+      setError(t("nationalIdRequired")); return
+    }
     setError("")
     setStep("pad")
   }
@@ -168,7 +186,8 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     signatureData,
     consentAccepted,
     fullName: fullName.trim(),
-    nationalId: digitsOnly(nationalId),
+    // The review gate checks a national ID it must not demand from the rep.
+    nationalId: signerMode === "kara_agent" ? "0000000000" : digitsOnly(nationalId),
   }
 
   async function handleFinalSubmit() {
@@ -195,16 +214,33 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
       signatureData: data,
       geo,
     }
-    const result = requestId
-      ? await signOnSiteForRequestGroup(taskToken, requestId, payload)
-      : await signOnSiteByTaskToken(taskToken, payload)
+    const result =
+      signerMode === "kara_agent"
+        ? await signAgentOnlyByTaskToken(taskToken, {
+            fullName: fullName.trim(),
+            signatureData: data,
+            customerAbsenceReason: absenceReason.trim(),
+            mobile: normalizeMobile(mobile) || undefined,
+            position: position.trim() || undefined,
+            deliveryOutcome: outcome ?? undefined,
+            remarks: remarks.trim() || undefined,
+            geo,
+          })
+        : requestId
+          ? await signOnSiteForRequestGroup(taskToken, requestId, payload)
+          : await signOnSiteByTaskToken(taskToken, payload)
     setSaving(false)
     if (result.error) { setError(translateActionError(result.error)); return }
-    savePrefill(taskToken, customerId, {
-      fullName: fullName.trim(),
-      mobile: normalizeMobile(mobile),
-      nationalId: digitsOnly(nationalId),
-    })
+    // Never cached for the rep: this prefill exists to save a CUSTOMER
+    // re-typing across groups on one trip, and Kara's own name has no business
+    // being offered back as the next customer's identity.
+    if (signerMode === "customer") {
+      savePrefill(taskToken, customerId, {
+        fullName: fullName.trim(),
+        mobile: normalizeMobile(mobile),
+        nationalId: digitsOnly(nationalId),
+      })
+    }
     setStep("done")
     router.refresh()
   }
@@ -306,6 +342,47 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
               />
             </div>
           )}
+
+          {/* The customer could not attend. Offered only on a task that covers a
+              single request: a batched task's receipt is per-request, and one
+              blanket "nobody signed" across several customers would be a claim
+              about people the rep never met. */}
+          {!requestId && (
+            <div className="rounded-lg border border-dashed border-amber-300 bg-amber-50/60 p-3 dark:border-amber-500/30 dark:bg-amber-500/5">
+              <label className="flex cursor-pointer items-start gap-2.5 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-amber-600"
+                  checked={signerMode === "kara_agent"}
+                  onChange={(e) => {
+                    setSignerMode(e.target.checked ? "kara_agent" : "customer")
+                    setError("")
+                  }}
+                />
+                <span>
+                  <span className="font-semibold">{t("customerUnavailable")}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {t("customerUnavailableHint")}
+                  </span>
+                </span>
+              </label>
+              {signerMode === "kara_agent" && (
+                <div className="mt-3 space-y-1.5">
+                  <Label className="text-xs">
+                    {t("absenceReason")} <span className="text-destructive">*</span>
+                  </Label>
+                  <textarea
+                    value={absenceReason}
+                    onChange={(e) => setAbsenceReason(e.target.value)}
+                    rows={2}
+                    className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-kara-purple/40"
+                  />
+                  <p className="text-[11px] text-muted-foreground">{t("absenceReasonHint")}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {error && <p className="text-xs text-destructive">{error}</p>}
           <Button
             className="h-12 w-full bg-kara-purple text-base font-semibold hover:bg-kara-purple-hover"
@@ -324,13 +401,17 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
             <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">
               <X className="size-4" />
             </button>
-            <p className="text-sm font-semibold text-kara-purple">{t("customerDetails")}</p>
+            <p className="text-sm font-semibold text-kara-purple">
+              {signerMode === "kara_agent" ? t("agentDetails") : t("customerDetails")}
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground">{t("detailsHint")}</p>
+          <p className="text-xs text-muted-foreground">
+            {signerMode === "kara_agent" ? t("agentDetailsHint") : t("detailsHint")}
+          </p>
 
           {/* Reference only — the details on record are shown, never typed into
               the fields for the signer. */}
-          {(customerName || customerMobile) && (
+          {signerMode === "customer" && (customerName || customerMobile) && (
             <div className="rounded-lg border border-dashed border-border bg-muted/40 px-3 py-2.5">
               <p className="text-[11px] font-semibold text-muted-foreground">{t("registeredRecipient")}</p>
               <p className="mt-1 text-sm font-medium">{customerName ?? t("notProvided")}</p>
@@ -353,7 +434,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
 
           {/* Same trip, same customer, details this signer already typed. Also
               opt-in — pressing it is the signer's own act. */}
-          {previousSigner && (
+          {signerMode === "customer" && previousSigner && (
             <button
               type="button"
               onClick={() => {
@@ -398,19 +479,21 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
                 placeholder={t("positionPlaceholder")}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">{t("nationalId")} <span className="text-destructive">*</span></Label>
-              <Input
-                value={nationalId}
-                onChange={(e) => setNationalId(digitsOnly(e.target.value).slice(0, 30))}
-                placeholder={t("idPlaceholder")}
-                inputMode="numeric"
-                pattern="[0-9]*"
-                lang="en"
-                className="font-mono"
-                dir="ltr"
-              />
-            </div>
+            {signerMode === "customer" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">{t("nationalId")} <span className="text-destructive">*</span></Label>
+                <Input
+                  value={nationalId}
+                  onChange={(e) => setNationalId(digitsOnly(e.target.value).slice(0, 30))}
+                  placeholder={t("idPlaceholder")}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  lang="en"
+                  className="font-mono"
+                  dir="ltr"
+                />
+              </div>
+            )}
           </div>
           {error && <p className="text-xs text-destructive">{error}</p>}
           <Button
@@ -455,10 +538,18 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
               <dt className="text-xs text-muted-foreground">{t("mobile")}</dt>
               <dd className="font-mono text-sm text-end" dir="ltr">{mobile || t("notProvided")}</dd>
             </div>
-            <div className="flex items-start justify-between gap-3 px-3 py-2">
-              <dt className="text-xs text-muted-foreground">{t("nationalId")}</dt>
-              <dd className="font-mono text-sm text-end" dir="ltr">{nationalId}</dd>
-            </div>
+            {signerMode === "customer" && (
+              <div className="flex items-start justify-between gap-3 px-3 py-2">
+                <dt className="text-xs text-muted-foreground">{t("nationalId")}</dt>
+                <dd className="font-mono text-sm text-end" dir="ltr">{nationalId}</dd>
+              </div>
+            )}
+            {signerMode === "kara_agent" && (
+              <div className="flex items-start justify-between gap-3 bg-amber-50 px-3 py-2 dark:bg-amber-500/10">
+                <dt className="text-xs text-amber-800 dark:text-amber-200">{t("customerUnavailable")}</dt>
+                <dd className="text-sm text-end text-amber-900 dark:text-amber-100">{absenceReason}</dd>
+              </div>
+            )}
             {position.trim() && (
               <div className="flex items-start justify-between gap-3 px-3 py-2">
                 <dt className="text-xs text-muted-foreground">{t("position")}</dt>
@@ -542,7 +633,9 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
               onChange={(e) => { setConsentAccepted(e.target.checked); setError("") }}
               disabled={saving}
             />
-            <span className="text-xs leading-relaxed">{t("reviewConsent")}</span>
+            <span className="text-xs leading-relaxed">
+              {signerMode === "kara_agent" ? t("agentReviewConsent") : t("reviewConsent")}
+            </span>
           </label>
 
           {error && <p className="text-xs text-destructive">{error}</p>}

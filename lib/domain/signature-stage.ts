@@ -25,12 +25,20 @@ export function isCountersignStage(role: string): boolean {
 }
 
 /**
- * Only stage 1 inspects the goods. A countersigner is attesting to the record,
- * not to a physical count, so they get no per-item condition selector and their
- * submission carries no delivery outcome.
+ * Whoever is the ONLY signer inspects the goods.
+ *
+ * A countersigner normally attests to a record someone else already made — the
+ * customer counted the devices, so the rep gets no per-item condition selector.
+ * But on an agent-only receipt the customer never signed, and the rep is the
+ * only person who ever reported what was collected. Suppressing the selector
+ * there would leave the receipt with no statement of condition at all.
  */
-export function stageInspectsItems(role: string): boolean {
-  return !isCountersignStage(role)
+export function stageInspectsItems(
+  role: string,
+  context: { parentSigned?: boolean } = {}
+): boolean {
+  if (!isCountersignStage(role)) return true
+  return context.parentSigned === false
 }
 
 /**
@@ -48,5 +56,19 @@ export function stageAdvancesDeliveryTask(role: string): boolean {
  * ID requirement inherited from stage 1 would just block the rep.
  */
 export function stageRequiresCustomerIdentity(role: string): boolean {
+  return role !== "kara_agent"
+}
+
+/**
+ * Does this signature count as the CUSTOMER's accepted proof of delivery — the
+ * thing `canSignOff` gates payment on?
+ *
+ * Never for a Kara signature. The rep works for us: letting our own courier's
+ * signature satisfy the customer-proof gate would mean Kara certifying its own
+ * deliveries. An agent-only receipt therefore always needs a deliberate,
+ * attributed admin override, or the customer's later paper signature uploaded
+ * and approved through the manual-return path.
+ */
+export function countsAsCustomerProof(role: string): boolean {
   return role !== "kara_agent"
 }

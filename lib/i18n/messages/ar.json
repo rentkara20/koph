@@ -414,7 +414,11 @@
     "photoRequiredError": "ارفع صورة إثبات الأول.",
     "selectFailureReason": "اختر السبب",
     "markFailedShort": "تعذّر",
-    "deliveryDate": "تاريخ التسليم"
+    "deliveryDate": "تاريخ التسليم",
+    "proofOverrideTitle": "إغلاق بدون توقيع العميل",
+    "proofOverrideHint": "مفيش توقيع عميل مقبول على الطلب ده. لو أغلقتها دلوقتي هتتصرف مستحقات الشريك بناءً على قرارك انت، والسبب هيتسجّل باسمك في سجل الطلب.",
+    "proofOverrideReason": "اكتب سبب الإغلاق بدون توقيع العميل",
+    "proofOverrideConfirm": "إغلاق بدون توقيع العميل"
   },
   "customers": {
     "title": "العملاء",
@@ -712,13 +716,22 @@
       "padContinue": "متابعة للمراجعة",
       "reviewConsent": "أقر بأن البيانات أعلاه صحيحة، وأنني استلمت الأصناف المذكورة بالحالة الموضحة، وأوافق على اعتماد هذا التوقيع.",
       "agentCountersignCta": "دور مندوب كارا — اضغط هنا للتوقيع على نفس السند",
-      "collectionDateLabel": "تاريخ الاستلام"
+      "collectionDateLabel": "تاريخ الاستلام",
+      "customerUnavailable": "العميل غير متاح للتوقيع",
+      "customerUnavailableHint": "الأجهزة اتاخدت فعلاً، بس مفيش حد من جهة العميل يقدر يوقّع. مندوب كارا هو الي هيوقّع، وخانة العميل هتفضل فاضية عشان يوقّعها لاحقاً.",
+      "absenceReason": "سبب عدم توقيع العميل",
+      "absenceReasonHint": "بيتسجّل في النظام للإدارة فقط — مش بيتطبع على السند.",
+      "absenceReasonRequired": "اكتب سبب عدم توقيع العميل",
+      "agentDetails": "بيانات مندوب كارا",
+      "agentDetailsHint": "اكتب اسمك كمندوب كارا المستلم للأجهزة.",
+      "agentReviewConsent": "أقر بأنني استلمت الأصناف المذكورة أعلاه نيابةً عن كارا بالحالة الموضحة، وأن العميل لم يتمكن من التوقيع للسبب المذكور."
     },
     "documentKind": {
       "deliveryNote": "سند تسليم",
       "collectionReceipt": "سند استلام"
     },
-    "karaAgentSignature": "توقيع مندوب كارا"
+    "karaAgentSignature": "توقيع مندوب كارا",
+    "agentOnlyReceipt": "استلام بدون توقيع العميل"
   },
   "payments": {
     "title": "المدفوعات",
@@ -2336,7 +2349,9 @@
     "manualSignatureApproved": "تمت الموافقة على السند الموقّع يدوياً",
     "manualSignatureRejected": "تم رفض الملف الموقّع: {reason}",
     "adHocTaskCreated": "تم إنشاء مهمة عامة",
-    "agentCountersignRequested": "طُلب توقيع مندوب كارا على السند"
+    "agentCountersignRequested": "طُلب توقيع مندوب كارا على السند",
+    "agentOnlyReceiptSigned": "وقّع {fullName} استلاماً بدون توقيع العميل — السبب: {reason}",
+    "taskClosedWithoutCustomerProof": "أُغلقت المهمة بدون توقيع العميل — السبب: {reason}"
   },
   "products": {
     "title": "منتجات للبيع",

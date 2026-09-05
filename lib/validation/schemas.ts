@@ -58,6 +58,19 @@ export const signOnSiteSchema = z.object({
   signatureData: signatureDataSchema,
 })
 
+// Kara's own rep signing an agent-only receipt. Deliberately NOT signOnSiteSchema:
+// the rep is an employee, not the customer, so there is no national ID to
+// verify — demanding an Iqama would just block our own courier. The absence
+// reason is mandatory instead: an agent-only receipt without a stated reason is
+// exactly the unexplained one-sided signature this whole flow exists to end.
+export const signAgentOnlySchema = z.object({
+  fullName: nonEmpty(200),
+  signatureData: signatureDataSchema,
+  customerAbsenceReason: nonEmpty(500),
+  mobile: mobileString().optional(),
+  position: z.string().max(200).optional(),
+})
+
 export const partnerActionSchema = z.enum([
   "accept",
   "reject",
