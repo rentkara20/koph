@@ -42,6 +42,7 @@ import { deriveRequestStatus } from "@/lib/domain/request-status"
 import { canSignOff } from "@/lib/domain/delivery-signoff"
 import { computePayment, requiresQuantity, type PricingModel } from "@/lib/domain/pricing"
 import { checkRateLimit } from "@/lib/utils/rate-limit"
+import { del } from "@vercel/blob"
 import { applyAssetTransition, AssetTransitionError } from "@/lib/actions/asset-transition"
 import { isValidActiveFailureReason } from "@/lib/actions/failure-reasons"
 import {
@@ -1576,6 +1577,63 @@ export async function getTaskPhotosByToken(token: string) {
     .select()
     .from(attachments)
     .where(and(eq(attachments.entityId, task.id), eq(attachments.entityType, "partner_task")))
+}
+
+/**
+ * Token-scoped photo removal. The courier who uploaded a photo can remove it
+ * while the task is still open — a blurred shot or a wrong doorway is worse
+ * than no photo, and there is no other way to correct one from the field.
+ *
+ * Three things are checked before anything is deleted, because this endpoint is
+ * public and destroys both a row and a paid blob:
+ *   - the token resolves to a task, and has not expired;
+ *   - the task is still in progress, so evidence attached to a finished or
+ *     signed-off delivery can no longer be altered;
+ *   - the attachment belongs to THAT task, so a valid token cannot be used to
+ *     delete another task's photo by passing its id.
+ */
+export async function deleteTaskPhotoByToken(
+  token: string,
+  attachmentId: string
+): Promise<ActionResult> {
+  if (!checkRateLimit(`task-photo-delete:${token}`, 30)) {
+    return { error: "Too many attempts. Please wait a minute and try again." }
+  }
+
+  const [task] = await db
+    .select({
+      id: partnerTasks.id,
+      status: partnerTasks.status,
+      taskTokenExpiresAt: partnerTasks.taskTokenExpiresAt,
+    })
+    .from(partnerTasks)
+    .where(eq(partnerTasks.taskToken, token))
+
+  if (!task) return { error: "Task not found" }
+  if (task.taskTokenExpiresAt < Date.now()) return { error: "Link expired" }
+  if (task.status !== "in_progress") return { error: "Task is not in progress" }
+
+  const [photo] = await db
+    .select()
+    .from(attachments)
+    .where(
+      and(
+        eq(attachments.id, attachmentId),
+        eq(attachments.entityId, task.id),
+        eq(attachments.entityType, "partner_task")
+      )
+    )
+
+  if (!photo) return { error: "Photo not found" }
+
+  await db.delete(attachments).where(eq(attachments.id, photo.id))
+  // The row is the record; a blob left behind is only wasted storage, so a
+  // failure here must not report the deletion as failed and invite a retry
+  // against a row that is already gone.
+  await del(photo.fileUrl).catch(() => {})
+
+  revalidatePath(`/task/${token}`)
+  return {}
 }
 
 // ─── Public: update task via magic link ───────────────────────────────────────

@@ -1318,7 +1318,10 @@
     "batchSubtitle": "This trip covers {count} requests",
     "batchGroupItems": "{count} items",
     "destination": "Destination",
-    "preparingPhoto": "Preparing the photo…"
+    "preparingPhoto": "Preparing the photo…",
+    "viewPhoto": "View photo",
+    "deletePhoto": "Delete photo",
+    "deletePhotoConfirm": "Delete this photo? This cannot be undone."
   },
   "trust": {
     "secureLink": "Secure link",

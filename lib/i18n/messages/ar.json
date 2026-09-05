@@ -1318,7 +1318,10 @@
     "batchSubtitle": "هذه الرحلة تغطي {count} طلبات",
     "batchGroupItems": "{count} أصناف",
     "destination": "جهة الوصول",
-    "preparingPhoto": "جارٍ تجهيز الصورة…"
+    "preparingPhoto": "جارٍ تجهيز الصورة…",
+    "viewPhoto": "عرض الصورة",
+    "deletePhoto": "حذف الصورة",
+    "deletePhotoConfirm": "حذف هذه الصورة؟ لا يمكن التراجع."
   },
   "trust": {
     "secureLink": "رابط آمن",

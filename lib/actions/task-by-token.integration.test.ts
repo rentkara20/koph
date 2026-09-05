@@ -28,11 +28,18 @@ vi.mock("@/lib/auth/session", () => ({
   getStaffSession: vi.fn(async () => ({ user: { id: ADMIN_ID } })),
 }))
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }))
+// The blob delete is a network call; the row is what these tests assert on.
+const blobDeletes = vi.hoisted(() => [] as string[])
+vi.mock("@vercel/blob", () => ({
+  del: vi.fn(async (url: string) => {
+    blobDeletes.push(url)
+  }),
+}))
 
 let dir: string
 let db: ReturnType<typeof drizzle<typeof schema>>
 
-import { createTask, getTaskByToken } from "./tasks"
+import { createTask, getTaskByToken, deleteTaskPhotoByToken } from "./tasks"
 import { createBatchedDeliveryTask } from "./delivery-batching"
 
 beforeAll(async () => {
@@ -157,5 +164,99 @@ describe("getTaskByToken — Delivery Batching v2 P3", () => {
 
     const data = await getTaskByToken(taskToken)
     expect(data).toBeNull()
+  })
+})
+
+describe("deleteTaskPhotoByToken", () => {
+  async function seedTaskWithPhoto(label: string) {
+    const seeded = await seedRequestWithItem(1, `${label} Customer`)
+    const partnerId = createId()
+    await db.insert(schema.partners).values({ id: partnerId, name: `${label} Partner`, status: "active" })
+    const created = await createTask(seeded.requestId, { scheduledDate: "2026-02-01", partnerId })
+    const token = created.taskToken as string
+    const [task] = await db
+      .select()
+      .from(schema.partnerTasks)
+      .where(eq(schema.partnerTasks.taskToken, token))
+    await db
+      .update(schema.partnerTasks)
+      .set({ status: "in_progress" })
+      .where(eq(schema.partnerTasks.id, task.id))
+
+    const photoId = createId()
+    await db.insert(schema.attachments).values({
+      id: photoId,
+      entityType: "partner_task",
+      entityId: task.id,
+      fileName: `${label}.jpg`,
+      fileUrl: `https://blob.example/${label}.jpg`,
+      fileType: "image/jpeg",
+      fileSize: 1024,
+      uploadSource: "partner_link",
+    })
+    return { token, taskId: task.id, photoId }
+  }
+
+  test("the courier holding the token can remove their own photo", async () => {
+    const { token, photoId } = await seedTaskWithPhoto("Removable")
+    const result = await deleteTaskPhotoByToken(token, photoId)
+    expect(result.error).toBeUndefined()
+
+    const rows = await db
+      .select()
+      .from(schema.attachments)
+      .where(eq(schema.attachments.id, photoId))
+    expect(rows).toHaveLength(0)
+    expect(blobDeletes).toContain("https://blob.example/Removable.jpg")
+  })
+
+  // The IDOR this guard exists for: a valid token must not reach another
+  // task's evidence just by naming its id.
+  test("a valid token cannot delete a photo belonging to another task", async () => {
+    const mine = await seedTaskWithPhoto("Mine")
+    const theirs = await seedTaskWithPhoto("Theirs")
+
+    const result = await deleteTaskPhotoByToken(mine.token, theirs.photoId)
+    expect(result.error).toBe("Photo not found")
+
+    const rows = await db
+      .select()
+      .from(schema.attachments)
+      .where(eq(schema.attachments.id, theirs.photoId))
+    expect(rows).toHaveLength(1)
+  })
+
+  test("evidence cannot be removed once the task has moved past in-progress", async () => {
+    const { token, taskId, photoId } = await seedTaskWithPhoto("Closed")
+    await db
+      .update(schema.partnerTasks)
+      .set({ status: "pending_signoff" })
+      .where(eq(schema.partnerTasks.id, taskId))
+
+    const result = await deleteTaskPhotoByToken(token, photoId)
+    expect(result.error).toBe("Task is not in progress")
+
+    const rows = await db
+      .select()
+      .from(schema.attachments)
+      .where(eq(schema.attachments.id, photoId))
+    expect(rows).toHaveLength(1)
+  })
+
+  test("an expired link cannot delete anything", async () => {
+    const { token, taskId, photoId } = await seedTaskWithPhoto("Expired")
+    await db
+      .update(schema.partnerTasks)
+      .set({ taskTokenExpiresAt: Date.now() - 1000 })
+      .where(eq(schema.partnerTasks.id, taskId))
+
+    const result = await deleteTaskPhotoByToken(token, photoId)
+    expect(result.error).toBe("Link expired")
+
+    const rows = await db
+      .select()
+      .from(schema.attachments)
+      .where(eq(schema.attachments.id, photoId))
+    expect(rows).toHaveLength(1)
   })
 })
