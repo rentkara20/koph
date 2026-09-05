@@ -17,10 +17,9 @@ import type { GeoUnavailableReason, SigningGeo } from "@/lib/domain/signature-ch
 const TIMEOUT_MS = 8000
 
 // A permission decision requires a human to see a dialog and tap it. A denial
-// arriving faster than this came from the environment, not from a person.
-// Deliberately conservative: a slow, blocked response degrades to `unknown`,
-// which is merely uninformative, while too high a value would start recording
-// real refusals as blocks.
+// arriving faster than this cannot have involved a person, so it is safe to
+// call it a block. The converse does NOT hold: a slow denial is not evidence of
+// a refusal — see classifyDenial.
 const HUMAN_DECISION_FLOOR_MS = 250
 
 type PermissionState = "granted" | "denied" | "prompt" | null
@@ -73,11 +72,20 @@ async function classifyDenial(elapsedMs: number): Promise<GeoUnavailableReason> 
   // permission reads as granted: the request never reached the person.
   if (state === "prompt" || state === "granted") return "policy_blocked"
 
-  // No Permissions API. A denial too fast to have involved a human is a block;
-  // one slow enough to have shown a dialog is a refusal. Anything in between
-  // stays unattributed rather than being pinned on the signer.
+  // No Permissions API — Safari and every iOS browser, since they are all
+  // WebKit. Only one direction can be inferred safely.
+  //
+  // Fast enough to rule a human out: a block.
   if (elapsedMs < HUMAN_DECISION_FLOOR_MS) return "policy_blocked"
-  return "user_denied"
+  //
+  // Slow proves nothing. Measured on iOS 26 / Chrome (CriOS): with the app's
+  // system location permission turned off, the denial took well over this
+  // threshold and no prompt was ever shown, yet an earlier version of this
+  // function recorded it as the signer refusing. A device-level or app-level
+  // block is indistinguishable here from a real refusal, so the reason stays
+  // unattributed. `unknown` costs us a signal; `user_denied` would put a
+  // decision in a delivery record that the customer never made.
+  return "unknown"
 }
 
 export function captureSigningGeo(): Promise<SigningGeo> {

@@ -80,12 +80,17 @@ describe("captureSigningGeo", () => {
     expect(await captureSigningGeo()).toEqual({ unavailableReason: "policy_blocked" })
   })
 
-  test("without a Permissions API, a denial slow enough for a dialog is a refusal", async () => {
+  // Observed on iOS 26 / Chrome: system location permission off, no prompt
+  // shown, and the denial still took longer than the floor. Slowness alone must
+  // never be read as the signer having refused.
+  test("without a Permissions API, a slow denial stays unattributed", async () => {
     stubBrowser({
       onGetPosition: (_s, f) => setTimeout(() => f({ code: 1 }), 320),
       permissions: null,
     })
-    expect(await captureSigningGeo()).toEqual({ unavailableReason: "user_denied" })
+    const result = await captureSigningGeo()
+    expect(result).toEqual({ unavailableReason: "unknown" })
+    expect(result).not.toEqual({ unavailableReason: "user_denied" })
   })
 
   test("no geolocation API at all is 'unsupported'", async () => {
