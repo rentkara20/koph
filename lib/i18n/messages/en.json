@@ -709,7 +709,8 @@
       "backToDetails": "Edit details",
       "finalConfirm": "Confirm delivery and submit signature",
       "notProvided": "Not provided",
-      "padContinue": "Continue to review"
+      "padContinue": "Continue to review",
+      "reviewConsent": "I confirm the details above are correct, that I received the listed items in the condition shown, and I agree to this signature being recorded."
     }
   },
   "payments": {

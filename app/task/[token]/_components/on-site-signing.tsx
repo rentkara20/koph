@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl"
 import { CheckCircle2, ChevronRight, PenLine, X } from "lucide-react"
 import { signOnSiteByTaskToken, signOnSiteForRequestGroup } from "@/lib/actions/signatures"
 import { captureSigningGeo } from "@/lib/utils/signing-geo"
+import { canSubmitSignature } from "@/lib/domain/signing-review"
 import { verifyDeliveryOtp } from "@/lib/actions/otp"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -104,6 +105,9 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   // Held between the pad and the final confirmation. Drawing is not consent.
   const [signatureData, setSignatureData] = useState<string | null>(null)
   const [previousSigner, setPreviousSigner] = useState<PrefillData | null>(null)
+  // Ticked on the review step only, and cleared whenever the signature is
+  // redrawn — an acknowledgement covers the signature it was given for.
+  const [consentAccepted, setConsentAccepted] = useState(false)
 
   function handleStart() {
     // Identity fields start EMPTY on purpose. The name, mobile and national ID
@@ -114,6 +118,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
     setMobile("")
     setNationalId("")
     setSignatureData(null)
+    setConsentAccepted(false)
     setPreviousSigner(loadPrefill(taskToken, customerId))
     setOtp("")
     setOutcome(null)
@@ -153,13 +158,27 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
   // The pad hands the drawing back and stops. Nothing is submitted here.
   function handlePadConfirm(data: string) {
     setSignatureData(data)
+    setConsentAccepted(false)
     setError("")
     setStep("review")
   }
 
+  const reviewState = {
+    signatureData,
+    consentAccepted,
+    fullName: fullName.trim(),
+    nationalId: nationalId.trim(),
+  }
+
   async function handleFinalSubmit() {
-    const data = signatureData
-    if (!data) { setStep("pad"); return }
+    // Asked again here, not just on the button's disabled state: the gate is
+    // the rule, the button is only its presentation.
+    if (!canSubmitSignature(reviewState)) {
+      if (!signatureData) setStep("pad")
+      else setError(t("consentRequired"))
+      return
+    }
+    const data = signatureData!
     setSaving(true)
     setError("")
     // Asked for only at the moment of signing, and never allowed to hold the
@@ -499,7 +518,7 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
             )}
             <button
               type="button"
-              onClick={() => setStep("pad")}
+              onClick={() => { setConsentAccepted(false); setStep("pad") }}
               disabled={saving}
               className="text-xs font-medium text-kara-purple underline-offset-4 hover:underline"
             >
@@ -507,14 +526,23 @@ export function OnSiteSigningFlow({ taskToken, customerName, customerMobile, sta
             </button>
           </div>
 
-          <p className="rounded-lg bg-muted/50 px-3 py-2.5 text-xs leading-relaxed">{t("consent")}</p>
+          <label className="flex cursor-pointer items-start gap-2.5 rounded-lg bg-muted/50 px-3 py-2.5">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 shrink-0 accent-kara-purple"
+              checked={consentAccepted}
+              onChange={(e) => { setConsentAccepted(e.target.checked); setError("") }}
+              disabled={saving}
+            />
+            <span className="text-xs leading-relaxed">{t("reviewConsent")}</span>
+          </label>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
 
           <Button
             className="h-14 w-full bg-kara-purple text-base font-semibold hover:bg-kara-purple-hover"
             onClick={handleFinalSubmit}
-            disabled={saving}
+            disabled={saving || !canSubmitSignature(reviewState)}
           >
             {saving ? "…" : t("finalConfirm")}
           </Button>
