@@ -3,6 +3,15 @@ import createNextIntlPlugin from "next-intl/plugin"
 
 const withNextIntl = createNextIntlPlugin("./lib/i18n/config.ts")
 
+// Locked down everywhere by default. The signing routes are the one exception:
+// a delivery signature records where it was taken, and `geolocation=()` blocks
+// the API outright — getCurrentPosition then fails with PERMISSION_DENIED
+// without ever prompting, which reads in the database exactly like a person
+// refusing. `self` still excludes every cross-origin frame, and the signing
+// pages are same-origin.
+const PERMISSIONS_POLICY_DEFAULT = "camera=(), microphone=(), geolocation=()"
+const PERMISSIONS_POLICY_SIGNING = "camera=(), microphone=(), geolocation=(self)"
+
 const SECURITY_HEADERS = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
@@ -13,7 +22,7 @@ const SECURITY_HEADERS = [
   },
   {
     key: "Permissions-Policy",
-    value: "camera=(), microphone=(), geolocation=()",
+    value: PERMISSIONS_POLICY_DEFAULT,
   },
   {
     // Defense-in-depth for token pages rendering third-party data.
@@ -47,7 +56,20 @@ const nextConfig: NextConfig = {
     ],
   },
   async headers() {
-    return [{ source: "/(.*)", headers: SECURITY_HEADERS }]
+    // Ordered most-specific first, and the general rule explicitly excludes the
+    // signing paths rather than relying on override precedence between two
+    // matching rules that set the same header.
+    return [
+      {
+        source: "/:prefix(task|sign)/:path*",
+        headers: SECURITY_HEADERS.map((header) =>
+          header.key === "Permissions-Policy"
+            ? { key: header.key, value: PERMISSIONS_POLICY_SIGNING }
+            : header
+        ),
+      },
+      { source: "/((?!task/|sign/).*)", headers: SECURITY_HEADERS },
+    ]
   },
 }
 
