@@ -132,12 +132,18 @@ function pruneUndefined<T extends object>(value: T | null | undefined): Partial<
 // silence is not acceptable either — an absent location must say why it is
 // absent, so "no coordinates" can be told apart from "never asked".
 
+// Why a signature carries no coordinates. These end up in delivery evidence, so
+// "the signer refused" must never be recorded for an environment that never
+// asked them — a blanket `denied` reads as a decision the person never made.
 export const GEO_UNAVAILABLE_REASONS = [
-  "denied", // the signer refused the browser prompt
+  "user_denied", // the signer was asked and refused
+  "policy_blocked", // Permissions-Policy, an insecure origin or a webview
+                    // rejected the request before any prompt could appear
   "unavailable", // device/OS could not produce a fix
   "timeout", // took too long
   "unsupported", // no geolocation API in this browser
-  "error", // anything else the browser reported
+  "unknown", // reported as denied, but the browser gives us no way to tell
+             // a refusal from a block — never assume it was the signer
 ] as const
 export type GeoUnavailableReason = (typeof GEO_UNAVAILABLE_REASONS)[number]
 
@@ -169,7 +175,7 @@ export function toSigningGeoColumns(geo?: SigningGeo | null): SigningGeoColumns 
   if ("unavailableReason" in geo) {
     const reason = (GEO_UNAVAILABLE_REASONS as readonly string[]).includes(geo.unavailableReason)
       ? geo.unavailableReason
-      : "error"
+      : "unknown"
     return { ...empty, geoUnavailableReason: reason }
   }
 

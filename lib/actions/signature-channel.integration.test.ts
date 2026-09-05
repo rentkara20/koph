@@ -228,7 +228,7 @@ describe("existing flows after the unification", () => {
       fullName: "مستلم",
       nationalId: "1234567890",
       signatureData: "data:image/png;base64,iVBORw0KGgo=",
-      geo: { unavailableReason: "denied" },
+      geo: { unavailableReason: "user_denied" },
     })
     expect(signed.error).toBeUndefined()
 
@@ -241,7 +241,7 @@ describe("existing flows after the unification", () => {
       .select()
       .from(schema.customerSignatures)
       .where(eq(schema.customerSignatures.signatureRequestId, row.id))
-    expect(sig.geoUnavailableReason).toBe("denied")
+    expect(sig.geoUnavailableReason).toBe("user_denied")
     expect(sig.geoLatitude).toBeNull()
   })
 

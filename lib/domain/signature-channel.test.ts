@@ -138,9 +138,22 @@ describe("toSigningGeoColumns", () => {
   })
 
   test("a refusal records the reason, not silence", () => {
-    const cols = toSigningGeoColumns({ unavailableReason: "denied" })
-    expect(cols.geoUnavailableReason).toBe("denied")
+    const cols = toSigningGeoColumns({ unavailableReason: "user_denied" })
+    expect(cols.geoUnavailableReason).toBe("user_denied")
     expect(cols.geoLatitude).toBeNull()
+  })
+
+  test("an environment block is stored as its own reason, not as a refusal", () => {
+    const cols = toSigningGeoColumns({ unavailableReason: "policy_blocked" })
+    expect(cols.geoUnavailableReason).toBe("policy_blocked")
+    expect(cols.geoUnavailableReason).not.toBe("user_denied")
+  })
+
+  test("an unrecognised reason degrades to 'unknown', never to a refusal", () => {
+    const cols = toSigningGeoColumns({
+      unavailableReason: "denied" as never,
+    })
+    expect(cols.geoUnavailableReason).toBe("unknown")
   })
 
   test("an omitted geo (older client) is 'unsupported', not silently empty", () => {
@@ -156,7 +169,7 @@ describe("toSigningGeoColumns", () => {
 
   test("an unknown reason string is normalised rather than stored raw", () => {
     const cols = toSigningGeoColumns({ unavailableReason: "banana" as never })
-    expect(cols.geoUnavailableReason).toBe("error")
+    expect(cols.geoUnavailableReason).toBe("unknown")
   })
 
   test("a non-finite accuracy keeps the coordinates and drops only the accuracy", () => {

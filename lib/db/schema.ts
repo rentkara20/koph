@@ -743,7 +743,16 @@ export const customerSignatures = sqliteTable("customer_signature", {
   geoLongitude: real("geo_longitude"),
   geoAccuracy: real("geo_accuracy"),
   geoUnavailableReason: text("geo_unavailable_reason", {
-    enum: ["denied", "unavailable", "timeout", "unsupported", "error"],
+    // No CHECK constraint backs this column, so widening the list needs no
+    // migration. See lib/domain/signature-channel.ts for what each means.
+    enum: [
+      "user_denied",
+      "policy_blocked",
+      "unavailable",
+      "timeout",
+      "unsupported",
+      "unknown",
+    ],
   }),
   auditDataHash: text("audit_data_hash"),
 }, (t) => [index("customer_signature_signature_request_idx").on(t.signatureRequestId)])
