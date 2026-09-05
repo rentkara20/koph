@@ -6,7 +6,7 @@
 // query that must return zero rows, usable from a test (as a regression gate)
 // or against production (as an audit).
 
-import { and, eq, isNull, ne, notInArray, or, sql } from "drizzle-orm"
+import { and, eq, inArray, isNull, ne, notInArray, or, sql } from "drizzle-orm"
 import type { drizzle } from "drizzle-orm/libsql"
 import { alias } from "drizzle-orm/sqlite-core"
 import {
@@ -24,6 +24,61 @@ import { isSameModel } from "@/lib/domain/model-match"
 
 // Any libsql drizzle handle — the app's `db`, or a throwaway file DB in a test.
 type Db = ReturnType<typeof drizzle<typeof schema>>
+
+export type OwnershipViolation = {
+  id: string
+  assetTag: string | null
+  serialNumber: string | null
+  ownership: string
+  status: string
+  reason: string
+}
+
+/**
+ * A device we do not own must not carry any marker of KARA ownership.
+ *
+ * Three ways that can go wrong, all of them silent:
+ *  - it has an origin (order line or PO line). Either origin asserts the device
+ *    entered through one of OUR documents, which contradicts non-KARA ownership.
+ *    createAssetCore forbids this at birth; a later hand-written UPDATE would not.
+ *  - it carries a KARA-#### asset tag. The tag is our inventory identity and
+ *    pulls the device into every tag-keyed report (Notion sync included).
+ *  - it reached a terminal status only an owner can reach — `sold` (we sold it)
+ *    or `retired` (we wrote it off). canAssetTransition blocks both, so a row
+ *    here means something wrote status directly.
+ *
+ * Scope note: `in_stock` is deliberately NOT a violation. A customer's device
+ * may legitimately sit in our warehouse awaiting a part; it is kept out of the
+ * rentable pool by unallocatedRentalStock(), not by forbidding the status.
+ */
+export async function findOwnershipViolations(db: Db): Promise<OwnershipViolation[]> {
+  return db
+    .select({
+      id: orderUnits.id,
+      assetTag: orderUnits.assetTag,
+      serialNumber: orderUnits.serialNumber,
+      ownership: orderUnits.ownership,
+      status: orderUnits.status,
+      reason: sql<string>`case
+        when ${orderUnits.orderLineId} is not null then 'has an order-line origin'
+        when ${orderUnits.purchaseOrderLineId} is not null then 'has a purchase-order origin'
+        when ${orderUnits.assetTag} is not null then 'carries a KARA asset tag'
+        else 'reached an owner-only terminal status'
+      end`,
+    })
+    .from(orderUnits)
+    .where(
+      and(
+        ne(orderUnits.ownership, "kara"),
+        or(
+          sql`${orderUnits.orderLineId} is not null`,
+          sql`${orderUnits.purchaseOrderLineId} is not null`,
+          sql`${orderUnits.assetTag} is not null`,
+          inArray(orderUnits.status, ["sold", "retired"])
+        )
+      )
+    )
+}
 
 export type KindMismatch = {
   id: string

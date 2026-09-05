@@ -166,13 +166,15 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
       .limit(LIMIT),
     // WAREHOUSE — units awaiting QC after receipt. Intentionally all kinds:
     // both rental assets and products-for-sale pass through receiving_qc and
-    // the warehouse must clear both queues.
+    // the warehouse must clear both queues. KARA-owned only, though: only
+    // stock we bought is received against a PO in the first place, so a
+    // non-KARA row here would be data drift, not work.
     db
       .select({
         count: sql<number>`count(*)`,
       })
       .from(orderUnits)
-      .where(eq(orderUnits.status, "receiving_qc")),
+      .where(and(eq(orderUnits.status, "receiving_qc"), eq(orderUnits.ownership, "kara"))),
     // OPERATIONS — partner tasks awaiting office sign-off
     db
       .select({
@@ -245,10 +247,18 @@ export async function getInbox(): Promise<RoleInbox[] | null> {
     // Order ids that actually have delivered units (so we only remind on live
     // rentals). Rental-only: collection reminders apply to rental assets that
     // must return; sold products (kind="sale") never re-enter collection.
+    // KARA-owned only: a customer's own device is theirs to keep — there is no
+    // rental end date to chase it on.
     db
       .select({ orderId: orderUnits.orderId })
       .from(orderUnits)
-      .where(and(eq(orderUnits.status, "delivered"), eq(orderUnits.kind, "rental")))
+      .where(
+        and(
+          eq(orderUnits.status, "delivered"),
+          eq(orderUnits.kind, "rental"),
+          eq(orderUnits.ownership, "kara")
+        )
+      )
       .groupBy(orderUnits.orderId),
     // OPERATIONS — active requests untouched for STALLED_DAYS (oversight signal)
     db

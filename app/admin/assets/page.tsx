@@ -2,13 +2,15 @@ import Link from "next/link"
 import { getTranslations } from "next-intl/server"
 import { FileSpreadsheet, Search } from "lucide-react"
 import { getAssets, getAssetStatusCounts } from "@/lib/actions/assets"
-import type { AssetStatus } from "@/lib/domain/asset-status"
+import type { AssetOwnership, AssetStatus } from "@/lib/domain/asset-status"
 import { Badge } from "@/components/ui/badge"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { GenerateTagsButton } from "./_components/generate-tags-button"
 import { SyncNotionButton } from "./_components/sync-notion-button"
 import { ASSET_STATUS_VARIANT } from "./status-variant"
+
+const OWNERSHIP_ORDER: AssetOwnership[] = ["kara", "customer", "supplier"]
 
 const STATUS_ORDER: AssetStatus[] = [
   "in_stock",
@@ -27,11 +29,14 @@ const STATUS_ORDER: AssetStatus[] = [
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; page?: string }>
+  searchParams: Promise<{ q?: string; status?: string; page?: string; ownership?: string }>
 }) {
-  const { q, status, page } = await searchParams
+  const { q, status, page, ownership } = await searchParams
   const statusFilter = STATUS_ORDER.includes(status as AssetStatus)
     ? (status as AssetStatus)
+    : undefined
+  const ownershipFilter = OWNERSHIP_ORDER.includes(ownership as AssetOwnership)
+    ? (ownership as AssetOwnership)
     : undefined
 
   const [t, tCommon, tImportExport, { assets, total, page: currentPage, pageSize }, counts] =
@@ -39,8 +44,13 @@ export default async function AssetsPage({
       getTranslations("assets"),
       getTranslations("common"),
       getTranslations("importExport"),
-      getAssets({ search: q, status: statusFilter, page: page ? parseInt(page, 10) : 1 }),
-      getAssetStatusCounts(),
+      getAssets({
+        search: q,
+        status: statusFilter,
+        ownership: ownershipFilter,
+        page: page ? parseInt(page, 10) : 1,
+      }),
+      getAssetStatusCounts("rental", ownershipFilter),
     ])
 
   const countMap = new Map(counts.map((c) => [c.status, c.total]))
@@ -51,6 +61,16 @@ export default async function AssetsPage({
     const params = new URLSearchParams()
     if (q) params.set("q", q)
     if (s) params.set("status", s)
+    if (ownershipFilter) params.set("ownership", ownershipFilter)
+    const qs = params.toString()
+    return `/admin/assets${qs ? `?${qs}` : ""}`
+  }
+
+  const ownershipHref = (o?: AssetOwnership) => {
+    const params = new URLSearchParams()
+    if (q) params.set("q", q)
+    if (statusFilter) params.set("status", statusFilter)
+    if (o) params.set("ownership", o)
     const qs = params.toString()
     return `/admin/assets${qs ? `?${qs}` : ""}`
   }
@@ -79,6 +99,37 @@ export default async function AssetsPage({
             {t("createAsset")}
           </Link>
         </div>
+      </div>
+
+      {/* Ownership facet. Separate row from the status chips because it answers
+          a different question — whose device is this, not where is it. */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="me-1 text-xs text-muted-foreground">{t("ownershipLabel")}</span>
+        <Link
+          href={ownershipHref()}
+          className={cn(
+            "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+            !ownershipFilter
+              ? "border-transparent bg-kara-purple text-white"
+              : "text-muted-foreground hover:bg-accent"
+          )}
+        >
+          {t("ownershipAll")}
+        </Link>
+        {OWNERSHIP_ORDER.map((o) => (
+          <Link
+            key={o}
+            href={ownershipHref(o)}
+            className={cn(
+              "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+              ownershipFilter === o
+                ? "border-transparent bg-kara-purple text-white"
+                : "text-muted-foreground hover:bg-accent"
+            )}
+          >
+            {t(`ownership.${o}`)}
+          </Link>
+        ))}
       </div>
 
       {/* Status filter chips with live counts */}
@@ -113,6 +164,7 @@ export default async function AssetsPage({
       {/* Search */}
       <form method="GET" className="relative w-full sm:max-w-sm">
         {statusFilter && <input type="hidden" name="status" value={statusFilter} />}
+        {ownershipFilter && <input type="hidden" name="ownership" value={ownershipFilter} />}
         <Search
           className="pointer-events-none absolute start-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
           aria-hidden
@@ -162,6 +214,18 @@ export default async function AssetsPage({
                   <td className="px-4 py-2.5">
                     <Link href={`/admin/assets/${a.id}`} className="hover:underline">
                       <span className="font-medium">{a.description}</span>
+                      {/* Non-KARA ownership rides next to the name rather than
+                          in its own column: these rows have no asset tag, so
+                          the first cell reads "—" and the operator otherwise
+                          has nothing telling them whose device this is. */}
+                      {a.ownership !== "kara" && (
+                        <Badge
+                          variant="outline"
+                          className="ms-2 border-amber-500 text-[10px] text-amber-700"
+                        >
+                          {t(`ownership.${a.ownership}`)}
+                        </Badge>
+                      )}
                       {(a.brand || a.model) && (
                         <span className="block text-xs text-muted-foreground">
                           {[a.brand, a.model].filter(Boolean).join(" · ")}

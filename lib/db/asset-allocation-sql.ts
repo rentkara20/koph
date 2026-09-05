@@ -63,12 +63,17 @@ export function originClaimReleased(): SQL<unknown> {
   )`
 }
 
-// A device nobody is using: in the warehouse, rental, no allocation of any kind,
-// and no outstanding claim from where it came from.
+// A device nobody is using: in the warehouse, rental, KARA-owned, no allocation
+// of any kind, and no outstanding claim from where it came from.
+//
+// The ownership clause is what keeps a customer's own device — sitting in our
+// warehouse for a repair — out of the rentable pool. Without it that device is
+// adoptable onto any order line and we would rent out property we do not own.
 export function unallocatedRentalStock(): SQL<unknown> {
   return and(
     eq(orderUnits.status, "in_stock"),
     eq(orderUnits.kind, "rental"),
+    eq(orderUnits.ownership, "kara"),
     isNull(orderUnits.currentRequestId),
     isNull(orderUnits.currentOrderId),
     isNull(orderUnits.currentCustomerId),

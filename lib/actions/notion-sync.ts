@@ -36,9 +36,10 @@ export async function getNotionAssetRows(
     .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
     .leftJoin(customers, eq(orderUnits.currentCustomerId, customers.id))
 
-  // The Notion "Assets" database mirrors the rental fleet only — sold products
-  // (kind="sale") are not company-held assets and must not sync there.
-  const rentalOnly = eq(orderUnits.kind, "rental")
+  // The Notion "Assets" database mirrors the KARA rental fleet only — sold
+  // products (kind="sale") are not company-held assets, and a customer's or
+  // supplier's device is not ours to register there at all.
+  const rentalOnly = and(eq(orderUnits.kind, "rental"), eq(orderUnits.ownership, "kara"))!
   const rows = assetId
     ? await query.where(and(eq(orderUnits.id, assetId), rentalOnly))
     : await query.where(rentalOnly)

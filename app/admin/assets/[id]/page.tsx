@@ -8,7 +8,12 @@ import { getAssetDocuments } from "@/lib/actions/asset-documents"
 import { getWarrantyForAsset, getWarrantyBatches } from "@/lib/actions/warranty"
 import { getAccessoriesForEntity, getAccessoryItems } from "@/lib/actions/accessories"
 import { getSupplierReturnForAsset } from "@/lib/actions/supplier-returns"
-import { assetActionsFor, type AssetStatus } from "@/lib/domain/asset-status"
+import {
+  assetActionsFor,
+  type AssetKind,
+  type AssetOwnership,
+  type AssetStatus,
+} from "@/lib/domain/asset-status"
 import { qrDataUrl } from "@/lib/utils/qr"
 import { formatDate } from "@/lib/utils/format"
 import { Badge } from "@/components/ui/badge"
@@ -86,14 +91,28 @@ export default async function AssetPage({
               .join(" · ")}
           </p>
         </div>
-        <Badge variant={ASSET_STATUS_VARIANT[asset.status] ?? "outline"} className="text-sm">
-          {t(`statuses.${asset.status}`)}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {asset.ownership !== "kara" && (
+            <Badge variant="outline" className="border-amber-500 text-sm text-amber-700">
+              {t(`ownership.${asset.ownership}`)}
+            </Badge>
+          )}
+          <Badge variant={ASSET_STATUS_VARIANT[asset.status] ?? "outline"} className="text-sm">
+            {t(`statuses.${asset.status}`)}
+          </Badge>
+        </div>
       </div>
 
       {/* Actions */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <AssetActions assetId={asset.id} actions={assetActionsFor(asset.status as AssetStatus)} />
+        <AssetActions
+          assetId={asset.id}
+          actions={assetActionsFor(
+            asset.status as AssetStatus,
+            asset.kind as AssetKind,
+            asset.ownership as AssetOwnership
+          )}
+        />
         {["in_stock", "returned", "damaged"].includes(asset.status) && (
           <OpenMaintenanceButton assetId={asset.id} />
         )}

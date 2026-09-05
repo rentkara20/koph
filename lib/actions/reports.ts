@@ -1,6 +1,6 @@
 "use server"
 
-import { count, desc, eq, sql, sum } from "drizzle-orm"
+import { and, count, desc, eq, sql, sum } from "drizzle-orm"
 import { db } from "@/lib/db"
 import {
   orderLines,
@@ -28,8 +28,11 @@ export async function getInventoryByLocation() {
   return db
     .select({ location: orderUnits.location, status: orderUnits.status, count: count() })
     .from(orderUnits)
-    // Rental fleet only — sold products (kind="sale") are not KARA-held inventory.
-    .where(eq(orderUnits.kind, "rental"))
+    // KARA rental fleet only. Two exclusions, two different reasons: sold
+    // products (kind="sale") left the fleet commercially, and non-KARA
+    // ownership (a customer's or supplier's device passing through our
+    // warehouse) was never ours to count as inventory.
+    .where(and(eq(orderUnits.kind, "rental"), eq(orderUnits.ownership, "kara")))
     .groupBy(orderUnits.location, orderUnits.status)
     .orderBy(orderUnits.location)
 }
@@ -53,8 +56,11 @@ export async function getInventoryByModel() {
     .from(orderUnits)
     .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
     .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
-    // Rental fleet only — sold products (kind="sale") are not KARA-held inventory.
-    .where(eq(orderUnits.kind, "rental"))
+    // KARA rental fleet only. Two exclusions, two different reasons: sold
+    // products (kind="sale") left the fleet commercially, and non-KARA
+    // ownership (a customer's or supplier's device passing through our
+    // warehouse) was never ours to count as inventory.
+    .where(and(eq(orderUnits.kind, "rental"), eq(orderUnits.ownership, "kara")))
     .groupBy(brandCol, modelCol, orderUnits.status)
     .orderBy(desc(count()))
     .limit(100)

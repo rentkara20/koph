@@ -1209,6 +1209,21 @@ export const orderUnits = sqliteTable(
     kind: text("kind", { enum: ["rental", "sale"] })
       .notNull()
       .default("rental"),
+    // Who OWNS the physical device right now — a separate axis from `kind`,
+    // which records how the device was TRANSACTED and never changes.
+    //   kara     — our asset. The only ownership that joins the rentable pool,
+    //              earns a KARA asset tag, or appears in fleet reports.
+    //   customer — the customer's own device. We only service it (maintenance,
+    //              inspection, format). It must never be adoptable as free
+    //              stock, never counted as inventory, never sold or retired.
+    //   supplier — rented in from a supplier and re-rented out. Ours to move,
+    //              not ours to write off.
+    // `sell` is the one transition that moves ownership (kara -> customer).
+    // Existing rows backfill to "kara", except status='sold' which backfills
+    // to "customer" (ownership had already transferred).
+    ownership: text("ownership", { enum: ["kara", "customer", "supplier"] })
+      .notNull()
+      .default("kara"),
     status: text("status", {
       enum: [
         "receiving_qc",
@@ -1258,6 +1273,7 @@ export const orderUnits = sqliteTable(
     index("order_unit_po_line_idx").on(t.purchaseOrderLineId),
     index("order_unit_status_idx").on(t.status),
     index("order_unit_kind_idx").on(t.kind),
+    index("order_unit_ownership_idx").on(t.ownership),
     index("order_unit_current_request_idx").on(t.currentRequestId),
     uniqueIndex("order_unit_serial_idx")
       .on(sql`lower(trim(${t.serialNumber}))`)

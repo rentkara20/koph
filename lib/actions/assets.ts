@@ -50,6 +50,11 @@ export type AssetFilters = {
   // Products-for-sale page passes "sale". Defaults to rental so every existing
   // caller keeps its historical (rental) behavior.
   kind?: "rental" | "sale"
+  // Ownership facet. Unset means "every ownership" — the Assets page must be
+  // able to FIND a customer's device, so this list deliberately does not
+  // exclude non-KARA units the way the fleet reports do. It is a filter the
+  // operator chooses, not a hidden exclusion.
+  ownership?: "kara" | "customer" | "supplier"
 }
 
 export async function getAssets(filters: AssetFilters = {}) {
@@ -59,6 +64,7 @@ export async function getAssets(filters: AssetFilters = {}) {
   const page = Math.max(1, filters.page ?? 1)
   const conds = []
   conds.push(eq(orderUnits.kind, filters.kind ?? "rental"))
+  if (filters.ownership) conds.push(eq(orderUnits.ownership, filters.ownership))
   if (filters.status) conds.push(eq(orderUnits.status, filters.status))
   if (filters.search?.trim()) {
     const q = `%${filters.search.trim()}%`
@@ -95,6 +101,7 @@ export async function getAssets(filters: AssetFilters = {}) {
         assetTag: orderUnits.assetTag,
         serialNumber: orderUnits.serialNumber,
         status: orderUnits.status,
+        ownership: orderUnits.ownership,
         location: orderUnits.location,
         purchaseCost: orderUnits.purchaseCost,
         warrantyEnd: orderUnits.warrantyEnd,
@@ -128,13 +135,20 @@ export async function getAssets(filters: AssetFilters = {}) {
   return { assets: rows, total, page, pageSize: PAGE_SIZE }
 }
 
-export async function getAssetStatusCounts(kind: "rental" | "sale" = "rental") {
+export async function getAssetStatusCounts(
+  kind: "rental" | "sale" = "rental",
+  ownership?: "kara" | "customer" | "supplier"
+) {
   const session = await getStaffSession()
   if (!session) return []
+  // The chips must agree with the list they sit above, so they take the same
+  // ownership facet — an unfiltered count over a filtered list reads as a bug.
+  const conds = [eq(orderUnits.kind, kind)]
+  if (ownership) conds.push(eq(orderUnits.ownership, ownership))
   return db
     .select({ status: orderUnits.status, total: count() })
     .from(orderUnits)
-    .where(eq(orderUnits.kind, kind))
+    .where(and(...conds))
     .groupBy(orderUnits.status)
 }
 
@@ -148,6 +162,11 @@ export async function getAsset(id: string) {
       assetTag: orderUnits.assetTag,
       serialNumber: orderUnits.serialNumber,
       status: orderUnits.status,
+      // kind and ownership both gate which lifecycle actions are legal; the
+      // detail page renders its buttons from them, so selecting them here is
+      // what keeps the UI from offering an action the server will reject.
+      kind: orderUnits.kind,
+      ownership: orderUnits.ownership,
       location: orderUnits.location,
       purchaseCost: orderUnits.purchaseCost,
       purchaseDate: orderUnits.purchaseDate,
@@ -477,6 +496,14 @@ export async function searchOrderLinesForAssetCreation(query: string) {
 // dedicated, atomic creation path: validate the source line, validate/generate
 // the serial + tag, insert the row, and emit AssetCreated — all in one tx.
 
+// A unit is origin-less when the caller says so (CSV back-fill) or when it
+// simply cannot have one: a device we do not own has no order line of ours and
+// was never bought on our PO. Both the origin rule and createAssetCore read
+// this one predicate so they cannot disagree.
+function hasNoOrigin(d: { standalone?: boolean; ownership?: "kara" | "customer" | "supplier" }): boolean {
+  return d.standalone === true || (d.ownership !== undefined && d.ownership !== "kara")
+}
+
 const createAssetSchema = z
   .object({
     orderLineId: z.string().trim().min(1).max(60).optional(),
@@ -505,13 +532,21 @@ const createAssetSchema = z
     warrantyCost: z.number().min(0).max(100_000_000).optional(),
     invoiceNo: z.string().trim().max(120).optional(),
     sourceOrderNo: z.string().trim().max(120).optional(),
+    // Who owns the physical device. Defaults to "kara" so every existing
+    // caller is unchanged. A non-KARA device may only be entered standalone:
+    // an order line is one of OUR rental/sale lines and a PO line means we
+    // bought the device, so either origin already asserts KARA ownership.
+    ownership: z.enum(["kara", "customer", "supplier"]).optional(),
   })
   .refine(
-    (d) => (d.standalone ? !d.orderLineId && !d.purchaseOrderLineId : Boolean(d.orderLineId) !== Boolean(d.purchaseOrderLineId)),
+    (d) => (hasNoOrigin(d) ? !d.orderLineId && !d.purchaseOrderLineId : Boolean(d.orderLineId) !== Boolean(d.purchaseOrderLineId)),
     {
       message: "Exactly one source (order line or purchase order line) is required",
     }
   )
+  .refine((d) => hasNoOrigin(d) || !d.ownership || d.ownership === "kara", {
+    message: "A device not owned by KARA cannot be created from an order line or a purchase order line",
+  })
 
 // Exported separately from the session-gated wrapper below so integration
 // tests can exercise the atomic creation path directly (the wrapper depends
@@ -544,10 +579,11 @@ export async function createAssetCore(
   // asset created from a sold_product line lands in products-for-sale, never
   // the rental pool — the order line's type is authoritative here.
   let effectiveKind: "rental" | "sale" = kind
+  const ownership = d.ownership ?? "kara"
 
-  if (d.standalone) {
-    // No origin at all — used only by the CSV importer for back-filling
-    // pre-existing devices that never had a client order or PO line.
+  if (hasNoOrigin(d)) {
+    // No origin at all — the CSV importer back-filling a pre-existing device,
+    // or any device we do not own.
   } else if (d.orderLineId) {
     const [line] = await tx
       .select({ id: orderLines.id, orderId: orderLines.orderId, type: orderLines.type })
@@ -588,7 +624,10 @@ export async function createAssetCore(
       .where(eq(orderUnits.assetTag, d.assetTag))
     if (clash) throw new Error("Asset tag already in use")
   }
-  const assetTag = d.assetTag || (await nextAssetTag(tx))
+  // Only KARA devices get a KARA-#### asset tag. Minting one for a customer's
+  // own device would stamp our inventory identity on property we do not own
+  // and pull it into every tag-driven report.
+  const assetTag = d.assetTag || (ownership === "kara" ? await nextAssetTag(tx) : null)
 
   const assetId = createId()
   await tx.insert(orderUnits).values({
@@ -604,6 +643,7 @@ export async function createAssetCore(
     assetTag,
     status: initialStatus,
     kind: effectiveKind,
+    ownership,
     location: d.location || "main_warehouse",
     purchaseDate: d.purchaseDate ?? null,
     warrantyEnd: d.warrantyEnd ?? null,
@@ -629,7 +669,7 @@ export async function createAssetCore(
     aggregateType: "asset",
     aggregateId: assetId,
     eventType: "AssetCreated",
-    payload: { orderLineId, orderId, purchaseOrderLineId, purchaseOrderId, serialNumber, assetTag, kind: effectiveKind },
+    payload: { orderLineId, orderId, purchaseOrderLineId, purchaseOrderId, serialNumber, assetTag, kind: effectiveKind, ownership },
     dedupeKey: `asset:${assetId}:AssetCreated`,
     actorUserId,
   })
@@ -654,6 +694,7 @@ export async function createAsset(
     return { error: "Assets from a purchase order must be created through the receiving flow" }
   }
 
+
   let assetId = ""
   try {
     await db.transaction(async (tx) => {
@@ -676,7 +717,10 @@ export async function generateMissingAssetTags(): Promise<{ error?: string; tagg
   const untagged = await db
     .select({ id: orderUnits.id })
     .from(orderUnits)
-    .where(isNull(orderUnits.assetTag))
+    // KARA-owned only: a customer's or supplier's device is deliberately left
+    // untagged (createAssetCore never mints one), and a back-fill sweep must
+    // not undo that.
+    .where(and(isNull(orderUnits.assetTag), eq(orderUnits.ownership, "kara")))
     .orderBy(orderUnits.createdAt)
 
   if (untagged.length === 0) return { tagged: 0 }

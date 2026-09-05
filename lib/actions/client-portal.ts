@@ -81,11 +81,17 @@ export async function getClientPortalData(token: string) {
       serialNumber: orderUnits.serialNumber,
       status: orderUnits.status,
       currentRequestId: orderUnits.currentRequestId,
+      ownership: orderUnits.ownership,
     })
     .from(orderUnits)
     // Rental only: the portal's actions (return / extension / issue) are rental
     // concepts. Sold products (kind="sale") transferred ownership and are not
     // shown as returnable/extendable assets here.
+    //
+    // Ownership is selected, not filtered: a customer's OWN device that we are
+    // servicing belongs on their list — it is the portal UI's job to label it
+    // and withhold the return/extend actions, since those are ours to offer
+    // only on devices we actually rented out.
     .where(and(eq(orderUnits.currentCustomerId, customer.id), eq(orderUnits.kind, "rental")))
 
   const signatures = await db

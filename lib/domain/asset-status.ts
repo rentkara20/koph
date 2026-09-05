@@ -89,6 +89,35 @@ const SALE_FORBIDDEN_ACTIONS: ReadonlySet<AssetAction> = new Set<AssetAction>([
   "found", // lost -> returned (rental limbo)
 ])
 
+// Who owns the physical device right now (order_unit.ownership) — a separate
+// axis from `kind`, which records how the device was transacted. Only a
+// kara-owned device is ours to sell or write off.
+export type AssetOwnership = "kara" | "customer" | "supplier"
+
+// Commercial actions that presuppose we own the device. Physical movement
+// (assign/deliver/return/maintenance/damaged/lost) stays legal for every
+// ownership so a customer's own device can be collected, serviced and handed
+// back through the normal flow. What a non-KARA ownership forbids is disposing
+// of someone else's property.
+//
+// Keeping inventory clean is NOT this machine's job: a customer-owned device
+// may legitimately sit in our warehouse as `in_stock` while it waits for a
+// part. It is excluded from the rentable pool by the free-stock predicate
+// (unallocatedRentalStock) and from fleet reports by an ownership filter, not
+// by forbidding the status.
+const NON_KARA_FORBIDDEN_ACTIONS: ReadonlySet<AssetAction> = new Set<AssetAction>([
+  "sell", // not ours to sell
+  "retire", // not ours to write off
+])
+
+// Returning a device to the supplier only means something for stock we bought
+// or rented in. A customer's own device goes back to the customer, never to a
+// supplier of ours.
+const CUSTOMER_OWNED_FORBIDDEN_ACTIONS: ReadonlySet<AssetAction> = new Set<AssetAction>([
+  "start_supplier_return",
+  "confirm_supplier_return",
+])
+
 // For sale units, "sell" is the normal completion of the sale and is reachable
 // from any live customer-facing state, including the delivered handoff. Rental
 // units keep the base rule (sell only surplus stock: in_stock/returned/retired).
@@ -101,10 +130,15 @@ export const TERMINAL_ASSET_STATUSES: AssetStatus[] = ["retired", "sold"]
 export function canAssetTransition(
   from: AssetStatus,
   action: AssetAction,
-  kind: AssetKind = "rental"
+  kind: AssetKind = "rental",
+  ownership: AssetOwnership = "kara"
 ): boolean {
   const rule = TRANSITIONS[action]
   if (!rule) return false
+  if (ownership !== "kara") {
+    if (NON_KARA_FORBIDDEN_ACTIONS.has(action)) return false
+    if (ownership === "customer" && CUSTOMER_OWNED_FORBIDDEN_ACTIONS.has(action)) return false
+  }
   if (kind === "sale") {
     if (SALE_FORBIDDEN_ACTIONS.has(action)) return false
     if (action === "sell") return SALE_SELL_FROM.includes(from)
@@ -116,9 +150,13 @@ export function assetStatusAfter(action: AssetAction): AssetStatus {
   return TRANSITIONS[action].to
 }
 
-export function assetActionsFor(status: AssetStatus, kind: AssetKind = "rental"): AssetAction[] {
+export function assetActionsFor(
+  status: AssetStatus,
+  kind: AssetKind = "rental",
+  ownership: AssetOwnership = "kara"
+): AssetAction[] {
   return (Object.keys(TRANSITIONS) as AssetAction[]).filter(
-    (a) => canAssetTransition(status, a, kind) && !GUIDED_ACTIONS.has(a)
+    (a) => canAssetTransition(status, a, kind, ownership) && !GUIDED_ACTIONS.has(a)
   )
 }
 

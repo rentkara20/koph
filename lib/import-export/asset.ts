@@ -28,6 +28,7 @@ export const ASSET_COLUMNS: ColumnDef[] = [
   { header: "model", field: "model", required: false },
   { header: "deviceType", field: "deviceType", required: false },
   { header: "kind", field: "kind", required: false },
+  { header: "ownership", field: "ownership", required: false },
   { header: "status", field: "status", required: false },
   { header: "location", field: "location", required: false },
   { header: "purchaseCost", field: "purchaseCost", required: false },
@@ -58,6 +59,7 @@ export const ASSET_EXPORT_COLUMNS: ColumnDef[] = [
   { header: "brand", field: "brand", required: false },
   { header: "deviceType", field: "deviceType", required: false },
   { header: "kind", field: "kind", required: false },
+  { header: "ownership", field: "ownership", required: false },
   { header: "status", field: "status", required: false },
   { header: "location", field: "location", required: false },
   { header: "purchaseDate", field: "purchaseDate", required: false },
@@ -77,6 +79,7 @@ export async function exportAssetRows(): Promise<Record<string, unknown>[]> {
       model: orderUnits.model,
       deviceType: orderUnits.deviceType,
       kind: orderUnits.kind,
+      ownership: orderUnits.ownership,
       status: orderUnits.status,
       location: orderUnits.location,
       purchaseCost: orderUnits.purchaseCost,
@@ -144,6 +147,7 @@ function parseNumber(value: string, field: string): number | undefined {
 }
 
 const VALID_KINDS = new Set(["rental", "sale"])
+const VALID_OWNERSHIP = new Set(["kara", "customer", "supplier"])
 // Statuses a CSV row is allowed to set. Anything else is a lifecycle
 // transition guarded by applyAssetTransition/OI-1 and must go through the UI,
 // not a bulk import — see updateAssetImportCore's doc comment.
@@ -156,9 +160,23 @@ export async function validateAssetRows(
   rows: Record<string, string>[]
 ): Promise<ImportRow[]> {
   const existing = await database
-    .select({ id: orderUnits.id, assetTag: orderUnits.assetTag, status: orderUnits.status })
+    .select({
+      id: orderUnits.id,
+      assetTag: orderUnits.assetTag,
+      status: orderUnits.status,
+      serialNumber: orderUnits.serialNumber,
+    })
     .from(orderUnits)
   const byTag = new Map(existing.filter((e) => e.assetTag).map((e) => [e.assetTag as string, e]))
+  // A device we do not own has no KARA asset tag, so the tag cannot be its
+  // identity in a CSV. Serial is. Without this second index every re-import of
+  // a customer-owned device would classify as "new" and then fail on the
+  // duplicate-serial check — an import that can create but never update.
+  const bySerial = new Map(
+    existing
+      .filter((e) => e.serialNumber?.trim())
+      .map((e) => [e.serialNumber!.trim().toLowerCase(), e])
+  )
 
   const seenSerials = new Set<string>()
   const existingSerials = new Set(
@@ -180,6 +198,7 @@ export async function validateAssetRows(
       const assetTag = raw.assetTag?.trim() || undefined
       const serialNumber = raw.serialNumber?.trim() || undefined
       const kind = raw.kind?.trim() || "rental"
+      const ownership = raw.ownership?.trim() || "kara"
       const status = raw.status?.trim() || ""
       const location = raw.location?.trim() || undefined
       const notes = raw.notes?.trim() || undefined
@@ -191,6 +210,20 @@ export async function validateAssetRows(
       const sourceOrderNo = raw.sourceOrderNo?.trim() || undefined
 
       if (kind && !VALID_KINDS.has(kind)) throw new Error(`Invalid kind: "${kind}"`)
+      if (!VALID_OWNERSHIP.has(ownership)) throw new Error(`Invalid ownership: "${ownership}"`)
+      if (ownership !== "kara") {
+        // Both halves matter: the tag is ours to issue and must not be stamped
+        // on someone else's property, and without a serial the device has no
+        // identity at all, so a re-import could never find it again.
+        if (assetTag) {
+          throw new Error(
+            `A device owned by "${ownership}" must not carry a KARA asset tag (row has "${assetTag}")`
+          )
+        }
+        if (!serialNumber) {
+          throw new Error(`serialNumber is required for a device owned by "${ownership}"`)
+        }
+      }
       const purchaseCost = parseNumber(raw.purchaseCost?.trim() ?? "", "purchaseCost")
       const warrantyCost = parseNumber(raw.warrantyCost?.trim() ?? "", "warrantyCost")
       const purchaseDate = parseDate(raw.purchaseDate?.trim() ?? "", "purchaseDate")
@@ -202,7 +235,11 @@ export async function validateAssetRows(
         seenSerials.add(key)
       }
 
-      const matched = assetTag ? byTag.get(assetTag) : undefined
+      const matched = assetTag
+        ? byTag.get(assetTag)
+        : serialNumber
+          ? bySerial.get(serialNumber.toLowerCase())
+          : undefined
 
       if (matched) {
         if (serialNumber && existingSerials.has(serialNumber.toLowerCase())) {
@@ -244,7 +281,7 @@ export async function validateAssetRows(
         continue
       }
 
-      if (!assetTag) {
+      if (!assetTag && ownership === "kara") {
         throw new Error("assetTag is required for new asset rows")
       }
       if (status && !NEW_ROW_ALLOWED_STATUS.has(status)) {
@@ -264,6 +301,7 @@ export async function validateAssetRows(
           assetTag,
           serialNumber,
           kind,
+          ownership,
           location,
           purchaseCost,
           warrantyCost,

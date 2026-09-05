@@ -16,6 +16,7 @@ import { orderUnits, assetEvents } from "@/lib/db/schema"
 import { createId } from "@/lib/utils/ids"
 import {
   canAssetTransition,
+  type AssetOwnership,
   actionForTransition,
   type AssetAction,
   type AssetStatus,
@@ -71,7 +72,20 @@ export async function applyAssetTransition(
 
   const from = unit.status as AssetStatus
   const kind = (unit.kind ?? "rental") as "rental" | "sale"
-  if (!canAssetTransition(from, action, kind)) {
+  const ownership = (unit.ownership ?? "kara") as AssetOwnership
+  if (!canAssetTransition(from, action, kind, ownership)) {
+    // A non-KARA device rejected for a commercial action gets its own message:
+    // "not allowed from this status" would be a lie — the status is fine, the
+    // device just isn't ours to sell or write off.
+    if (ownership !== "kara" && canAssetTransition(from, action, kind, "kara")) {
+      throw new AssetTransitionError(
+        "INVALID_TRANSITION",
+        `Cannot perform "${action}" on a device owned by ${ownership}`,
+        ownership === "customer"
+          ? `لا يمكن تنفيذ الإجراء "${action}" على جهاز مملوك للعميل`
+          : `لا يمكن تنفيذ الإجراء "${action}" على جهاز مملوك للمورّد`
+      )
+    }
     throw new AssetTransitionError(
       "INVALID_TRANSITION",
       `Cannot perform "${action}" on an asset in status "${from}"`,

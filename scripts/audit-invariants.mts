@@ -22,6 +22,7 @@ import {
   findAssetKindLineTypeMismatches,
   findClosedTasksWithoutPayment,
   findOriginMismatches,
+  findOwnershipViolations,
 } from "../lib/db/invariants"
 
 const useProd = process.argv.includes("--prod")
@@ -51,6 +52,20 @@ if (kindMismatches.length === 0) {
     "  A rental unit stamped 'sale' cannot be collected back from the customer, and\n" +
       "  a sale unit stamped 'rental' re-enters the rental pool. Fix by re-deriving kind\n" +
       "  from the line: sold_product -> sale, rental_asset -> rental.\n"
+  )
+}
+
+const ownershipViolations = await findOwnershipViolations(db)
+if (ownershipViolations.length === 0) {
+  console.log("✓ no non-KARA device carries a marker of KARA ownership")
+} else {
+  violations += ownershipViolations.length
+  console.error(`✗ ${ownershipViolations.length} non-KARA device(s) marked as ours:`)
+  console.table(ownershipViolations)
+  console.error(
+    "  A customer's or supplier's device must have no order/PO origin, no KARA asset tag,\n" +
+      "  and must never be sold or retired by us. Fix by clearing the offending field, or\n" +
+      "  by correcting ownership to 'kara' if the device really is ours.\n"
   )
 }
 

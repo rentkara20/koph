@@ -159,3 +159,61 @@ describe("sale-kind lifecycle", () => {
     expect(onDelivered).not.toContain("return")
   })
 })
+
+// Ownership is a second gate on top of kind. It exists to stop us disposing of
+// property that is not ours: a customer's laptop we are formatting must never
+// be sellable or retirable from the asset page, no matter what status it is in.
+describe("ownership gating", () => {
+  test("a KARA device keeps the full action set (the default is unchanged)", () => {
+    expect(canAssetTransition("in_stock", "sell", "rental", "kara")).toBe(true)
+    expect(canAssetTransition("in_stock", "retire", "rental", "kara")).toBe(true)
+    // Omitting the argument must behave exactly like passing "kara" — every
+    // existing caller relies on that.
+    expect(canAssetTransition("in_stock", "sell", "rental")).toBe(true)
+  })
+
+  test("a customer-owned device can never be sold or retired by us", () => {
+    for (const from of ["in_stock", "returned", "retired"] as const) {
+      expect(canAssetTransition(from, "sell", "rental", "customer")).toBe(false)
+    }
+    for (const from of ["in_stock", "returned", "damaged", "maintenance"] as const) {
+      expect(canAssetTransition(from, "retire", "rental", "customer")).toBe(false)
+    }
+  })
+
+  test("a customer-owned device is never returned to one of our suppliers", () => {
+    expect(canAssetTransition("damaged", "start_supplier_return", "rental", "customer")).toBe(false)
+    expect(
+      canAssetTransition("supplier_return_pending", "confirm_supplier_return", "rental", "customer")
+    ).toBe(false)
+  })
+
+  test("a supplier-owned device still goes back to the supplier", () => {
+    expect(canAssetTransition("damaged", "start_supplier_return", "rental", "supplier")).toBe(true)
+    // ...but is not ours to sell or write off either.
+    expect(canAssetTransition("in_stock", "sell", "rental", "supplier")).toBe(false)
+    expect(canAssetTransition("in_stock", "retire", "rental", "supplier")).toBe(false)
+  })
+
+  // The whole point of entering a customer's device: collect it, service it,
+  // hand it back. Ownership must not block any of that.
+  test("physical movement stays legal for a device we do not own", () => {
+    expect(canAssetTransition("in_stock", "assign", "rental", "customer")).toBe(true)
+    expect(canAssetTransition("assigned", "deliver", "rental", "customer")).toBe(true)
+    expect(canAssetTransition("delivered", "return", "rental", "customer")).toBe(true)
+    expect(canAssetTransition("returned", "send_maintenance", "rental", "customer")).toBe(true)
+    expect(canAssetTransition("maintenance", "repair_done", "rental", "customer")).toBe(true)
+    expect(canAssetTransition("returned", "restock", "rental", "customer")).toBe(true)
+  })
+
+  test("assetActionsFor hides what the server would reject", () => {
+    const kara = assetActionsFor("in_stock", "rental", "kara")
+    expect(kara).toContain("sell")
+    expect(kara).toContain("retire")
+
+    const customer = assetActionsFor("in_stock", "rental", "customer")
+    expect(customer).not.toContain("sell")
+    expect(customer).not.toContain("retire")
+    expect(customer).toContain("assign")
+  })
+})
