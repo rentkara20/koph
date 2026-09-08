@@ -13,7 +13,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "db:seed": "npx tsx lib/db/seed.ts",
-    "audit:invariants": "npx tsx scripts/audit-invariants.mts"
+    "audit:invariants": "npx tsx scripts/audit-invariants.mts",
+    "dev:demo": "TURSO_DATABASE_URL=file:demo.db next dev --turbopack",
+    "demo:reset": "TURSO_DATABASE_URL=file:demo.db tsx scripts/demo-seed.mts && TURSO_DATABASE_URL=file:demo.db tsx scripts/demo-admin.mts"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",

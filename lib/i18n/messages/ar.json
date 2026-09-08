@@ -32,7 +32,9 @@
       "money": "المالية",
       "system": "النظام"
     },
-    "products": "منتجات للبيع"
+    "products": "منتجات للبيع",
+    "devicePortal": "طلبات الملصقات",
+    "labels": "الملصقات"
   },
   "common": {
     "unauthorized": "غير مصرح.",
@@ -1381,7 +1383,10 @@
     "pickupInTransit": "استلام قيد النقل: {quantity} قطعة",
     "pickupReceived": "تم استلام مهمة الاستلام بالكامل في المستودع",
     "procurementCaseClosed": "تم إغلاق حالة الشراء",
-    "adHocTaskAssigned": "مهمة عامة جديدة: {title}"
+    "adHocTaskAssigned": "مهمة عامة جديدة: {title}",
+    "deviceClaimActivated": "تفعيل الجهاز {serial} بواسطة {holder}",
+    "deviceClaimTransferred": "نقل حيازة الجهاز {serial} إلى {holder}",
+    "deviceServiceRequest": "طلب جديد ({service}) على الجهاز {serial}"
   },
   "suppliers": {
     "title": "التجار",
@@ -2449,5 +2454,79 @@
     "reasonPlaceholder": "لماذا يتم التنازل عن الكمية المتبقية؟",
     "reasonRequired": "السبب مطلوب",
     "markedCompleted": "تم تحديد الطلب كمكتمل"
+  },
+  "devicePortal": {
+    "title": "جهاز كارا",
+    "serial": "الرقم التسلسلي",
+    "specs": "المواصفات",
+    "noSpecs": "غير مسجّلة",
+    "assetTag": "رقم الأصل",
+    "warrantyEnd": "نهاية الضمان",
+    "inService": "في الخدمة",
+    "retired": "خارج الخدمة",
+    "activated": "الجهاز مفعّل",
+    "holder": "المستخدم",
+    "email": "البريد الإلكتروني",
+    "mobile": "الجوال",
+    "maskedNotice": "بيانات المستخدم محجوبة — تظهر كاملة لصاحب الجهاز فقط.",
+    "goToServices": "الخدمات والطلبات",
+    "notMyDevice": "هذا ليس جهازي / نقل الحيازة",
+    "servicesTitle": "خدمات الجهاز",
+    "holderOnly": "الخدمات متاحة لصاحب الجهاز فقط",
+    "holderOnlyHint": "فعّل الجهاز من صفحة الجهاز أولاً حتى تتمكن من إرسال الطلبات.",
+    "backToDevice": "رجوع لصفحة الجهاز",
+    "greeting": "مرحباً {name}",
+    "myRequests": "طلباتي",
+    "requestStatus": {
+      "submitted": "قيد المراجعة",
+      "applied": "تم التنفيذ",
+      "rejected": "مرفوض"
+    },
+    "activation": {
+      "title": "تفعيل الجهاز",
+      "description": "أدخل بياناتك لتفعيل الجهاز وطلب الخدمات عليه.",
+      "name": "الاسم",
+      "email": "البريد الإلكتروني",
+      "mobile": "رقم الجوال",
+      "reason": "سبب النقل (اختياري)",
+      "consent": "أوافق على استخدام كارا لبياناتي (الاسم والبريد والجوال) للتواصل بخصوص هذا الجهاز فقط.",
+      "consentRequired": "يجب الموافقة على استخدام البيانات",
+      "submit": "تفعيل",
+      "submitTransfer": "نقل الحيازة لي",
+      "submitting": "جارٍ الإرسال…"
+    },
+    "services": {
+      "none": "لا توجد خدمات متاحة حالياً",
+      "note": "التفاصيل",
+      "brand": "الماركة",
+      "model": "الموديل",
+      "deviceType": "نوع الجهاز",
+      "reviewNotice": "التعديلات تُراجع من كارا قبل تطبيقها على سجل الجهاز.",
+      "send": "إرسال الطلب",
+      "sending": "جارٍ الإرسال…",
+      "submitted": "تم إرسال طلبك ✓"
+    }
+  },
+  "devicePortalAdmin": {
+    "title": "طلبات ملصقات الأجهزة",
+    "subtitle": "الطلبات الواردة من مسح QR الأجهزة. تعديلات بيانات الجهاز تُطبَّق من هنا فقط.",
+    "forbidden": "غير مصرّح",
+    "empty": "لا توجد طلبات",
+    "status": {
+      "submitted": "قيد المراجعة",
+      "applied": "تم التنفيذ",
+      "rejected": "مرفوض"
+    },
+    "field": {
+      "note": "التفاصيل",
+      "brand": "الماركة المقترحة",
+      "model": "الموديل المقترح",
+      "deviceType": "نوع الجهاز المقترح"
+    },
+    "notePlaceholder": "ملاحظة الأدمن (اختياري)",
+    "apply": "تطبيق",
+    "applying": "جارٍ التطبيق…",
+    "reject": "رفض",
+    "rejecting": "جارٍ الرفض…"
   }
 }

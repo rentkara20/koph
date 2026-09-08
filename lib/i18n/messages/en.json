@@ -32,7 +32,9 @@
       "money": "Money",
       "system": "System"
     },
-    "products": "Products for Sale"
+    "products": "Products for Sale",
+    "devicePortal": "Sticker requests",
+    "labels": "Labels"
   },
   "common": {
     "unauthorized": "Unauthorized.",
@@ -1381,7 +1383,10 @@
     "pickupInTransit": "Pickup in transit: {quantity} unit(s)",
     "pickupReceived": "Pickup fully received at warehouse",
     "procurementCaseClosed": "Procurement case closed",
-    "adHocTaskAssigned": "New ad-hoc task: {title}"
+    "adHocTaskAssigned": "New ad-hoc task: {title}",
+    "deviceClaimActivated": "Device {serial} activated by {holder}",
+    "deviceClaimTransferred": "Device {serial} transferred to {holder}",
+    "deviceServiceRequest": "New request ({service}) on device {serial}"
   },
   "suppliers": {
     "title": "Suppliers",
@@ -2449,5 +2454,79 @@
     "reasonPlaceholder": "Why is the remaining quantity being waived?",
     "reasonRequired": "A reason is required",
     "markedCompleted": "Request marked as completed"
+  },
+  "devicePortal": {
+    "title": "KARA Device",
+    "serial": "Serial number",
+    "specs": "Specifications",
+    "noSpecs": "Not recorded",
+    "assetTag": "Asset tag",
+    "warrantyEnd": "Warranty end",
+    "inService": "In service",
+    "retired": "Retired",
+    "activated": "Device activated",
+    "holder": "Holder",
+    "email": "Email",
+    "mobile": "Mobile",
+    "maskedNotice": "Holder details are masked — shown in full to the device holder only.",
+    "goToServices": "Services & requests",
+    "notMyDevice": "This isn't my device / transfer",
+    "servicesTitle": "Device services",
+    "holderOnly": "Services are available to the device holder only",
+    "holderOnlyHint": "Activate the device first to submit requests.",
+    "backToDevice": "Back to device",
+    "greeting": "Hello {name}",
+    "myRequests": "My requests",
+    "requestStatus": {
+      "submitted": "Under review",
+      "applied": "Applied",
+      "rejected": "Rejected"
+    },
+    "activation": {
+      "title": "Activate device",
+      "description": "Enter your details to activate this device and request services on it.",
+      "name": "Name",
+      "email": "Email",
+      "mobile": "Mobile number",
+      "reason": "Transfer reason (optional)",
+      "consent": "I agree that KARA may use my details (name, email, mobile) to contact me about this device only.",
+      "consentRequired": "Consent is required",
+      "submit": "Activate",
+      "submitTransfer": "Transfer to me",
+      "submitting": "Submitting…"
+    },
+    "services": {
+      "none": "No services available right now",
+      "note": "Details",
+      "brand": "Brand",
+      "model": "Model",
+      "deviceType": "Device type",
+      "reviewNotice": "Corrections are reviewed by KARA before they reach the device record.",
+      "send": "Send request",
+      "sending": "Sending…",
+      "submitted": "Request sent ✓"
+    }
+  },
+  "devicePortalAdmin": {
+    "title": "Device sticker requests",
+    "subtitle": "Requests filed from device QR scans. Device-data corrections are applied only from here.",
+    "forbidden": "Not authorised",
+    "empty": "No requests",
+    "status": {
+      "submitted": "Under review",
+      "applied": "Applied",
+      "rejected": "Rejected"
+    },
+    "field": {
+      "note": "Details",
+      "brand": "Proposed brand",
+      "model": "Proposed model",
+      "deviceType": "Proposed device type"
+    },
+    "notePlaceholder": "Admin note (optional)",
+    "apply": "Apply",
+    "applying": "Applying…",
+    "reject": "Reject",
+    "rejecting": "Rejecting…"
   }
 }

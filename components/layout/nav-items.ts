@@ -18,6 +18,8 @@ import {
   Handshake,
   Inbox,
   PackageCheck,
+  QrCode,
+  Tags,
 } from "lucide-react"
 
 /** Sidebar groups, in render order. Keys map to nav.group.* i18n labels. */
@@ -63,6 +65,14 @@ export const navItems: readonly NavItem[] = [
   { key: "maintenance", href: "/admin/maintenance", icon: Wrench, group: "devices" },
   { key: "warranty", href: "/admin/warranty", icon: BadgeCheck, group: "devices", prefetch: false },
   { key: "products", href: "/admin/products", icon: Cable, group: "devices", prefetch: false },
+  { key: "labels", href: "/admin/labels", icon: Tags, group: "devices", prefetch: false },
+  {
+    key: "devicePortal",
+    href: "/admin/device-portal",
+    icon: QrCode,
+    group: "devices",
+    prefetch: false,
+  },
 
   { key: "sourcing", href: "/admin/sourcing", icon: Handshake, group: "supply", prefetch: false },
   { key: "procurement", href: "/admin/procurement", icon: PackagePlus, group: "supply", prefetch: false },

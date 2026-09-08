@@ -2150,3 +2150,141 @@ export type AccessoryStock = typeof accessoryStock.$inferSelect
 export type NewAccessoryStock = typeof accessoryStock.$inferInsert
 export type AccessoryAttachment = typeof accessoryAttachments.$inferSelect
 export type NewAccessoryAttachment = typeof accessoryAttachments.$inferInsert
+
+// ─── Device QR portal (sticker → device page) ───────────────────────────────
+// Every device carries a printed QR pointing at /d/<serial>. The serial is the
+// permanent address; everything mutable lives here so the sticker never needs
+// reprinting.
+//
+// deviceClaim: the end-user (customer's own employee) who currently holds the
+// device. Exactly one active claim per serial (partial unique index below);
+// transfers release the old row instead of overwriting it, so "who held what
+// when" stays auditable. holderSecret is the bearer value stored in the
+// holder's browser cookie — it is the ONLY thing that unlocks the full PII on
+// the public page, so it is never rendered.
+
+export const deviceClaims = sqliteTable(
+  "device_claim",
+  {
+    id: text("id").primaryKey(),
+    serialNumber: text("serial_number").notNull(),
+    holderName: text("holder_name").notNull(),
+    holderEmail: text("holder_email").notNull(),
+    holderMobile: text("holder_mobile").notNull(),
+    // Opaque per-claim secret held in the holder's cookie. Not a session.
+    holderSecret: text("holder_secret").notNull(),
+    // Explicit PII consent captured in the activation form.
+    consentAt: integer("consent_at").notNull(),
+    status: text("status").notNull().default("active"), // active | released
+    claimedAt: integer("claimed_at").notNull().$defaultFn(now),
+    releasedAt: integer("released_at"),
+    // Free text: who/why the holder changed (transfer, returned to company…).
+    releaseReason: text("release_reason"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("device_claim_serial_idx").on(t.serialNumber),
+    uniqueIndex("device_claim_active_serial_uq")
+      .on(t.serialNumber)
+      .where(sql`${t.status} = 'active'`),
+    check("device_claim_status_ck", sql`${t.status} IN ('active','released')`),
+  ]
+)
+
+// deviceServiceRequest: anything the holder asks for from the device page —
+// a maintenance ticket, a technical question, a correction to the device's own
+// data, or a stocktake answer. `kind` is a key from the admin-configurable
+// catalogue in app_setting (device_portal_services), NOT a fixed enum, so the
+// requestable action list changes without a migration.
+//
+// A data-correction request NEVER writes order_unit directly: it lands here as
+// `submitted` and an admin applies it. Inventory data stays trustworthy even
+// though anyone holding the device can type into the form.
+
+export const deviceServiceRequests = sqliteTable(
+  "device_service_request",
+  {
+    id: text("id").primaryKey(),
+    serialNumber: text("serial_number").notNull(),
+    claimId: text("claim_id").references(() => deviceClaims.id, { onDelete: "set null" }),
+    kind: text("kind").notNull(),
+    // JSON payload shaped by the kind (free note, proposed field values, …).
+    payload: text("payload").notNull().default("{}"),
+    status: text("status").notNull().default("submitted"), // submitted | applied | rejected
+    adminNote: text("admin_note"),
+    reviewedBy: text("reviewed_by").references(() => users.id),
+    reviewedAt: integer("reviewed_at"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("device_service_request_serial_idx").on(t.serialNumber),
+    index("device_service_request_status_idx").on(t.status),
+    check(
+      "device_service_request_status_ck",
+      sql`${t.status} IN ('submitted','applied','rejected')`
+    ),
+  ]
+)
+
+export type DeviceClaim = typeof deviceClaims.$inferSelect
+export type NewDeviceClaim = typeof deviceClaims.$inferInsert
+export type DeviceServiceRequest = typeof deviceServiceRequests.$inferSelect
+export type NewDeviceServiceRequest = typeof deviceServiceRequests.$inferInsert
+
+// ─── Label studio (upload → validate → print → register) ───────────────────
+// Deliberately isolated from the operational asset tables: a label upload
+// NEVER writes order_unit. Kept in the same database rather than a separate
+// one so a serial that already exists as a real asset is detected as a clash
+// instead of quietly becoming a second, unlinked record for the same device.
+//
+// The device page reads order_unit first and falls back to label_device, so a
+// sticker printed for a device Kara has not received yet still resolves.
+
+export const labelBatches = sqliteTable(
+  "label_batch",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    // Source filename, kept so a reprint can be traced to what was uploaded.
+    sourceFile: text("source_file"),
+    // Printed URL prefix frozen at generation time. Stickers outlive code, so
+    // knowing which prefix a batch carries is what makes a reprint decision
+    // possible later ("this batch points at the pilot host").
+    baseUrl: text("base_url").notNull(),
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [index("label_batch_created_idx").on(t.createdAt)]
+)
+
+export const labelDevices = sqliteTable(
+  "label_device",
+  {
+    id: text("id").primaryKey(),
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => labelBatches.id, { onDelete: "cascade" }),
+    // As typed by the uploader — the value printed under the QR.
+    serialNumber: text("serial_number").notNull(),
+    // Separator-stripped uppercase form: what the printed URL carries and what
+    // /d/<serial> resolves against.
+    serialKey: text("serial_key").notNull(),
+    brand: text("brand"),
+    model: text("model"),
+    deviceType: text("device_type"),
+    notes: text("notes"),
+    printedAt: integer("printed_at"),
+    createdAt: integer("created_at").notNull().$defaultFn(now),
+  },
+  (t) => [
+    index("label_device_batch_idx").on(t.batchId),
+    // One sticker per serial across the whole studio: a duplicate upload is
+    // refused rather than producing two QR codes for one device.
+    uniqueIndex("label_device_serial_key_uq").on(t.serialKey),
+  ]
+)
+
+export type LabelBatch = typeof labelBatches.$inferSelect
+export type NewLabelBatch = typeof labelBatches.$inferInsert
+export type LabelDevice = typeof labelDevices.$inferSelect
+export type NewLabelDevice = typeof labelDevices.$inferInsert
