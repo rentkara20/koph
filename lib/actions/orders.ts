@@ -18,7 +18,7 @@ import {
   suppliers,
 } from "@/lib/db/schema"
 import { assetBrandSql, assetDisplayNameSql, assetModelSql } from "@/lib/db/asset-name"
-import { attributedToOrder, servingOrder, unallocatedRentalStock } from "@/lib/db/asset-allocation-sql"
+import { attributedToOrder, servingOrder } from "@/lib/db/asset-allocation-sql"
 import { deriveOrderJourney, type JourneyStage } from "@/lib/domain/order-journey"
 import { assetKindForOrderLineType } from "@/lib/domain/asset-status"
 import { createId } from "@/lib/utils/ids"
@@ -962,7 +962,10 @@ export async function getDeliveredOrderUnitsCore(tx: Tx, orderId: string, orderN
 }
 
 export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
-  const [directUnits, purchasedUnits, returnedStockUnits, freeStockUnits] = await Promise.all([
+  // Only units bound to THIS order: created on it / allocated to it, or received
+  // through its own sourcing chain. Free warehouse stock is deliberately NOT
+  // offered here — it is adopted onto an order first, then shows up.
+  const [directUnits, purchasedUnits] = await Promise.all([
     tx
       .select({
         unitId: orderUnits.id,
@@ -1009,58 +1012,10 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
       .innerJoin(sourcingRequests, eq(procurementCases.sourcingRequestId, sourcingRequests.id))
       .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
       .where(and(eq(sourcingRequests.orderId, orderId), eq(orderUnits.status, "in_stock"))),
-    // Returned / unallocated stock: any rental unit sitting in the warehouse
-    // with no current allocation. A device that went out on another order and
-    // came back belongs here — its origin (orderUnits.orderId) records where it
-    // entered the fleet and is deliberately NOT a filter, because filtering on
-    // it is what used to hide returned devices from every other order and force
-    // hand-written repoint scripts.
-    tx
-      .select({
-        unitId: orderUnits.id,
-        serialNumber: orderUnits.serialNumber,
-        description: assetDisplayNameSql(orderLines.description, purchaseOrderLines.itemDescription),
-        brand: assetBrandSql(orderLines.brand, purchaseOrderLines.brand),
-        model: assetModelSql(orderLines.model, purchaseOrderLines.model),
-        supplierName: suppliers.name,
-      })
-      .from(orderUnits)
-      .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
-      .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
-      .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
-      .where(unallocatedRentalStock()),
-    // Free stock: units received against a PO whose procurement chain does not
-    // resolve to ANY customer order (manual POs / order-less sourcing). These
-    // are unallocated inventory, so any order may draw from them. Units whose
-    // chain resolves to a different order are excluded (orderId non-null there).
-    tx
-      .select({
-        unitId: orderUnits.id,
-        serialNumber: orderUnits.serialNumber,
-        description: assetDisplayNameSql(purchaseOrderLines.itemDescription),
-        brand: assetBrandSql(purchaseOrderLines.brand),
-        model: assetModelSql(purchaseOrderLines.model),
-        supplierName: suppliers.name,
-      })
-      .from(orderUnits)
-      .innerJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
-      .innerJoin(purchaseOrders, eq(purchaseOrderLines.purchaseOrderId, purchaseOrders.id))
-      .innerJoin(procurementCases, eq(purchaseOrders.procurementCaseId, procurementCases.id))
-      .leftJoin(sourcingRequests, eq(procurementCases.sourcingRequestId, sourcingRequests.id))
-      .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
-      .where(
-        and(
-          eq(orderUnits.status, "in_stock"),
-          or(isNull(procurementCases.sourcingRequestId), isNull(sourcingRequests.orderId)),
-        ),
-      ),
   ])
 
-  // Later writes win: the order's own rows carry the richest naming, so they
-  // overwrite the same unit picked up by a broader branch.
-  const byId = new Map(freeStockUnits.map((unit) => [unit.unitId, unit]))
-  for (const unit of returnedStockUnits) byId.set(unit.unitId, unit)
-  for (const unit of directUnits) byId.set(unit.unitId, unit)
+  // Later writes win: sourcing-chain rows overwrite the same unit seen directly.
+  const byId = new Map(directUnits.map((unit) => [unit.unitId, unit]))
   for (const unit of purchasedUnits) byId.set(unit.unitId, unit)
   return [...byId.values()].sort((a, b) => a.description.localeCompare(b.description))
 }

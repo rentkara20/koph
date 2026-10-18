@@ -84,7 +84,7 @@ describe("getAvailableOrderUnitsCore", () => {
     ])
   })
 
-  it("includes free stock from manual POs (no sourcing chain) but excludes units allocated to another order", async () => {
+  it("does not offer free stock from manual POs or units allocated to another order", async () => {
     const supplierId = createId()
     await db.insert(schema.suppliers).values({ id: supplierId, name: "Manual Supplier" })
 
@@ -131,7 +131,7 @@ describe("getAvailableOrderUnitsCore", () => {
       serialNumber: "SERIAL-OTHER-1", status: "in_stock",
     })
 
-    // A fresh order with no chain of its own: sees the free unit only.
+    // A fresh order with no chain of its own: sees nothing until stock is adopted onto it.
     const customerId = createId()
     const orderId = createId()
     await db.insert(schema.customers).values({ id: customerId, name: "Fresh Customer" })
@@ -141,14 +141,14 @@ describe("getAvailableOrderUnitsCore", () => {
     const units = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, orderId))
 
     const serials = units.map((u) => u.serialNumber)
-    expect(serials).toContain("SERIAL-FREE-1")
+    expect(serials).not.toContain("SERIAL-FREE-1")
     expect(serials).not.toContain("SERIAL-OTHER-1")
   })
 
   // The regression that forced two hand-written repoint scripts: a device
   // returned from another customer sat in the warehouse yet no other order's
   // picker could see it, because the picker filtered on the device's ORIGIN.
-  it("offers a device returned from another order without touching its origin", async () => {
+  it("does not offer a device returned from another order, and leaves its origin alone", async () => {
     const oldCustomerId = createId()
     const oldOrderId = createId()
     const oldLineId = createId()
@@ -174,7 +174,7 @@ describe("getAvailableOrderUnitsCore", () => {
 
     const { getAvailableOrderUnitsCore } = await import("./orders")
     const units = await db.transaction((tx) => getAvailableOrderUnitsCore(tx, newOrderId))
-    expect(units.map((u) => u.serialNumber)).toContain("SERIAL-RETURNED-1")
+    expect(units.map((u) => u.serialNumber)).not.toContain("SERIAL-RETURNED-1")
 
     // And the previous order still owns its history of the device.
     const [row] = await db.select().from(schema.orderUnits).where(eq(schema.orderUnits.id, unitId))
