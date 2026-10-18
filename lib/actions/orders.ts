@@ -969,13 +969,20 @@ export async function getAvailableOrderUnitsCore(tx: Tx, orderId: string) {
         serialNumber: orderUnits.serialNumber,
         // Per-asset rename lives on order_unit.model, so the picker must resolve
         // the display name the same way the asset list and collection lookup do.
-        description: assetDisplayNameSql(orderLines.description),
-        brand: assetBrandSql(orderLines.brand),
-        model: assetModelSql(orderLines.model),
+        description: assetDisplayNameSql(orderLines.description, purchaseOrderLines.itemDescription),
+        brand: assetBrandSql(orderLines.brand, purchaseOrderLines.brand),
+        model: assetModelSql(orderLines.model, purchaseOrderLines.model),
         supplierName: suppliers.name,
       })
       .from(orderUnits)
-      .innerJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      // Name from the line the device is allocated to now, else its origin line.
+      // Adopted stock received on a PO has no origin order line at all, so an
+      // inner join on orderLineId silently dropped it from the picker.
+      .leftJoin(
+        orderLines,
+        eq(orderLines.id, sql`coalesce(${orderUnits.currentOrderLineId}, ${orderUnits.orderLineId})`),
+      )
+      .leftJoin(purchaseOrderLines, eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id))
       .leftJoin(suppliers, eq(orderUnits.supplierId, suppliers.id))
       .where(
         and(
