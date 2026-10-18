@@ -363,10 +363,18 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
         kind: orderUnits.kind,
         location: orderUnits.location,
         orderLineId: orderUnits.orderLineId,
-        description: assetDisplayNameSql(orderLines.description),
+        description: assetDisplayNameSql(
+          orderLines.description,
+          purchaseOrderLines.itemDescription,
+        ),
       })
       .from(orderUnits)
       .leftJoin(orderLines, eq(orderUnits.orderLineId, orderLines.id))
+      // Adopted PO stock has no origin order line; name it from its PO line.
+      .leftJoin(
+        purchaseOrderLines,
+        eq(orderUnits.purchaseOrderLineId, purchaseOrderLines.id),
+      )
       // Every device attributed to this order (see asset-allocation-sql.ts):
       // the ones it bought, plus the ones borrowed from free stock. A device on
       // loan elsewhere still belongs on its own order's workspace — dropping it
