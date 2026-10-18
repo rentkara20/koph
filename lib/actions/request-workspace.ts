@@ -6,7 +6,7 @@
 // payments, documents, activity — computes WorkspaceFacts, and returns the
 // derived journey + next actions. No writes here, ever.
 
-import { and, desc, eq, inArray, isNull } from "drizzle-orm"
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { assetDisplayNameSql } from "@/lib/db/asset-name"
 import { attributedToOrder } from "@/lib/db/asset-allocation-sql"
@@ -413,7 +413,21 @@ export async function getRequestWorkspace(orderId: string): Promise<RequestWorks
     ? await db
         .select({ requestId: requestItems.requestId, orderUnitId: requestItems.orderUnitId })
         .from(requestItems)
-        .where(inArray(requestItems.orderUnitId, unitIds))
+        .innerJoin(requests, eq(requestItems.requestId, requests.id))
+        .where(
+          and(
+            inArray(requestItems.orderUnitId, unitIds),
+            // A device re-rented from free stock keeps its past jobs for other
+            // orders/customers; only this order's jobs belong on its workspace.
+            or(
+              eq(requests.quoteNumber, order.orderNumber),
+              and(
+                or(isNull(requests.quoteNumber), eq(requests.quoteNumber, "")),
+                eq(requests.customerId, order.customerId),
+              ),
+            ),
+          ),
+        )
     : []
   const jobIds = [...new Set(jobLinks.map((l) => l.requestId))]
 
